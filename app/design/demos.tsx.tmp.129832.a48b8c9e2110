@@ -1,0 +1,669 @@
+"use client";
+
+import { endOfMonth, format, startOfDay, startOfMonth, subDays, subMonths } from "date-fns";
+import { ptBR as datePtBR } from "date-fns/locale";
+import {
+  Archive,
+  CalendarDays,
+  Check,
+  ChevronsUpDown,
+  Copy,
+  MoveRight,
+  Pencil,
+  Plus,
+  Search,
+  Settings,
+  Tag,
+  Users,
+} from "lucide-react";
+import { useTheme } from "next-themes";
+import { useEffect, useState, useSyncExternalStore } from "react";
+import type { DateRange } from "react-day-picker";
+import { ptBR } from "react-day-picker/locale";
+import { Bar, BarChart, LabelList, XAxis, YAxis } from "recharts";
+import { toast } from "sonner";
+
+import { KpiCard } from "@/components/ds/kpi-card";
+import { LABEL_HUES, LABEL_HUE_NAME, LabelChip } from "@/components/ds/label-chip";
+import { RefreshIndicator } from "@/components/ds/refresh-indicator";
+import { ThemeSwitcher } from "@/components/ds/theme-switcher";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
+import { type ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuShortcut,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { Switch } from "@/components/ui/switch";
+import { Table, TableBody, TableCaption, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { EMPTY, money, roas } from "@/lib/format";
+import { cn } from "@/lib/utils";
+
+const noop = () => () => {};
+
+// Controles da prancha: tema, modo para daltônicos e reduzir animações.
+// ?tema=dark e ?daltonicos=1 na URL servem para as capturas de conferência.
+export function DesignControls() {
+  const { setTheme } = useTheme();
+  const urlColorblind = useSyncExternalStore(
+    noop,
+    () => new URLSearchParams(window.location.search).get("daltonicos") === "1",
+    () => false,
+  );
+  const [colorblindChoice, setColorblind] = useState<boolean | null>(null);
+  const [reduced, setReduced] = useState(false);
+  const colorblind = colorblindChoice ?? urlColorblind;
+
+  useEffect(() => {
+    const tema = new URLSearchParams(window.location.search).get("tema");
+    if (tema === "light" || tema === "dark" || tema === "system") setTheme(tema);
+  }, [setTheme]);
+
+  useEffect(() => {
+    document.documentElement.dataset.colorblind = colorblind ? "on" : "off";
+  }, [colorblind]);
+
+  useEffect(() => {
+    if (reduced) document.documentElement.dataset.motion = "reduced";
+    else delete document.documentElement.dataset.motion;
+  }, [reduced]);
+
+  return (
+    <div className="flex flex-wrap items-center gap-4">
+      <ThemeSwitcher />
+      <Label className="font-normal">
+        <Switch checked={colorblind} onCheckedChange={setColorblind} />
+        Daltônicos
+      </Label>
+      <Label className="font-normal">
+        <Switch checked={reduced} onCheckedChange={setReduced} />
+        Reduzir animações
+      </Label>
+    </div>
+  );
+}
+
+// Popover, menu, janelas, painel lateral e toasts.
+export function OverlaysDemo() {
+  const [picked, setPicked] = useState<string[]>(["purple"]);
+  const [query, setQuery] = useState("");
+  const hues = LABEL_HUES.filter((hue) => LABEL_HUE_NAME[hue].includes(query.trim().toLowerCase()));
+
+  return (
+    <div className="flex flex-wrap gap-3">
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button variant="outline">
+            <Tag aria-hidden="true" />
+            Etiquetas
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-80">
+          <p className="mb-2 text-center text-sm font-semibold">Etiquetas</p>
+          <Input
+            placeholder="Buscar etiquetas…"
+            aria-label="Buscar etiquetas"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+          <ul className="mt-3 grid gap-1">
+            {hues.map((hue) => {
+              const checked = picked.includes(hue);
+              return (
+                <li key={hue}>
+                  <label className="flex cursor-pointer items-center gap-2 rounded-md p-1 hover:bg-accent">
+                    <Checkbox
+                      checked={checked}
+                      onCheckedChange={(value) =>
+                        setPicked((list) => (value ? [...list, hue] : list.filter((item) => item !== hue)))
+                      }
+                    />
+                    <LabelChip color={hue} name={LABEL_HUE_NAME[hue]} className="h-7 flex-1 text-sm" />
+                  </label>
+                </li>
+              );
+            })}
+            {hues.length === 0 && <li className="py-4 text-center text-muted-foreground">Nenhuma etiqueta com esse nome</li>}
+          </ul>
+        </PopoverContent>
+      </Popover>
+
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline">Ações da lista</Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent className="w-56" align="start">
+          <DropdownMenuLabel>Lista A fazer</DropdownMenuLabel>
+          <DropdownMenuItem>
+            <Plus aria-hidden="true" />
+            Adicionar card
+            <DropdownMenuShortcut>N</DropdownMenuShortcut>
+          </DropdownMenuItem>
+          <DropdownMenuItem>
+            <Copy aria-hidden="true" />
+            Copiar lista
+          </DropdownMenuItem>
+          <DropdownMenuItem>
+            <MoveRight aria-hidden="true" />
+            Mover lista
+          </DropdownMenuItem>
+          <DropdownMenuItem disabled>Ordenar por prazo</DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem variant="destructive">
+            <Archive aria-hidden="true" />
+            Arquivar lista
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <Dialog>
+        <DialogTrigger asChild>
+          <Button>
+            <Plus aria-hidden="true" />
+            Criar quadro
+          </Button>
+        </DialogTrigger>
+        <DialogContent className="sm:max-w-[560px]">
+          <DialogHeader>
+            <DialogTitle>Criar quadro</DialogTitle>
+            <DialogDescription>O quadro nasce no workspace INtellect e só os membros veem.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-2">
+            <Label htmlFor="novo-quadro">Nome do quadro (obrigatório)</Label>
+            <Input id="novo-quadro" placeholder="Ex.: Lançamento de novembro" />
+          </div>
+          <fieldset className="grid gap-2">
+            <legend className="mb-2 text-sm font-medium">Fundo</legend>
+            <RadioGroup defaultValue="purple" className="flex flex-wrap gap-2" aria-label="Fundo do quadro">
+              {LABEL_HUES.map((hue) => (
+                <Label
+                  key={hue}
+                  className="relative h-8 w-12 cursor-pointer rounded-md has-[:checked]:ring-2 has-[:checked]:ring-ring has-[:checked]:ring-offset-2 has-[:checked]:ring-offset-background"
+                  style={{ background: `var(--ds-label-${hue}-bold)` }}
+                >
+                  <RadioGroupItem value={hue} aria-label={LABEL_HUE_NAME[hue]} className="sr-only" />
+                </Label>
+              ))}
+            </RadioGroup>
+          </fieldset>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="ghost">Cancelar</Button>
+            </DialogClose>
+            <DialogClose asChild>
+              <Button onClick={() => toast.success("Quadro criado")}>Criar quadro</Button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog>
+        <AlertDialogTrigger asChild>
+          <Button variant="destructive">Excluir quadro</Button>
+        </AlertDialogTrigger>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir o quadro Marketing de outubro?</AlertDialogTitle>
+            <AlertDialogDescription>
+              As 3 listas, os 6 cards e os anexos somem para todos os membros. Não dá para desfazer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={() => toast("Quadro excluído")}>
+              Excluir quadro
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <Sheet>
+        <SheetTrigger asChild>
+          <Button variant="secondary">Menu do quadro</Button>
+        </SheetTrigger>
+        <SheetContent className="w-side-panel sm:max-w-side-panel">
+          <SheetHeader>
+            <SheetTitle>Menu do quadro</SheetTitle>
+            <SheetDescription>Configurações e atividade do Marketing de outubro.</SheetDescription>
+          </SheetHeader>
+          <nav aria-label="Menu do quadro" className="grid gap-1 px-4">
+            {[
+              { icon: Users, text: "Membros" },
+              { icon: Tag, text: "Etiquetas" },
+              { icon: Settings, text: "Configurações" },
+              { icon: Archive, text: "Itens arquivados" },
+            ].map(({ icon: Icon, text }) => (
+              <Button key={text} variant="ghost" className="justify-start">
+                <Icon aria-hidden="true" />
+                {text}
+              </Button>
+            ))}
+          </nav>
+        </SheetContent>
+      </Sheet>
+
+      <Button
+        variant="outline"
+        onClick={() =>
+          toast.success("Card movido para Feito", {
+            action: { label: "Desfazer", onClick: () => toast("O card voltou para Em andamento") },
+          })
+        }
+      >
+        Toast com desfazer
+      </Button>
+      <Button
+        variant="outline"
+        onClick={() => toast.error("Não deu para salvar o orçamento", { description: "O Meta recusou o valor. Tente de novo." })}
+      >
+        Toast de erro
+      </Button>
+    </div>
+  );
+}
+
+// Combobox: lista longa com busca (ex.: trocar de dashboard).
+const DASHBOARDS = ["Loja principal", "Loja de kits", "Lançamento de novembro", "Testes de oferta"];
+
+export function ComboboxDemo() {
+  const [open, setOpen] = useState(false);
+  const [value, setValue] = useState(DASHBOARDS[0]);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="outline" role="combobox" aria-expanded={open} aria-label="Dashboard" className="w-64 justify-between">
+          {value}
+          <ChevronsUpDown aria-hidden="true" className="opacity-60" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-64 p-0">
+        <Command>
+          <CommandInput placeholder="Buscar dashboard…" />
+          <CommandList>
+            <CommandEmpty>Nenhum dashboard com esse nome</CommandEmpty>
+            <CommandGroup heading="Dashboards">
+              {DASHBOARDS.map((name) => (
+                <CommandItem
+                  key={name}
+                  value={name}
+                  onSelect={() => {
+                    setValue(name);
+                    setOpen(false);
+                  }}
+                >
+                  <Check aria-hidden="true" className={cn(name === value ? "opacity-100" : "opacity-0")} />
+                  {name}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+// Seletor de período (components.md, "Seletor de período").
+type Preset = { id: string; label: string; range: (today: Date) => DateRange };
+
+const PRESETS: Preset[] = [
+  { id: "hoje", label: "Hoje", range: (t) => ({ from: t, to: t }) },
+  { id: "ontem", label: "Ontem", range: (t) => ({ from: subDays(t, 1), to: subDays(t, 1) }) },
+  { id: "7d", label: "Últimos 7 dias", range: (t) => ({ from: subDays(t, 6), to: t }) },
+  { id: "mes", label: "Este mês", range: (t) => ({ from: startOfMonth(t), to: t }) },
+  {
+    id: "mes-passado",
+    label: "Mês passado",
+    range: (t) => ({ from: startOfMonth(subMonths(t, 1)), to: endOfMonth(subMonths(t, 1)) }),
+  },
+];
+
+function rangeText(range: DateRange | undefined) {
+  if (!range?.from) return "Escolha as datas";
+  const from = format(range.from, "d 'de' MMM", { locale: datePtBR });
+  if (!range.to || range.to.getTime() === range.from.getTime()) return from;
+  return `${format(range.from, "d", { locale: datePtBR })} a ${format(range.to, "d 'de' MMM", { locale: datePtBR })}`;
+}
+
+export function PeriodPickerDemo() {
+  const today = startOfDay(new Date());
+  const [preset, setPreset] = useState("7d");
+  const [range, setRange] = useState<DateRange | undefined>(() => PRESETS[2].range(today));
+  const label = preset === "custom" ? "Personalizado" : PRESETS.find((p) => p.id === preset)?.label;
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button variant="outline" className="justify-start">
+          <CalendarDays aria-hidden="true" />
+          {label} · {rangeText(range)}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="flex w-auto flex-col gap-3 p-3 sm:flex-row" align="start">
+        <div role="radiogroup" aria-label="Atalhos de período" className="grid content-start gap-1 sm:w-40">
+          {PRESETS.map((p) => (
+            <Button
+              key={p.id}
+              role="radio"
+              aria-checked={preset === p.id}
+              variant="ghost"
+              size="sm"
+              className={cn("justify-start", preset === p.id && "bg-primary-subtle text-primary hover:bg-primary-subtle")}
+              onClick={() => {
+                setPreset(p.id);
+                setRange(p.range(today));
+              }}
+            >
+              {p.label}
+            </Button>
+          ))}
+          <Button
+            role="radio"
+            aria-checked={preset === "custom"}
+            variant="ghost"
+            size="sm"
+            className={cn("justify-start", preset === "custom" && "bg-primary-subtle text-primary hover:bg-primary-subtle")}
+            onClick={() => setPreset("custom")}
+          >
+            Personalizado
+          </Button>
+        </div>
+        <div>
+          <Calendar
+            mode="range"
+            locale={ptBR}
+            selected={range}
+            onSelect={(next) => {
+              setPreset("custom");
+              setRange(next);
+            }}
+            disabled={{ after: today }}
+          />
+          <p className="px-2 text-xs text-muted-foreground">Horário de Brasília</p>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+export function CalendarDemo() {
+  const [date, setDate] = useState<Date | undefined>(() => new Date());
+  return <Calendar mode="single" locale={ptBR} selected={date} onSelect={setDate} className="rounded-lg border" />;
+}
+
+// Tabela de campanhas com status (confirmação antes de mexer na campanha) e orçamento editável.
+type Row = { id: string; name: string; active: boolean; budget: number; spend: number; revenue: number };
+
+const ROWS: Row[] = [
+  { id: "c1", name: "Remarketing 30d", active: true, budget: 15000, spend: 421000, revenue: 1305100 },
+  { id: "c2", name: "Público frio, criativo B", active: true, budget: 25000, spend: 688000, revenue: 791200 },
+  { id: "c3", name: "Teste de oferta", active: false, budget: 5000, spend: 0, revenue: 0 },
+];
+
+export function CampaignTableDemo() {
+  const [rows, setRows] = useState(ROWS);
+  const [pending, setPending] = useState<{ row: Row; next: Partial<Row>; question: string } | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [draft, setDraft] = useState("");
+
+  const profit = (r: Row) => r.revenue - r.spend - Math.round(r.revenue * 0.12);
+  const total = rows.reduce(
+    (acc, r) => ({ spend: acc.spend + r.spend, revenue: acc.revenue + r.revenue, profit: acc.profit + profit(r) }),
+    { spend: 0, revenue: 0, profit: 0 },
+  );
+
+  function askBudget(row: Row) {
+    const cents = Math.round(Number(draft.replace(/\./g, "").replace(",", ".")) * 100);
+    setEditing(null);
+    if (!Number.isFinite(cents) || cents <= 0 || cents === row.budget) return;
+    setPending({
+      row,
+      next: { budget: cents },
+      question: `Mudar o orçamento de ${money(row.budget)} para ${money(cents)} no Meta?`,
+    });
+  }
+
+  return (
+    <div className="overflow-x-auto rounded-lg border">
+      <Table className="tabular">
+        <TableCaption className="sr-only">Campanhas do Meta, últimos 7 dias</TableCaption>
+        <TableHeader className="bg-muted">
+          <TableRow>
+            <TableHead>Status</TableHead>
+            <TableHead className="sticky left-0 bg-muted">Campanha</TableHead>
+            <TableHead className="text-right">Orçamento diário</TableHead>
+            <TableHead className="text-right">Gasto</TableHead>
+            <TableHead className="text-right">Faturamento</TableHead>
+            <TableHead className="text-right">ROAS</TableHead>
+            <TableHead className="text-right">Lucro</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((r) => {
+            const p = profit(r);
+            const value = r.spend ? roas(r.revenue / r.spend) : null;
+            return (
+              <TableRow key={r.id}>
+                <TableCell>
+                  <Switch
+                    checked={r.active}
+                    aria-label={`Campanha ${r.name} ${r.active ? "ativa" : "pausada"}`}
+                    onCheckedChange={(on) =>
+                      setPending({
+                        row: r,
+                        next: { active: on },
+                        question: `${on ? "Ativar" : "Pausar"} a campanha ${r.name} no Meta?`,
+                      })
+                    }
+                  />
+                </TableCell>
+                <TableCell className="sticky left-0 bg-card">{r.name}</TableCell>
+                <TableCell className="text-right">
+                  {editing === r.id ? (
+                    <Input
+                      autoFocus
+                      aria-label={`Novo orçamento de ${r.name}`}
+                      className="ml-auto h-8 w-28 text-right"
+                      value={draft}
+                      onChange={(event) => setDraft(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") askBudget(r);
+                        if (event.key === "Escape") setEditing(null);
+                      }}
+                      onBlur={() => setEditing(null)}
+                    />
+                  ) : (
+                    <span className="group inline-flex items-center gap-1">
+                      {money(r.budget)}
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`Editar orçamento de ${r.name}`}
+                        className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                        onClick={() => {
+                          setDraft((r.budget / 100).toFixed(2).replace(".", ","));
+                          setEditing(r.id);
+                        }}
+                      >
+                        <Pencil aria-hidden="true" />
+                      </Button>
+                    </span>
+                  )}
+                </TableCell>
+                <TableCell className="text-right">{money(r.spend)}</TableCell>
+                <TableCell className="text-right">{money(r.revenue)}</TableCell>
+                <TableCell className="text-right" aria-label={value ? undefined : "sem dados"}>
+                  {value ?? EMPTY}
+                </TableCell>
+                <TableCell className={cn("text-right", p < 0 && "text-danger")}>{money(p)}</TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+        <TableFooter>
+          <TableRow className="border-t-2 border-input font-semibold">
+            <TableCell />
+            <TableCell className="sticky left-0">Total</TableCell>
+            <TableCell />
+            <TableCell className="text-right">{money(total.spend)}</TableCell>
+            <TableCell className="text-right">{money(total.revenue)}</TableCell>
+            <TableCell className="text-right">{roas(total.revenue / total.spend)}</TableCell>
+            <TableCell className={cn("text-right", total.profit < 0 && "text-danger")}>{money(total.profit)}</TableCell>
+          </TableRow>
+        </TableFooter>
+      </Table>
+
+      <AlertDialog open={pending != null} onOpenChange={(open) => !open && setPending(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{pending?.question}</AlertDialogTitle>
+            <AlertDialogDescription>
+              A mudança vale na conta de anúncios de verdade. Nesta prancha, nada é enviado.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (!pending) return;
+                setRows((list) => list.map((r) => (r.id === pending.row.id ? { ...r, ...pending.next } : r)));
+                toast.success("Campanha atualizada");
+              }}
+            >
+              Confirmar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
+
+// Gráfico de barras com a ordem fixa de cores (Pix chart-1, Cartão chart-2, Boleto chart-3, Outros chart-8).
+const payments = [
+  { method: "pix", label: "Pix", value: 2140000 },
+  { method: "card", label: "Cartão", value: 1895000 },
+  { method: "boleto", label: "Boleto", value: 432000 },
+  { method: "other", label: "Outros", value: 38500 },
+].map((row) => ({ ...row, fill: `var(--color-${row.method})` }));
+
+const chartConfig = {
+  value: { label: "Vendas" },
+  pix: { label: "Pix", color: "var(--ds-chart-1)" },
+  card: { label: "Cartão", color: "var(--ds-chart-2)" },
+  boleto: { label: "Boleto", color: "var(--ds-chart-3)" },
+  other: { label: "Outros", color: "var(--ds-chart-8)" },
+} satisfies ChartConfig;
+
+export function PaymentsChartDemo() {
+  const [asTable, setAsTable] = useState(false);
+  return (
+    <figure className="grid gap-3">
+      <figcaption className="flex items-center justify-between gap-2">
+        <span className="font-semibold">Vendas por forma de pagamento</span>
+        <Button variant="ghost" size="sm" onClick={() => setAsTable((v) => !v)}>
+          {asTable ? "Ver como gráfico" : "Ver como tabela"}
+        </Button>
+      </figcaption>
+      {asTable ? (
+        <Table className="tabular">
+          <TableHeader>
+            <TableRow>
+              <TableHead>Forma</TableHead>
+              <TableHead className="text-right">Vendas</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {payments.map((row) => (
+              <TableRow key={row.method}>
+                <TableCell>{row.label}</TableCell>
+                <TableCell className="text-right">{money(row.value)}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      ) : (
+        <ChartContainer config={chartConfig} className="h-56 w-full" aria-hidden="true">
+          <BarChart data={payments} layout="vertical" margin={{ left: 8, right: 96 }}>
+            <YAxis dataKey="label" type="category" tickLine={false} axisLine={false} width={64} />
+            <XAxis type="number" hide />
+            <ChartTooltip content={<ChartTooltipContent hideLabel formatter={(value) => money(Number(value))} />} />
+            <Bar dataKey="value" radius={4}>
+              <LabelList
+                dataKey="value"
+                position="right"
+                className="fill-foreground tabular"
+                fontSize={12}
+                formatter={(value: unknown) => money(Number(value))}
+              />
+            </Bar>
+          </BarChart>
+        </ChartContainer>
+      )}
+    </figure>
+  );
+}
+
+export function RefreshDemo() {
+  const [updatedAt] = useState(() => new Date(Date.now() - 8 * 60 * 1000));
+  return (
+    <div className="flex flex-wrap gap-6">
+      <RefreshIndicator updatedAt={updatedAt} onRefresh={() => new Promise((resolve) => setTimeout(resolve, 1500))} />
+      <RefreshIndicator updatedAt={updatedAt} stale />
+    </div>
+  );
+}
+
+export function KpiRetryDemo() {
+  return <KpiCard label="ROI" formula="Lucro ÷ gasto com anúncios" state="error" onRetry={() => toast("Tentando de novo…")} />;
+}
+
+export function SearchFieldDemo() {
+  const [value, setValue] = useState("criativo");
+  return (
+    <div className="relative w-64">
+      <Search aria-hidden="true" className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+      <Input
+        type="search"
+        aria-label="Buscar campanhas"
+        placeholder="Buscar campanhas…"
+        className="pl-8"
+        value={value}
+        onChange={(event) => setValue(event.target.value)}
+      />
+    </div>
+  );
+}
