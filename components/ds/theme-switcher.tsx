@@ -2,15 +2,19 @@
 
 import { Monitor, Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 // Seletor de tema (components.md): Claro, Escuro, Automático.
 export function ThemeSwitcher() {
   const { theme, setTheme } = useTheme();
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  // O tema salvo só existe no navegador: no servidor, nenhuma opção aparece marcada.
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
 
   return (
     <ToggleGroup
@@ -18,7 +22,7 @@ export function ThemeSwitcher() {
       variant="outline"
       size="sm"
       aria-label="Tema"
-      value={mounted ? theme : undefined}
+      value={mounted ? (theme ?? "") : ""}
       onValueChange={(value) => value && setTheme(value)}
     >
       <ToggleGroupItem value="light" aria-label="Tema claro">

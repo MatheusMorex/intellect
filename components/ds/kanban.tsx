@@ -112,11 +112,14 @@ export function ListColumn({
   count,
   children,
   color,
+  footer,
 }: {
   name: string;
   count: number;
   children: React.ReactNode;
   color?: string;
+  /** Substitui o botão "Adicionar card" (ex.: o compositor de verdade, ou nada para observador). */
+  footer?: React.ReactNode;
 }) {
   return (
     <section
@@ -132,10 +135,14 @@ export function ListColumn({
         </Button>
       </header>
       {children}
-      <Button variant="ghost" className="justify-start text-muted-foreground">
-        <Plus aria-hidden="true" />
-        Adicionar card
-      </Button>
+      {footer === undefined ? (
+        <Button variant="ghost" className="justify-start text-muted-foreground">
+          <Plus aria-hidden="true" />
+          Adicionar card
+        </Button>
+      ) : (
+        footer
+      )}
     </section>
   );
 }

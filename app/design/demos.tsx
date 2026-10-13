@@ -70,6 +70,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTr
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCaption, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { EMPTY, money, roas } from "@/lib/format";
+import { useReducedMotion } from "@/lib/use-reduced-motion";
 import { cn } from "@/lib/utils";
 
 const noop = () => () => {};
@@ -95,6 +96,15 @@ export function DesignControls() {
   useEffect(() => {
     document.documentElement.dataset.colorblind = colorblind ? "on" : "off";
   }, [colorblind]);
+
+  // ?so=<id> mostra só uma seção da prancha (para capturas de conferência).
+  useEffect(() => {
+    const only = new URLSearchParams(window.location.search).get("so");
+    if (!only) return;
+    document.querySelectorAll<HTMLElement>("main > section").forEach((section) => {
+      section.hidden = section.id !== only;
+    });
+  }, []);
 
   useEffect(() => {
     if (reduced) document.documentElement.dataset.motion = "reduced";
@@ -211,7 +221,7 @@ export function OverlaysDemo() {
               {LABEL_HUES.map((hue) => (
                 <Label
                   key={hue}
-                  className="relative h-8 w-12 cursor-pointer rounded-md has-[:checked]:ring-2 has-[:checked]:ring-ring has-[:checked]:ring-offset-2 has-[:checked]:ring-offset-background"
+                  className="relative h-8 w-12 cursor-pointer rounded-md has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-ring has-[[data-state=checked]]:ring-2 has-[[data-state=checked]]:ring-ring has-[[data-state=checked]]:ring-offset-2 has-[[data-state=checked]]:ring-offset-popover"
                   style={{ background: `var(--ds-label-${hue}-bold)` }}
                 >
                   <RadioGroupItem value={hue} aria-label={LABEL_HUE_NAME[hue]} className="sr-only" />
@@ -590,6 +600,7 @@ const chartConfig = {
 
 export function PaymentsChartDemo() {
   const [asTable, setAsTable] = useState(false);
+  const reducedMotion = useReducedMotion();
   return (
     <figure className="grid gap-3">
       <figcaption className="flex items-center justify-between gap-2">
@@ -620,8 +631,8 @@ export function PaymentsChartDemo() {
           <BarChart data={payments} layout="vertical" margin={{ left: 8, right: 96 }}>
             <YAxis dataKey="label" type="category" tickLine={false} axisLine={false} width={64} />
             <XAxis type="number" hide />
-            <ChartTooltip content={<ChartTooltipContent hideLabel formatter={(value) => money(Number(value))} />} />
-            <Bar dataKey="value" radius={4}>
+            <ChartTooltip content={<ChartTooltipContent hideLabel nameKey="method" formatter={(value) => money(Number(value))} />} />
+            <Bar dataKey="value" radius={4} isAnimationActive={!reducedMotion}>
               <LabelList
                 dataKey="value"
                 position="right"

@@ -45,7 +45,7 @@ export function KpiCard({
       role="group"
       aria-label={spoken ?? label}
       aria-busy={state === "loading" || undefined}
-      className={cn("rounded-lg border bg-card text-card-foreground", size === "md" ? "p-4" : "p-3")}
+      className={cn("@container rounded-lg border bg-card text-card-foreground", size === "md" ? "p-4" : "p-3")}
     >
       <div className="flex items-center gap-1 text-xs text-muted-foreground">
         {label}
@@ -64,14 +64,14 @@ export function KpiCard({
       {state === "loading" && (
         <>
           <span className="sr-only">Carregando…</span>
-          <Skeleton className={cn("my-1", size === "md" ? "h-10 w-3/5" : "h-8 w-1/2")} />
+          <Skeleton className={cn("my-1", size === "md" ? "h-8 w-3/5 @xs:h-10" : "h-8 w-1/2")} />
           <Skeleton className="h-3 w-4/5" />
         </>
       )}
 
       {state === "empty" && (
         <>
-          <p className={cn("my-1 font-bold tabular", size === "md" ? "text-display" : "text-xl")} aria-label="sem dados">
+          <p className={cn("my-1 font-bold tabular", size === "md" ? "text-xl @xs:text-display" : "text-xl")} aria-label="sem dados">
             {EMPTY}
           </p>
           <p className="text-xs text-muted-foreground">Sem vendas no período</p>
@@ -94,8 +94,9 @@ export function KpiCard({
         <>
           <p
             className={cn(
-              "my-1 font-bold tabular",
-              size === "md" ? "text-display" : "text-xl",
+              // O valor fica numa linha só; em card estreito (menos de 320 px) usa o tamanho xl.
+              "my-1 font-bold whitespace-nowrap tabular",
+              size === "md" ? "text-xl @xs:text-display" : "text-xl",
               negative && "text-danger",
             )}
           >

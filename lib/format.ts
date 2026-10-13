@@ -1,5 +1,6 @@
 import { formatDistanceToNowStrict, format as formatDate } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { TZDate } from "@date-fns/tz";
 
 // Formatos pt-BR do app (replica/design/components.md, "Formato de números e datas").
 // Dinheiro chega em centavos; percentual em pontos-base (1234 = 12,34%).
@@ -44,3 +45,19 @@ export function relative(date: Date) {
 }
 
 export const EMPTY = "—";
+
+/** Data e hora no fuso indicado (o do dashboard, no tracking). */
+export function dateTimeIn(isoUtc: string, timezone: string, pattern = "dd/MM HH:mm") {
+  return formatDate(new TZDate(new Date(isoUtc).getTime(), timezone), pattern, { locale: ptBR });
+}
+
+export function integer(value: number) {
+  return new Intl.NumberFormat("pt-BR").format(value);
+}
+
+export function percentOf(fraction: number | null, digits = 1) {
+  if (fraction == null || !Number.isFinite(fraction)) return null;
+  return withMinus(
+    new Intl.NumberFormat("pt-BR", { style: "percent", minimumFractionDigits: digits, maximumFractionDigits: digits }).format(fraction),
+  );
+}

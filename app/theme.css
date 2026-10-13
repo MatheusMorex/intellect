@@ -1,0 +1,136 @@
+/* Gerado por replica/design/build_tokens.py a partir de tokens.json. Não edite à mão. */
+/* No app, o globals.css importa tailwindcss, tw-animate-css, tokens.css e este arquivo. */
+
+/* dark: segue o data-theme que o next-themes põe no <html>. */
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+/* colorblind: modo para daltônicos (data-colorblind no <html>, preferência do perfil). */
+@custom-variant colorblind (&:where([data-colorblind=on], [data-colorblind=on] *));
+
+@theme inline {
+  --color-background: var(--ds-bg);
+  --color-foreground: var(--ds-text);
+  --color-card: var(--ds-surface);
+  --color-card-foreground: var(--ds-text);
+  --color-popover: var(--ds-surface);
+  --color-popover-foreground: var(--ds-text);
+  --color-primary: var(--ds-accent);
+  --color-primary-foreground: var(--ds-on-accent);
+  --color-primary-hover: var(--ds-accent-hover);
+  --color-primary-subtle: var(--ds-accent-subtle);
+  --color-secondary: var(--ds-surface-hover);
+  --color-secondary-foreground: var(--ds-text);
+  --color-muted: var(--ds-surface-sunken);
+  --color-muted-foreground: var(--ds-text-muted);
+  --color-accent: var(--ds-surface-hover);
+  --color-accent-foreground: var(--ds-text);
+  --color-destructive: var(--ds-danger);
+  --color-destructive-foreground: var(--ds-on-danger);
+  --color-border: var(--ds-border);
+  --color-input: var(--ds-border-input);
+  --color-ring: var(--ds-ring);
+  --color-sidebar: var(--ds-surface);
+  --color-sidebar-foreground: var(--ds-text);
+  --color-sidebar-primary: var(--ds-accent);
+  --color-sidebar-primary-foreground: var(--ds-on-accent);
+  --color-sidebar-accent: var(--ds-surface-hover);
+  --color-sidebar-accent-foreground: var(--ds-text);
+  --color-sidebar-border: var(--ds-border);
+  --color-sidebar-ring: var(--ds-ring);
+  --color-surface: var(--ds-surface);
+  --color-surface-sunken: var(--ds-surface-sunken);
+  --color-surface-hover: var(--ds-surface-hover);
+  --color-danger: var(--ds-danger);
+  --color-danger-subtle: var(--ds-danger-subtle);
+  --color-on-danger: var(--ds-on-danger);
+  --color-success: var(--ds-success);
+  --color-success-subtle: var(--ds-success-subtle);
+  --color-on-success: var(--ds-on-success);
+  --color-warning: var(--ds-warning);
+  --color-warning-subtle: var(--ds-warning-subtle);
+  --color-on-warning: var(--ds-on-warning);
+  --color-label-text: var(--ds-label-text);
+  --color-label-text-subtle: var(--ds-label-text-subtle);
+  --color-label-text-bold: var(--ds-label-text-bold);
+  --color-label-green-subtle: var(--ds-label-green-subtle);
+  --color-label-green: var(--ds-label-green);
+  --color-label-green-bold: var(--ds-label-green-bold);
+  --color-label-yellow-subtle: var(--ds-label-yellow-subtle);
+  --color-label-yellow: var(--ds-label-yellow);
+  --color-label-yellow-bold: var(--ds-label-yellow-bold);
+  --color-label-orange-subtle: var(--ds-label-orange-subtle);
+  --color-label-orange: var(--ds-label-orange);
+  --color-label-orange-bold: var(--ds-label-orange-bold);
+  --color-label-red-subtle: var(--ds-label-red-subtle);
+  --color-label-red: var(--ds-label-red);
+  --color-label-red-bold: var(--ds-label-red-bold);
+  --color-label-purple-subtle: var(--ds-label-purple-subtle);
+  --color-label-purple: var(--ds-label-purple);
+  --color-label-purple-bold: var(--ds-label-purple-bold);
+  --color-label-blue-subtle: var(--ds-label-blue-subtle);
+  --color-label-blue: var(--ds-label-blue);
+  --color-label-blue-bold: var(--ds-label-blue-bold);
+  --color-label-sky-subtle: var(--ds-label-sky-subtle);
+  --color-label-sky: var(--ds-label-sky);
+  --color-label-sky-bold: var(--ds-label-sky-bold);
+  --color-label-lime-subtle: var(--ds-label-lime-subtle);
+  --color-label-lime: var(--ds-label-lime);
+  --color-label-lime-bold: var(--ds-label-lime-bold);
+  --color-label-pink-subtle: var(--ds-label-pink-subtle);
+  --color-label-pink: var(--ds-label-pink);
+  --color-label-pink-bold: var(--ds-label-pink-bold);
+  --color-label-black-subtle: var(--ds-label-black-subtle);
+  --color-label-black: var(--ds-label-black);
+  --color-label-black-bold: var(--ds-label-black-bold);
+  --color-chart-1: var(--ds-chart-1);
+  --color-chart-2: var(--ds-chart-2);
+  --color-chart-3: var(--ds-chart-3);
+  --color-chart-4: var(--ds-chart-4);
+  --color-chart-5: var(--ds-chart-5);
+  --color-chart-6: var(--ds-chart-6);
+  --color-chart-7: var(--ds-chart-7);
+  --color-chart-8: var(--ds-chart-8);
+  --color-overlay: var(--ds-overlay);
+  --color-brand-indigo: var(--ds-brand-indigo);
+  --color-brand-lavender: var(--ds-brand-lavender);
+  --color-brand-lavender-strong: var(--ds-brand-lavender-strong);
+  --color-brand-ink: var(--ds-brand-ink);
+  --color-brand-white: var(--ds-brand-white);
+  --font-sans: var(--ds-font-sans);
+  --font-mono: var(--ds-font-mono);
+  --text-xs: var(--ds-fs-xs); --text-xs--line-height: var(--ds-lh-xs); --text-xs--font-weight: var(--ds-fw-xs);
+  --text-sm: var(--ds-fs-sm); --text-sm--line-height: var(--ds-lh-sm); --text-sm--font-weight: var(--ds-fw-sm);
+  --text-base: var(--ds-fs-base); --text-base--line-height: var(--ds-lh-base); --text-base--font-weight: var(--ds-fw-base);
+  --text-lg: var(--ds-fs-lg); --text-lg--line-height: var(--ds-lh-lg); --text-lg--font-weight: var(--ds-fw-lg);
+  --text-xl: var(--ds-fs-xl); --text-xl--line-height: var(--ds-lh-xl); --text-xl--font-weight: var(--ds-fw-xl);
+  --text-display: var(--ds-fs-display); --text-display--line-height: var(--ds-lh-display); --text-display--font-weight: var(--ds-fw-display);
+  --radius-sm: var(--ds-radius-sm);
+  --radius-md: var(--ds-radius-md);
+  --radius-lg: var(--ds-radius-lg);
+  --shadow-card: var(--ds-shadow-card);
+  --shadow-pop: var(--ds-shadow-pop);
+  --shadow-modal: var(--ds-shadow-modal);
+  --ease-ds: var(--ds-ease);
+  --default-transition-duration: var(--ds-motion-fast);
+  --default-transition-timing-function: var(--ds-ease);
+  --container-content: var(--ds-content-max);
+  --container-form: var(--ds-form-max);
+  --container-list: var(--ds-list-width);
+  --container-card-modal: var(--ds-card-modal);
+  --container-side-panel: var(--ds-side-panel);
+}
+
+@layer base {
+  * { border-color: var(--ds-border); }
+  html { font-family: var(--ds-font-sans); }
+  body { background: var(--ds-bg); color: var(--ds-text); font-size: var(--ds-fs-sm); line-height: var(--ds-lh-sm); }
+  :focus-visible { outline: 2px solid var(--ds-ring); outline-offset: 2px; }
+  .tabular { font-variant-numeric: tabular-nums; }
+}
+
+/* Reduzir animações vale também para as animações dos componentes do shadcn. */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}
+[data-motion="reduced"] *, [data-motion="reduced"] ::before, [data-motion="reduced"] ::after {
+  animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important;
+}
