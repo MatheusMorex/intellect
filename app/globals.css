@@ -5,3 +5,16 @@
 @import "tw-animate-css";
 @import "./tokens.css";
 @import "./theme.css";
+
+/* Texto rico (editor e leitura): espaçamento e listas, usando os tokens. */
+.rich-text > * + * { margin-top: 0.5rem; }
+.rich-text ul { list-style: disc; padding-left: 1.25rem; }
+.rich-text ol { list-style: decimal; padding-left: 1.25rem; }
+.rich-text h3 { font-size: var(--ds-fs-base); line-height: var(--ds-lh-base); font-weight: 600; }
+.rich-text h4 { font-size: var(--ds-fs-sm); font-weight: 600; }
+.rich-text a { color: var(--ds-accent); text-decoration: underline; text-underline-offset: 2px; }
+.rich-text code { font-family: var(--ds-font-mono); font-size: 0.9em; background: var(--ds-surface-sunken); border-radius: var(--ds-radius-sm); padding: 0 0.25rem; }
+.rich-text pre { background: var(--ds-surface-sunken); border-radius: var(--ds-radius-md); padding: 0.75rem; overflow-x: auto; }
+.rich-text blockquote { border-left: 3px solid var(--ds-border-input); padding-left: 0.75rem; color: var(--ds-text-muted); }
+.rich-text .mention { color: var(--ds-accent); background: var(--ds-accent-subtle); border-radius: var(--ds-radius-sm); padding: 0 0.2rem; font-weight: 500; }
+.rich-text p.is-editor-empty:first-child::before { content: attr(data-placeholder); color: var(--ds-text-muted); float: left; height: 0; pointer-events: none; }

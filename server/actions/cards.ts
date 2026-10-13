@@ -1,13 +1,12 @@
 "use server";
 
-import { generateKeyBetween } from "fractional-indexing";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { requireBoard, requireDashboard } from "@/server/access";
 import { requireUser } from "@/server/auth/session";
+import { insertCard, touchBoard } from "@/server/kanban/core";
 import { mutate, newId, nowIso } from "@/server/store/db";
-import type { CardRow, Store } from "@/server/store/types";
 
 export type ActionResult<T = undefined> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -16,47 +15,6 @@ const cardName = z
   .trim()
   .min(1, "Dê um nome ao card.")
   .max(512, "O nome pode ter até 512 caracteres.");
-
-function lastRank(store: Store, listId: string) {
-  let last: string | null = null;
-  for (const c of store.cards) if (c.listId === listId && !c.archivedAt && (!last || c.rank > last)) last = c.rank;
-  return last;
-}
-
-function insertCard(store: Store, boardId: string, listId: string, name: string, userId: string): CardRow {
-  const board = store.boards.find((b) => b.id === boardId)!;
-  const now = nowIso();
-  const card: CardRow = {
-    id: newId(),
-    boardId,
-    listId,
-    number: board.nextCardNumber++,
-    name,
-    descriptionText: "",
-    rank: generateKeyBetween(lastRank(store, listId), null),
-    startAt: null,
-    dueAt: null,
-    dueComplete: false,
-    cover: null,
-    createdBy: userId,
-    lastActivityAt: now,
-    archivedAt: null,
-    createdAt: now,
-  };
-  store.cards.push(card);
-  store.activities.push({
-    id: newId(),
-    workspaceId: board.workspaceId,
-    boardId,
-    cardId: card.id,
-    actorId: userId,
-    actorKind: "user",
-    type: "card.created",
-    data: { name, listId },
-    createdAt: now,
-  });
-  return card;
-}
 
 const createCardInput = z.object({ boardId: z.uuid(), listId: z.uuid(), name: cardName });
 
@@ -124,6 +82,7 @@ export async function createCardFromRow(input: {
       createdBy: user.id,
       createdAt: nowIso(),
     });
+    touchBoard(store, list.boardId);
     const board = store.boards.find((b) => b.id === list.boardId)!;
     return { cardId: card.id, boardId: board.id, boardName: board.name };
   });

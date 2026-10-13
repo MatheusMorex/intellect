@@ -1,86 +1,77 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
+import { after } from "next/server";
 
-import { AddCard } from "@/components/board/add-card";
-import { KanbanCard, ListColumn } from "@/components/ds/kanban";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { initials } from "@/lib/initials";
-import { roas } from "@/lib/format";
+import { BoardCanvas } from "@/components/board/board-canvas";
+import { BoardHeader } from "@/components/board/board-header";
+import { CardDialog } from "@/components/board/card-dialog";
+import { Banner } from "@/components/ds/banner";
 import { requireUser } from "@/server/auth/session";
-import { getBoardView } from "@/server/data/boards";
+import {
+  getBoardArchive,
+  getBoardSharing,
+  getBoardView,
+  getCardDetail,
+  getCardPreview,
+  getShellData,
+  listWritableLists,
+  recordBoardVisit,
+} from "@/server/data/boards";
+import { listDashboardsFor } from "@/server/data/tracking";
+import { nowIso } from "@/server/store/db";
 
-export async function generateMetadata({ params }: { params: Promise<{ boardId: string }> }): Promise<Metadata> {
+type Props = { params: Promise<{ boardId: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> };
+
+export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
   const { boardId } = await params;
+  const sp = await searchParams;
   const user = await requireUser();
   const view = await getBoardView({ user }, boardId);
-  return { title: view.board.name };
+  const cardId = typeof sp.card === "string" ? sp.card : null;
+  const card = cardId ? view.cards.find((c) => c.id === cardId) : null;
+  return { title: card ? `${card.name} · ${view.board.name}` : view.board.name };
 }
 
-// S05 Quadro. Nesta etapa: listas e cards, criar card e o badge de métrica (S25).
-// Arrastar e soltar, verso do card e filtros chegam na fase do kanban.
-export default async function BoardPage({ params }: { params: Promise<{ boardId: string }> }) {
+// S05 Quadro, com o verso do card (S06) aberto por ?card=<id>.
+export default async function BoardPage({ params, searchParams }: Props) {
   const { boardId } = await params;
+  const sp = await searchParams;
   const user = await requireUser();
-  const view = await getBoardView({ user }, boardId);
-  const now = new Date();
+  const ctx = { user };
+  const [view, archive, sharing, shell] = await Promise.all([getBoardView(ctx, boardId), getBoardArchive(ctx, boardId), getBoardSharing(ctx, boardId), getShellData(ctx)]);
+  after(() => recordBoardVisit(ctx, boardId));
+
+  const cardId = typeof sp.card === "string" ? sp.card : null;
+  let missingCard = false;
+  let detail = null;
+  if (cardId) {
+    const preview = await getCardPreview(ctx, cardId);
+    if (!preview) missingCard = true;
+    else if (preview.boardId !== boardId) redirect(`/b/${preview.boardId}?card=${cardId}`);
+    else detail = await getCardDetail(ctx, cardId);
+  }
+  const now = Date.parse(nowIso());
 
   return (
-    <div
-      className="flex min-h-[calc(100dvh-3.5rem)] flex-col"
-      style={{ background: `var(--ds-label-${view.board.background}-bold)` }}
-    >
-      <div
-        className="flex flex-wrap items-center gap-3 px-4 py-2.5 text-white"
-        style={{ background: "var(--ds-board-header)" }}
-      >
-        <h1 className="text-lg text-white">{view.board.name}</h1>
-        {view.role === "observer" && (
-          <span className="rounded-sm bg-black/30 px-2 py-0.5 text-xs">Somente leitura</span>
-        )}
-        <div className="flex-1" />
-        <div className="flex -space-x-1" aria-label={`Membros: ${view.members.map((m) => m.name).join(", ")}`}>
-          {view.members.slice(0, 5).map((m) => (
-            <Avatar key={m.id} className="size-7 ring-2 ring-black/20" title={m.name}>
-              <AvatarFallback
-                className="text-[11px] font-semibold"
-                style={{ background: `var(--ds-label-${m.avatarColor}-bold)`, color: "var(--ds-label-text-bold)" }}
-              >
-                {initials(m.name)}
-              </AvatarFallback>
-            </Avatar>
-          ))}
-        </div>
-      </div>
-
-      <div className="flex flex-1 items-start gap-3 overflow-x-auto p-4" role="region" aria-label="Listas do quadro" tabIndex={0}>
-        {view.lists.map((list) => (
-          <ListColumn
-            key={list.id}
-            name={list.name}
-            count={list.cards.length}
-            footer={view.canEdit ? <AddCard boardId={view.board.id} listId={list.id} listName={list.name} /> : null}
-          >
-            {list.cards.map((card) => (
-              <KanbanCard
-                key={card.id}
-                now={now}
-                card={{
-                  title: card.name,
-                  href: `/c/${card.id}`,
-                  cover: card.cover ?? undefined,
-                  due: card.dueAt ? { at: new Date(card.dueAt), complete: card.dueComplete } : undefined,
-                  done: card.dueComplete ? true : undefined,
-                  metric: card.metric
-                    ? { label: card.metric.label, value: roas(card.metric.value), trend: card.metric.trend ?? undefined }
-                    : undefined,
-                }}
-              />
-            ))}
-          </ListColumn>
-        ))}
-        {view.lists.length === 0 && (
-          <p className="rounded-lg bg-card p-4 text-muted-foreground">Este quadro ainda não tem listas.</p>
-        )}
-      </div>
+    <div className="flex h-[calc(100dvh-3.5rem)] flex-col" style={{ background: `var(--ds-label-${view.board.background}-bold)` }}>
+      <BoardHeader view={view} archive={archive} sharing={sharing} singleKeyShortcuts={shell.preferences.singleKeyShortcuts} />
+      {missingCard && (
+        <Banner variant="warning" title="Este card não existe mais" className="mx-4 mt-3 w-fit">
+          Ele pode ter sido excluído por alguém do quadro.
+        </Banner>
+      )}
+      <BoardCanvas view={view} now={now} />
+      {detail && (
+        <CardDialog
+          key={detail.card.id}
+          detail={detail}
+          labels={view.labels}
+          members={view.members}
+          lists={listWritableLists(ctx)}
+          dashboards={listDashboardsFor(ctx).map((d) => ({ id: d.id, name: d.name }))}
+          now={now}
+        />
+      )}
     </div>
   );
 }

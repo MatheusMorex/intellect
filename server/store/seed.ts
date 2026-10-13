@@ -25,7 +25,7 @@ import type {
   Visit,
 } from "./types";
 
-export const STORE_VERSION = 2;
+export const STORE_VERSION = 3;
 export const SEED_TIMEZONE = "America/Sao_Paulo";
 const DAYS = 90;
 
@@ -80,10 +80,20 @@ export function createSeed(now: Date): Store {
     timezone: tz,
     theme: "system" as const,
     passwordHash: hashPassword(demoPassword),
+    bio: "",
+    preferences: { colorblind: false, reduceMotion: false, singleKeyShortcuts: true, emailNotifications: "periodic" as const },
+    lastActiveAt: seededAt,
   }));
   const [ana, bruno, carla] = users;
 
-  const workspace = { id: id(), name: "INtellect", slug: "intellect", createdAt: seededAt };
+  const workspace = {
+    id: id(),
+    name: "INtellect",
+    slug: "intellect",
+    description: "O time da INtellect: tráfego, conteúdo e loja.",
+    allowedEmailDomain: null,
+    createdAt: seededAt,
+  };
   const workspaceMembers = [
     { id: id(), workspaceId: workspace.id, userId: ana.id, role: "admin" as const },
     { id: id(), workspaceId: workspace.id, userId: bruno.id, role: "normal" as const },
@@ -586,6 +596,7 @@ export function createSeed(now: Date): Store {
     description: "Quadro de exemplo: o trabalho do time de tráfego.",
     background: { type: "color" as const, value: "purple" },
     visibility: "workspace" as const,
+    prefs: { comments: "members" as const, workspaceCanEdit: true, showCompleteOnFront: true, cardCovers: true, labelsExpanded: false },
     nextCardNumber: 1,
     closedAt: null,
     createdBy: ana.id,
@@ -634,12 +645,16 @@ export function createSeed(now: Date): Store {
         listId: list.id,
         number: board.nextCardNumber++,
         name: plan.name,
+        description: null,
         descriptionText: "",
+        version: 1,
         rank: ranks[i],
         startAt: null,
         dueAt: plan.due ?? null,
         dueComplete: plan.done ?? false,
-        cover: plan.cover ? { color: plan.cover } : null,
+        dueReminderMinutes: plan.due ? 1440 : null,
+        dueRecurrence: null,
+        cover: plan.cover ? { color: plan.cover, size: "strip" as const } : null,
         createdBy: ana.id,
         lastActivityAt: seededAt,
         archivedAt: null,
@@ -714,6 +729,141 @@ export function createSeed(now: Date): Store {
     { kind: "once" as const, category: "traffic" as const, description: "Gravação de vídeos com criadora UGC", amountCents: 180_000, date: dayKey(18) },
   ].map((e) => ({ id: id(), dashboardId: dashboard.id, currency: "BRL", endDate: null, createdBy: ana.id, createdAt: seededAt, ...e }));
 
+  // Kanban: etiquetas, membros, checklists, comentários, favoritos e um segundo quadro ----------
+  const labelPlan = [
+    { name: "Meta", color: "blue" },
+    { name: "Google", color: "green" },
+    { name: "Criativo", color: "orange" },
+    { name: "Urgente", color: "red_dark" },
+    { name: "Loja", color: "purple" },
+    { name: "", color: "yellow" },
+  ];
+  const labels = labelPlan.map((l) => ({ id: id(), boardId: board.id, name: l.name, color: l.color, createdAt: seededAt }));
+  const labelBy = (name: string) => labels.find((l) => l.name === name)!;
+  const cardBy = (name: string) => cards.find((c) => c.name === name)!;
+  const cardLabels = [
+    [cardBy("Gravar 3 vídeos para o público frio"), [labelBy("Meta"), labelBy("Criativo")]],
+    [cardBy("Revisar a página do Kit Completo"), [labelBy("Loja"), labelBy("Urgente")]],
+    [cardBy("Escalar o Remarketing 30d"), [labelBy("Meta")]],
+    [cardBy("Ajustar lances da Pesquisa Genérica"), [labelBy("Google")]],
+    [cardBy("Roteiro de vídeo com depoimento de cliente"), [labelBy("Criativo")]],
+    [cardBy("Instalar o app da Shopify"), [labelBy("Loja")]],
+  ].flatMap(([card, ls]) => (ls as typeof labels).map((l) => ({ id: id(), cardId: (card as CardRow).id, labelId: l.id })));
+  const cardMembers = [
+    [cardBy("Gravar 3 vídeos para o público frio"), [carla]],
+    [cardBy("Revisar a página do Kit Completo"), [bruno]],
+    [cardBy("Escalar o Remarketing 30d"), [ana, bruno]],
+    [cardBy("Ajustar lances da Pesquisa Genérica"), [ana]],
+    [cardBy("Criar público semelhante a partir dos compradores de 90 dias"), [ana]],
+  ].flatMap(([card, us]) =>
+    (us as typeof users).map((u) => ({ id: id(), cardId: (card as CardRow).id, userId: u.id, createdAt: seededAt })),
+  );
+  const videoCard = cardBy("Gravar 3 vídeos para o público frio");
+  videoCard.descriptionText = "Três vídeos de até 30 segundos para o público frio: dor, demonstração e depoimento. Formato vertical.";
+  videoCard.description = {
+    type: "doc",
+    content: [
+      { type: "paragraph", content: [{ type: "text", text: "Três vídeos de até 30 segundos para o público frio:" }] },
+      {
+        type: "bulletList",
+        content: ["dor", "demonstração", "depoimento"].map((t) => ({
+          type: "listItem",
+          content: [{ type: "paragraph", content: [{ type: "text", text: t }] }],
+        })),
+      },
+      { type: "paragraph", content: [{ type: "text", text: "Formato vertical, com legenda." }] },
+    ],
+  };
+  const checklistRanks = generateNKeysBetween(null, null, 4);
+  const checklist = { id: id(), cardId: videoCard.id, name: "Roteiro", rank: checklistRanks[0], hideChecked: false, createdAt: seededAt };
+  const checklistItems = ["Escrever os 3 roteiros", "Separar os produtos", "Gravar", "Editar e legendar"].map((name, i) => ({
+    id: id(),
+    checklistId: checklist.id,
+    name,
+    rank: checklistRanks[i],
+    completedAt: i === 0 ? seededAt : null,
+    dueAt: null,
+    assigneeId: i === 2 ? carla.id : null,
+    createdAt: seededAt,
+  }));
+  const remarketing = cardBy("Escalar o Remarketing 30d");
+  const commentText = "Ana, o ROAS segurou acima de 4 na última semana. Dá para subir o orçamento em 20%?";
+  const comments = [
+    {
+      id: id(),
+      cardId: remarketing.id,
+      authorId: bruno.id,
+      body: {
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [
+              { type: "mention", attrs: { id: ana.id, label: "Ana Lima" } },
+              { type: "text", text: ", o ROAS segurou acima de 4 na última semana. Dá para subir o orçamento em 20%?" },
+            ],
+          },
+        ],
+      },
+      bodyText: `@Ana Lima${commentText.slice(3)}`,
+      mentions: [ana.id],
+      editedAt: null,
+      createdAt: new Date(now.getTime() - 3 * 3600 * 1000).toISOString(),
+    },
+  ];
+  const notifications = [
+    {
+      id: id(),
+      userId: ana.id,
+      type: "mention" as const,
+      boardId: board.id,
+      cardId: remarketing.id,
+      actorId: bruno.id,
+      data: { cardName: remarketing.name, excerpt: comments[0].bodyText.slice(0, 120) },
+      readAt: null,
+      createdAt: comments[0].createdAt,
+    },
+  ];
+
+  const launch = {
+    id: id(),
+    workspaceId: workspace.id,
+    name: "Lançamento de novembro",
+    description: "Tudo do lançamento do Kit Completo: oferta, página, e-mails e campanhas.",
+    background: { type: "color" as const, value: "sky" },
+    visibility: "private" as const,
+    prefs: { comments: "members" as const, workspaceCanEdit: false, showCompleteOnFront: true, cardCovers: true, labelsExpanded: true },
+    nextCardNumber: 1,
+    closedAt: null,
+    createdBy: ana.id,
+    createdAt: seededAt,
+  };
+  const launchListNames = ["Planejamento", "Produção", "Pronto"];
+  const launchRanks = generateNKeysBetween(null, null, launchListNames.length);
+  const launchLists = launchListNames.map((name, i) => ({ id: id(), boardId: launch.id, name, rank: launchRanks[i], color: null, archivedAt: null }));
+  const launchCardRanks = generateNKeysBetween(null, null, 3);
+  const launchCards: CardRow[] = ["Definir a oferta e o bônus", "Sequência de 5 e-mails", "Página de vendas"].map((name, i) => ({
+    id: id(),
+    boardId: launch.id,
+    listId: launchLists[i === 2 ? 1 : 0].id,
+    number: launch.nextCardNumber++,
+    name,
+    description: null,
+    descriptionText: "",
+    version: 1,
+    rank: launchCardRanks[i],
+    startAt: null,
+    dueAt: i === 0 ? at(5) : null,
+    dueComplete: false,
+    dueReminderMinutes: i === 0 ? 1440 : null,
+    dueRecurrence: null,
+    cover: null,
+    createdBy: ana.id,
+    lastActivityAt: seededAt,
+    archivedAt: null,
+    createdAt: seededAt,
+  }));
+
   return {
     version: STORE_VERSION,
     seededAt,
@@ -742,10 +892,29 @@ export function createSeed(now: Date): Store {
     additionalFees,
     expenses,
     integrationTests: [],
-    boards: [board],
-    boardMembers,
-    lists,
-    cards,
+    invites: [],
+    boards: [board, launch],
+    boardMembers: [
+      ...boardMembers,
+      { id: id(), boardId: launch.id, userId: ana.id, role: "admin" as const },
+      { id: id(), boardId: launch.id, userId: bruno.id, role: "normal" as const },
+    ],
+    boardStars: [{ id: id(), userId: ana.id, boardId: board.id, createdAt: seededAt }],
+    boardVisits: [
+      { id: id(), userId: ana.id, boardId: board.id, visitedAt: seededAt },
+      { id: id(), userId: ana.id, boardId: launch.id, visitedAt: new Date(now.getTime() - 86_400_000).toISOString() },
+    ],
+    lists: [...lists, ...launchLists],
+    cards: [...cards, ...launchCards],
+    cardMembers,
+    labels,
+    cardLabels,
+    checklists: [checklist],
+    checklistItems,
+    comments,
+    notifications,
+    outbox: [],
+    boardStamps: {},
     cardLinks,
     activities: [],
   };

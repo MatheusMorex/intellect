@@ -11,7 +11,8 @@
     "simulate:order": "node scripts/simulate-order.mjs",
     "seed": "node scripts/reset-data.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.check.json",
-    "test:e2e": "node tests/e2e/smoke.mjs"
+    "test:e2e": "node tests/e2e/smoke.mjs",
+    "screenshots": "node scripts/screenshots.mjs"
   },
   "dependencies": {
     "@date-fns/tz": "^1.5.0",

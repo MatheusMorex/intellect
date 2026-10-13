@@ -15,9 +15,26 @@ export type UserRow = {
   theme: "light" | "dark" | "system";
   passwordHash: string; // só no modo simulado; no Better Auth fica em accounts
   avatarColor: string; // tom de etiqueta usado nas iniciais
+  bio: string;
+  preferences: UserPreferences;
+  lastActiveAt: IsoDateTime | null;
 };
 
-export type WorkspaceRow = { id: Id; name: string; slug: string; createdAt: IsoDateTime };
+export type UserPreferences = {
+  colorblind: boolean;
+  reduceMotion: boolean;
+  singleKeyShortcuts: boolean;
+  emailNotifications: "never" | "periodic" | "instant";
+};
+
+export type WorkspaceRow = {
+  id: Id;
+  name: string;
+  slug: string;
+  description: string;
+  allowedEmailDomain: string | null;
+  createdAt: IsoDateTime;
+};
 
 export type WorkspaceMemberRow = { id: Id; workspaceId: Id; userId: Id; role: "admin" | "normal" };
 
@@ -206,10 +223,22 @@ export type BoardRow = {
   description: string;
   background: { type: "color"; value: string };
   visibility: "private" | "workspace";
+  prefs: BoardPrefs;
   nextCardNumber: number;
   closedAt: IsoDateTime | null;
   createdBy: Id | null;
   createdAt: IsoDateTime;
+};
+
+export type BoardPrefs = {
+  /** Quem comenta: membros do quadro ou também os observadores. */
+  comments: "members" | "observers";
+  /** Membros do workspace editam quadros com visibilidade "workspace". */
+  workspaceCanEdit: boolean;
+  showCompleteOnFront: boolean;
+  cardCovers: boolean;
+  /** Etiquetas na frente do card: faixa fina ou com o nome. */
+  labelsExpanded: boolean;
 };
 
 export type BoardMemberRow = { id: Id; boardId: Id; userId: Id; role: "admin" | "normal" | "observer" };
@@ -222,12 +251,16 @@ export type CardRow = {
   listId: Id;
   number: number;
   name: string;
+  description: unknown | null; // documento do editor (Tiptap)
   descriptionText: string;
+  version: number;
   rank: string;
   startAt: IsoDateTime | null;
   dueAt: IsoDateTime | null;
   dueComplete: boolean;
-  cover: { color: string } | null;
+  dueReminderMinutes: number | null;
+  dueRecurrence: "daily" | "weekly" | "monthly" | null;
+  cover: { color: string; size: "strip" | "full" } | null;
   createdBy: Id | null;
   lastActivityAt: IsoDateTime;
   archivedAt: IsoDateTime | null;
@@ -358,6 +391,67 @@ export type IntegrationTestRow = {
   createdAt: IsoDateTime;
 };
 
+export type InviteRow = {
+  id: Id;
+  workspaceId: Id;
+  boardId: Id | null;
+  email: string | null;
+  role: "admin" | "normal" | "observer";
+  tokenHash: string;
+  expiresAt: IsoDateTime;
+  maxUses: number | null;
+  usedCount: number;
+  createdBy: Id | null;
+  revokedAt: IsoDateTime | null;
+  createdAt: IsoDateTime;
+};
+
+export type BoardStarRow = { id: Id; userId: Id; boardId: Id; createdAt: IsoDateTime };
+export type BoardVisitRow = { id: Id; userId: Id; boardId: Id; visitedAt: IsoDateTime };
+export type CardMemberRow = { id: Id; cardId: Id; userId: Id; createdAt: IsoDateTime };
+
+export type LabelRow = { id: Id; boardId: Id; name: string; color: string | null; createdAt: IsoDateTime };
+export type CardLabelRow = { id: Id; cardId: Id; labelId: Id };
+
+export type ChecklistRow = { id: Id; cardId: Id; name: string; rank: string; hideChecked: boolean; createdAt: IsoDateTime };
+
+export type ChecklistItemRow = {
+  id: Id;
+  checklistId: Id;
+  name: string;
+  rank: string;
+  completedAt: IsoDateTime | null;
+  dueAt: IsoDateTime | null;
+  assigneeId: Id | null;
+  createdAt: IsoDateTime;
+};
+
+export type CommentRow = {
+  id: Id;
+  cardId: Id;
+  authorId: Id | null;
+  body: unknown; // documento do editor (Tiptap)
+  bodyText: string;
+  mentions: Id[];
+  editedAt: IsoDateTime | null;
+  createdAt: IsoDateTime;
+};
+
+export type NotificationRow = {
+  id: Id;
+  userId: Id;
+  type: "mention" | "assigned" | "due_soon" | "comment" | "added_to_board" | "automation_error" | "integration_error";
+  boardId: Id | null;
+  cardId: Id | null;
+  actorId: Id | null;
+  data: Record<string, unknown>;
+  readAt: IsoDateTime | null;
+  createdAt: IsoDateTime;
+};
+
+/** E-mail que sairia (convite, menção). No modo simulado fica só aqui, como o Mailpit. */
+export type OutboxRow = { id: Id; to: string; subject: string; text: string; link: string | null; createdAt: IsoDateTime };
+
 export type Store = {
   version: number;
   seededAt: IsoDateTime;
@@ -386,10 +480,23 @@ export type Store = {
   additionalFees: AdditionalFeeRow[];
   expenses: ExpenseRow[];
   integrationTests: IntegrationTestRow[];
+  invites: InviteRow[];
   boards: BoardRow[];
   boardMembers: BoardMemberRow[];
+  boardStars: BoardStarRow[];
+  boardVisits: BoardVisitRow[];
   lists: ListRow[];
   cards: CardRow[];
+  cardMembers: CardMemberRow[];
+  labels: LabelRow[];
+  cardLabels: CardLabelRow[];
+  checklists: ChecklistRow[];
+  checklistItems: ChecklistItemRow[];
+  comments: CommentRow[];
+  notifications: NotificationRow[];
+  outbox: OutboxRow[];
+  /** Carimbo por quadro: muda a cada alteração e avisa quem está com o quadro aberto (tempo real). */
+  boardStamps: Record<Id, string>;
   cardLinks: CardLinkRow[];
   activities: ActivityRow[];
 };
