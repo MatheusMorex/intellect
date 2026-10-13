@@ -21,6 +21,7 @@ import {
   Unlink,
   Users,
   X,
+  Zap,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -81,6 +82,7 @@ import {
   updateChecklist,
   updateChecklistItem,
 } from "@/server/actions/kanban";
+import { pressButton } from "@/server/actions/automation";
 import type { CardDetail, LabelView, Person } from "@/server/data/boards";
 
 type Result = { ok: boolean; error?: string };
@@ -117,6 +119,7 @@ export function CardDialog({
   members,
   lists,
   dashboards,
+  buttons,
   now,
 }: {
   detail: CardDetail;
@@ -124,6 +127,7 @@ export function CardDialog({
   members: Person[];
   lists: ListOption[];
   dashboards: { id: string; name: string }[];
+  buttons: { id: string; label: string }[];
   now: number;
 }) {
   const router = useRouter();
@@ -237,6 +241,8 @@ export function CardDialog({
                   <LinkPopover cardId={card.id} dashboards={dashboards} trigger={side(Link2, "Vincular métrica")} />
                 </div>
               )}
+
+              {edit && buttons.length > 0 && !card.archived && <CardButtons cardId={card.id} buttons={buttons} />}
 
               <MetricsPanel detail={detail} canEdit={edit} />
 
@@ -913,6 +919,7 @@ function CommentItem({ comment, members }: { comment: Comment; members: Person[]
             {relative(new Date(comment.createdAt))}
           </time>
           {comment.editedAt && <span className="text-xs text-muted-foreground"> (editado)</span>}
+          {comment.automationName && <span className="ml-1 rounded-sm bg-primary-subtle px-1 text-xs text-primary">via automação {comment.automationName}</span>}
         </p>
         {editing ? (
           <div className="grid gap-2">
@@ -971,6 +978,42 @@ function CommentItem({ comment, members }: { comment: Comment; members: Person[]
         )}
       </div>
     </li>
+  );
+}
+
+// ---- botões de automação do card --------------------------------------------------------------------------
+
+function CardButtons({ cardId, buttons }: { cardId: string; buttons: { id: string; label: string }[] }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [running, setRunning] = useState<string | null>(null);
+  return (
+    <div className="grid gap-1.5">
+      <p className="text-xs font-semibold text-muted-foreground">Botões</p>
+      {buttons.map((b) => (
+        <Button
+          key={b.id}
+          variant="secondary"
+          size="sm"
+          className="justify-start"
+          loading={pending && running === b.id}
+          onClick={() => {
+            setRunning(b.id);
+            startTransition(async () => {
+              const result = await pressButton(b.id, cardId);
+              if (!result.ok) toast.error(result.error);
+              else if (result.data.status === "error") toast.error(result.data.message ?? "O botão deu erro.");
+              else if (result.data.status === "skipped") toast.info(result.data.message ?? "O botão não rodou neste card.");
+              else toast.success(`${b.label}: feito`);
+              router.refresh();
+            });
+          }}
+        >
+          <Zap aria-hidden="true" />
+          {b.label}
+        </Button>
+      ))}
+    </div>
   );
 }
 

@@ -144,6 +144,8 @@ export type BoardView = {
   labels: LabelView[];
   members: (Person & { role: BoardRole; viaWorkspace?: boolean })[];
   workspaceMembers: Person[];
+  /** Botões de automação ligados: do card (no verso) e do quadro (no cabeçalho). */
+  buttons: { card: { id: string; label: string }[]; board: { id: string; label: string }[] };
 };
 
 function cardFront(store: Store, c: CardRow, metrics: Map<string, CardMetric>): CardFront {
@@ -214,6 +216,10 @@ export async function getBoardView(ctx: Ctx, boardId: string): Promise<BoardView
     labels: store.labels.filter((l) => l.boardId === board.id).map((l) => ({ id: l.id, name: l.name, color: l.color })),
     members,
     workspaceMembers,
+    buttons: {
+      card: (store.automations ?? []).filter((a) => a.boardId === board.id && a.enabled && a.type === "card_button").map((a) => ({ id: a.id, label: String(a.trigger.label ?? a.name) })),
+      board: (store.automations ?? []).filter((a) => a.boardId === board.id && a.enabled && a.type === "board_button").map((a) => ({ id: a.id, label: String(a.trigger.label ?? a.name) })),
+    },
   };
 }
 
@@ -274,7 +280,16 @@ export async function getCardDetail(ctx: Ctx, cardId: string) {
   const comments = store.comments
     .filter((c) => c.cardId === card.id)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-    .map((c) => ({ id: c.id, author: person(store, c.authorId), body: c.body, bodyText: c.bodyText, createdAt: c.createdAt, editedAt: c.editedAt, mine: c.authorId === ctx.user.id }));
+    .map((c) => ({
+      id: c.id,
+      author: person(store, c.authorId),
+      body: c.body,
+      bodyText: c.bodyText,
+      createdAt: c.createdAt,
+      editedAt: c.editedAt,
+      automationName: c.automationName ?? null,
+      mine: c.authorId === ctx.user.id && !c.automationName,
+    }));
   const activity = store.activities
     .filter((a) => a.cardId === card.id && a.type !== "card.comment")
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))

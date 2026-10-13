@@ -69,6 +69,7 @@ export default async function BoardPage({ params, searchParams }: Props) {
           members={view.members}
           lists={listWritableLists(ctx)}
           dashboards={listDashboardsFor(ctx).map((d) => ({ id: d.id, name: d.name }))}
+          buttons={view.buttons.card}
           now={now}
         />
       )}

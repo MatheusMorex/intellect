@@ -1,0 +1,1091 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// Autenticação (Better Auth format)
+// ============================================================
+
+model User {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name              String
+  email             String    @unique
+  emailVerified     Boolean   @default(false) @map("email_verified")
+  image             String?
+  username          String?   @unique
+  bio               String    @default("")
+  timezone          String    @default("America/Sao_Paulo")
+  locale            String    @default("pt-BR")
+  theme             String    @default("system")
+  preferences       Json      @default("{}")
+  twoFactorEnabled  Boolean   @default(false) @map("two_factor_enabled")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  sessions          Session[]
+  accounts          Account[]
+  workspaceMembers  WorkspaceMember[]
+  boardsCreated     Board[]           @relation("BoardCreatedBy")
+  boardMembers      BoardMember[]
+  boardStars        BoardStar[]
+  boardVisits       BoardVisit[]
+  cardsCreated      Card[]            @relation("CardCreatedBy")
+  cardMembers       CardMember[]
+  attachments       Attachment[]
+  comments          Comment[]
+  customFieldCreator CustomField[]    @relation("CustomFieldCreatedBy")
+  notifications     Notification[]
+  invitesCreated    Invite[]          @relation("InviteCreatedBy")
+  boardStarsUser    BoardStar[]       @relation("UserStars")
+
+  @@map("users")
+}
+
+model Session {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @db.Uuid @map("user_id")
+  token     String   @unique
+  expiresAt DateTime @map("expires_at")
+  ipAddress String?  @map("ip_address")
+  userAgent String?  @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model Account {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId            String    @db.Uuid @map("user_id")
+  accountId         String    @map("account_id")
+  providerId        String    @map("provider_id")
+  accessToken       String?   @map("access_token")
+  refreshToken      String?   @map("refresh_token")
+  idToken           String?    @map("id_token")
+  accessTokenExpiresAt DateTime? @map("access_token_expires_at")
+  refreshTokenExpiresAt DateTime? @map("refresh_token_expires_at")
+  scope             String?
+  password          String?
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, accountId])
+  @@map("accounts")
+}
+
+model Verification {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  identifier String
+  value      String
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  @@map("verifications")
+}
+
+model TwoFactor {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String    @unique @db.Uuid @map("user_id")
+  secret    String
+  backupCodes String
+  createdAt DateTime @default(now()) @map("created_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("two_factors")
+}
+
+// ============================================================
+// Workspace e Kanban
+// ============================================================
+
+model Workspace {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name            String    @db.Text
+  slug            String    @unique
+  description     String    @default("")
+  logoUrl         String?   @map("logo_url")
+  allowedEmailDomain String? @map("allowed_email_domain")
+  settings        Json      @default("{}")
+  createdBy       String?   @map("created_by") @db.Uuid
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  creator         User?     @relation("WorkspaceCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  members         WorkspaceMember[]
+  boards          Board[]
+  invites         Invite[]
+  dashboards      Dashboard[]
+  adConnections   AdConnection[]
+  salesIntegrations SalesIntegration[]
+
+  @@map("workspaces")
+}
+
+model WorkspaceMember {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId String @db.Uuid @map("workspace_id")
+  userId    String   @db.Uuid @map("user_id")
+  role      String   @default("normal")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@map("workspace_members")
+}
+
+model Board {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId     String    @db.Uuid @map("workspace_id")
+  name            String
+  description     String    @default("")
+  background      Json      @default("{\"type\":\"color\",\"value\":\"purple\"}")
+  visibility      String    @default("workspace")
+  prefs           Json      @default("{}")
+  nextCardNumber  Int       @default(1) @map("next_card_number")
+  closedAt        DateTime? @map("closed_at")
+  createdBy       String?   @map("created_by") @db.Uuid
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  creator         User?     @relation("BoardCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  members         BoardMember[]
+  stars           BoardStar[]
+  visits          BoardVisit[]
+  lists           List[]
+  cards           Card[]
+  labels           Label[]
+  invites         Invite[]
+  automations     Automation[]
+
+  @@map("boards")
+}
+
+model BoardMember {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  boardId   String   @db.Uuid @map("board_id")
+  userId    String   @db.Uuid @map("user_id")
+  role      String   @default("normal")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  board     Board    @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([boardId, userId])
+  @@map("board_members")
+}
+
+model BoardStar {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @db.Uuid @map("user_id")
+  boardId   String   @db.Uuid @map("board_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user      User     @relation("UserStars", fields: [userId], references: [id], onDelete: Cascade)
+  board     Board    @relation(fields: [boardId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, boardId])
+  @@map("board_stars")
+}
+
+model BoardVisit {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @db.Uuid @map("user_id")
+  boardId   String   @db.Uuid @map("board_id")
+  visitedAt DateTime @default(now()) @map("visited_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  board     Board    @relation(fields: [boardId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, boardId])
+  @@map("board_visits")
+}
+
+model Invite {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId String    @db.Uuid @map("workspace_id")
+  boardId     String?   @db.Uuid @map("board_id")
+  email       String?
+  role        String
+  tokenHash   String    @unique @map("token_hash")
+  expiresAt   DateTime   @map("expires_at")
+  maxUses     Int?      @map("max_uses")
+  usedCount   Int       @default(0) @map("used_count")
+  createdBy   String?   @map("created_by") @db.Uuid
+  revokedAt   DateTime? @map("revoked_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  board       Board?    @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  creator     User?     @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@map("invites")
+}
+
+model List {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  boardId   String   @db.Uuid @map("board_id")
+  name      String
+  rank      String   @db.Text // fractional indexing
+  color     String?
+  archivedAt DateTime? @map("archived_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  board     Board    @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  cards     Card[]
+
+  @@map("lists")
+}
+
+model Card {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  boardId           String    @db.Uuid @map("board_id")
+  listId            String    @db.Uuid @map("list_id")
+  number            Int       @map("number")
+  name              String
+  description       Json?     @// Tiptap document
+  descriptionText   String    @default("") @map("description_text")
+  rank              String    @db.Text // fractional indexing
+  startAt           DateTime? @map("start_at")
+  dueAt             DateTime? @map("due_at")
+  dueComplete       Boolean   @default(false) @map("due_complete")
+  dueReminderMins   Int?      @map("due_reminder_minutes")
+  dueRecurrence     String?   @map("due_recurrence")
+  cover             Json?
+  version           Int       @default(1)
+  createdBy         String?   @map("created_by") @db.Uuid
+  lastActivityAt    DateTime  @default(now()) @map("last_activity_at")
+  archivedAt        DateTime? @map("archived_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  board             Board     @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  list              List      @relation(fields: [listId], references: [id], onDelete: Cascade)
+  creator           User?     @relation("CardCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  members           CardMember[]
+  labels            CardLabel[]
+  checklists        Checklist[]
+  attachments       Attachment[]
+  comments          Comment[]
+  customFieldValues CustomFieldValue[]
+  notifications     Notification[]
+  automationRuns    AutomationRun[]
+  links             CardLink[]
+
+  @@map("cards")
+}
+
+model CardMember {
+  id        String   @id @default(dbgenerated("gen_//_random_uuid()")) @db.Uuid
+  cardId    String   @db.Uuid @map("card_id")
+  userId    String   @db.Uuid @map("user_id")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  card      Card     @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([cardId, userId])
+  @@map("card_members")
+}
+
+model Label {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  boardId   String   @db.Uuid @map("board_id")
+  name      String   @default("")
+  color     String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  board     Board    @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  cards     CardLabel[]
+
+  @@map("labels")
+}
+
+model CardLabel {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cardId    String   @db.Uuid @map("card_id")
+  labelId   String   @db.Uuid @map("label_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  card      Card     @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  label     Label    @relation(fields: [labelId], references: [id], onDelete: Cascade)
+
+  @@unique([cardId, labelId])
+  @@map("card_labels")
+}
+
+model Checklist {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cardId    String   @db.Uuid @map("card_id")
+  name      String
+  rank      String   @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  card      Card     @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  items     ChecklistItem[]
+
+  @@map("checklists")
+}
+
+model ChecklistItem {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  checklistId String  @db.Uuid @map("checklist_id")
+  name      String
+  rank      String   @db.Text
+  completedAt DateTime? @map("completed_at")
+  dueAt     DateTime? @map("due_at")
+  assigneeId String?  @map("assignee_id") @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  checklist Checklist @relation(fields: [checklistId], references: [id], onDelete: Cascade)
+  assignee  User?     @relation("ChecklistItemAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+
+  @@map("checklist_items")
+}
+
+model Attachment {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cardId    String   @db.Uuid @map("card_id")
+  uploaderId String?  @map("uploader_id") @db.Uuid
+  kind      String   // 'file' | 'link'
+  name      String
+  url       String?
+  storageKey String? @map("storage_key")
+  bytes     BigInt?
+  mimeType  String?  @map("mime_type")
+  createdAt DateTime @// default(now()) @map("created_at")
+
+  card      Card     @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  uploader  User?    @relation(fields: [uploaderId], references: [id], onDelete: SetNull)
+
+  @@map("attachments")
+}
+
+model Comment {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cardId    String   @db.Uuid @map("card_id")
+  authorId  String?   @map("author_id") @db.Uuid
+  body      Json
+  bodyText  String   @map("body_text")
+  editedAt  DateTime? @map("edited_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  card      Card     @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  author    User?    @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@map("comments")
+}
+
+model CustomField {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  boardId   String   @db.Uuid @map("board_id")
+  name      String
+  type      String   // 'text' | 'number' | 'date' | 'checkbox' | 'list'
+  options   Json     @default("[]")
+  showOnFront Boolean @default(false) @map("show_on_front")
+  rank      String   @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  board     Board    @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  values    CustomFieldValue[]
+  creator   User?    @relation("CustomFieldCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  createdBy String?   @map("created_by") @db.Uuid
+
+  @@map("custom_fields")
+}
+
+model CustomFieldValue {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cardId    String   @db.Uuid @map("card_id")
+  fieldId   String   @db.Uuid @map("field_id")
+  value     Json
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  card      Card     @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  field     CustomField @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+
+  @@unique([cardId, fieldId])
+  @@map("custom_field_values")
+}
+
+model Notification {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @db.Uuid @map("user_id")
+  type      String   // 'mention', 'assigned', etc.
+  boardId   String?  @map("board_id") @db.Uuid
+  cardId    String?  @map("card_id") @db.Uuid
+  actorId   String?   @map("actor_id") @db.Uuid
+  data      Json      @default("{}")
+  readAt    DateTime? @map("read_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  board     Board?    @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  card      Card?     @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  actor     User?     @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@map("notifications")
+}
+
+// ============================================================
+// Tracking
+// ============================================================
+
+model Dashboard {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId       String    @db.Uuid @map("workspace_id")
+  name               String
+  timezone           String    @default("America/Sao_Paulo")
+  currency           String    @db.Char(3) @default("BRL")
+  revenueBasis      String    @default("net") @map("revenue_basis")
+  includeInterest    Boolean   @default(false) @map("include_interest")
+  revenueGoalCents   BigInt?   @map("revenue_goal_cents")
+  adPlatforms       String[]  @default([]) @map("ad_platforms")
+  onboardingCompletedAt DateTime? @map("onboarding_completed_at")
+  createdBy         String?   @map("created_by") @db.Uuid
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  workspace         Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  creator           User?     @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+  adAccounts        DashboardAdAccount[]
+  stores            DashboardStore[]
+  costSettings      CostSetting[]
+  additionalFees    AdditionalFee[]
+  expenses          CustomExpense[]
+  integrationTests  IntegrationTest[]
+  cardLinks         CardLink[]
+
+  @@map("dashboards")
+}
+
+model AdConnection {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId       String    @db.Uuid @map("workspace_id")
+  provider          String    // 'meta' | 'google'
+  externalUserId    String    @map("external_user_id")
+  externalUserName  String?   @map("external_user_name")
+  accessTokenEnc   Bytes     @map("access_token_enc")
+  refreshTokenEnc   Bytes?    @map("refresh_token_enc")
+  tokenExpiresAt    DateTime? @map("token_expires_at")
+  scopes            String[]  @default([])
+  status            String    @default("active")
+  lastError         String?   @map("last_error")
+  createdBy         String?   @map("created_by") @db.Uuid
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  workspace         Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  creator           User?     @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+  adAccounts        AdAccount[]
+
+  @@unique([workspaceId, provider, externalUserId])
+  @@map("ad_connections")
+}
+
+model AdAccount {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId     String    @db.Uuid @map("workspace_id")
+  connectionId    String?   @db.Uuid @map("connection_id")
+  provider        String
+  externalId       String    @map("external_id")
+  name            String
+  currency        String    @db.Char(3)
+  timezone        String
+  status          String    @default("active")
+  syncEnabled     Boolean   @default(false) @map("sync_enabled")
+  lastSyncedAt    DateTime? @map("last_synced_at")
+  lastSyncError   String?   @map("last_sync_error")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  connection      AdConnection? @relation(fields: [connectionId], references: [id], onDelete: SetNull)
+  campaigns       Campaign[]
+  insightsDaily   AdInsightDaily[]
+  hourlyInsights  AdAccountInsightHourly[]
+  dashboardAccs   DashboardAdAccount[]
+
+  @@unique([workspaceId, provider, externalId])
+  @@map("ad_accounts")
+}
+
+model DashboardAdAccount {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  dashboardId    String   @db.Uuid @map("dashboard_id")
+  adAccountId    String   @db.Uuid @map("ad_account_id")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  dashboard     Dashboard @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+  adAccount     AdAccount @relation(fields: [adAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([dashboardId, adAccountId])
+  @@map("dashboard_ad_accounts")
+}
+
+model Campaign {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  adAccountId       String    @db.Uuid @map("ad_account_id")
+  externalId        String    @map("external_id")
+  name              String
+  status            String
+  statusRaw         String?   @map("status_raw")
+  objective         String?
+  channelType       String?   @map("channel_type")
+  dailyBudgetCents  BigInt?   @map("daily_budget_cents")
+  lifetimeBudgetCents BigInt?   @map("lifetime_budget_cents")
+  bidStrategy       String?   @map("bid_strategy")
+  targetCpaCents    BigInt?   @map("target_cpa_cents")
+  remoteUpdatedAt   DateTime? @map("remote_updated_at")
+  syncedAt          DateTime  @default(now()) @map("synced_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  adAccount        AdAccount @relation(fields: [adAccountId], references: [id], onDelete: Cascade)
+  adSets            AdSet[]
+  ads               Ad[]
+  insightsDaily    AdInsightDaily[]
+  cardLinks        CardLink[]
+
+  @@unique([adAccountId, externalId])
+  @@map("campaigns")
+}
+
+model AdSet {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  adAccountId       String    @db.Uuid @map("ad_account_id")
+  campaignId        String    @db.Uuid @map("campaign_id")
+  externalId        String    @map("external_id")
+  name              String
+  status            String
+  statusRaw         String?   @map("status_raw")
+  dailyBudgetCents  BigInt?   @map("daily_budget_cents")
+  bidAmountCents    BigInt?   @map("bid_amount_cents")
+  spendMinCents     BigInt?   @map("spend_min_cents")
+  spendMaxCents     BigInt?   @map("spend_max_cents")
+  syncedAt          DateTime  @default(now()) @map("synced_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  adAccount         AdAccount @relation(fields: [adAccountId], references: [id], onDelete: Cascade)
+  campaign          Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  ads              Ad[]
+  insightsDaily    AdInsightDaily[]
+  cardLinks        CardLink[]
+
+  @@unique([adAccountId, externalId])
+  @@map("ad_sets")
+}
+
+model Ad {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  adAccountId       String    @db.Uuid @map("ad_account_id")
+  campaignId        String    @db.Uuid @map("campaign_id")
+  adSetId           String    @db.Uuid @map("ad_set_id")
+  externalId        String    @map("external_id")
+  name              String
+  status            String
+  statusRaw         String?   @map("status_raw")
+  syncedAt          DateTime  @default(now()) @map("synced_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  adAccount         AdAccount @relation(fields: [adAccountId], references: [id], onDelete: Cascade)
+  campaign          Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  adSet             AdSet     @relation(fields: [adSetId], references: [id], onDelete: Cascade)
+  insightsDaily     AdInsightDaily[]
+  cardLinks        CardLink[]
+
+  @@unique([adAccountId, externalId])
+  @@map("ads")
+}
+
+model Keyword {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  adAccountId       String    @db.Uuid @map("ad_account_id")
+  campaignId        String    @db.Uuid @map("campaign_id")
+  adSetId           String    @db.Uuid @map("ad_set_id")
+  externalId        String    @map("external_id")
+  text              String
+  matchType         String
+  status            String
+  syncedAt          DateTime  @default(now()) @map("synced_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  adAccount         AdAccount @relation(fields: [adAccountId], references: [id], onDelete: Cascade)
+  campaign          Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  adSet             AdSet     @relation(fields: [adSetId], references: [id], onDelete: Cascade)
+  insightsDaily    KeywordInsightDaily[]
+  cardLinks        CardLink[]
+
+  @@unique([adSetId, externalId])
+  @@map("keywords")
+}
+
+model AdInsightDaily {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  adAccountId       String    @db.Uuid @map("ad_account_id")
+  campaignId        String    @db.Uuid @map("campaign_id")
+  adSetId           String?   @db.Uuid @map("ad_set_id")
+  adId              String?   @db.Uuid @map("ad_id")
+  date              DateTime  @db.Date
+  currency          String    @db.Char(3)
+  spendCents        BigInt    @default(0) @map("spend_cents")
+  impressions       BigInt    @default(0)
+  clicks            BigInt    @default(0)
+  landingPageViews  BigInt    @default(0) @map("landing_page_views")
+  addToCarts        BigInt    @default(0) @map("add_to_carts")
+  initiateCheckouts BigInt    @default(0) @map("initiate_checkouts")
+  leads             BigInt    @default(0)
+  syncedAt          DateTime  @default(now()) @map("synced_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  adAccount         AdAccount @relation(fields: [adAccountId], references: [id], onDelete: Cascade)
+  campaign          Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  adSet             AdSet?    @relation(fields: [adSetId], references: [id], onDelete: Cascade)
+  ad                Ad?       @relation(fields: [adId], references: [id], onDelete: Cascade)
+
+  @@map("ad_insights_daily")
+}
+
+model KeywordInsightDaily {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  keywordId         String    @db.Uuid @map("keyword_id")
+  date              DateTime  @db.Date
+  currency          String    @db.Char(3)
+  spendCents        BigInt    @default(0) @map("spend_cents")
+  impressions       BigInt    @default(0)
+  clicks            BigInt    @default(0)
+  syncedAt          DateTime  @default(now()) @map("synced_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  keyword           Keyword   @relation(fields: [keywordId], references: [id], onDelete: Cascade)
+
+  @@unique([keywordId, date])
+  @@map("keyword_insights_daily")
+}
+
+model AdAccountInsightHourly {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  adAccountId       String    @db.Uuid @map("ad_account_id")
+  hourStart         DateTime  @map("hour_start")
+  currency          String    @db.Char(3)
+  spendCents        BigInt    @default(0) @map("spend_cents")
+  impressions       BigInt    @default(0)
+  clicks            BigInt    @default(0)
+  initiateCheckouts BigInt    @default(0) @map("initiate_checkouts")
+  syncedAt          DateTime  @default(now()) @map("synced_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  adAccount         AdAccount @relation(fields: [adAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([adAccountId, hourStart])
+  @@map("ad_account_insights_hourly")
+}
+
+model Store {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId       String    @db.Uuid @map("workspace_id")
+  platform          String    @default("shopify")
+  shopDomain        String    @map("shop_domain")
+  name              String?
+  currency          String?    @db.Char(3)
+  timezone          String?
+  accessTokenEnc    Bytes?    @map("access_token_enc")
+  refreshTokenEnc   Bytes?    @map("refresh_token_enc")
+  tokenExpiresAt    DateTime? @map("token_expires_at")
+  scopes            String[]  @default([])
+  status            String    @default("active")
+  webhooksOk        Boolean   @default(false) @map("webhooks_ok")
+  lastEventAt       DateTime? @map("last_event_at")
+  installedAt       DateTime? @map("installed_at")
+  uninstalledAt     DateTime? @map("uninstalled_at")
+  createdBy         String?   @map("created_by") @db.Uuid
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  workspace         Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  creator           User?     @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+  dashboardStores   DashboardStore[]
+  products          Product[]
+  orders            Order[]
+  webhookDeliveries WebhookDelivery[]
+
+  @@unique([platform, shopDomain])
+  @@map("stores")
+}
+
+model DashboardStore {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  dashboardId    String   @db.Uuid @map("dashboard_id")
+  storeId       String   @db.Uuid @map("store_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  dashboard     Dashboard @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+  store         Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([dashboardId, storeId])
+  @@map("dashboard_stores")
+}
+
+model WebhookDelivery {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  storeId       String?   @db.Uuid @map("store_id")
+  source        String    @default("shopify")
+  deliveryId    String    @map("delivery_id")
+  topic         String
+  payload       Json?
+  receivedAt    DateTime @default(now()) @map("received_at")
+  processedAt   DateTime? @map("processed_at")
+  attempts      Int      @default(0)
+  error         String?
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  store         Store?    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  orderEvents    OrderEvent[]
+
+  @@unique([source, deliveryId])
+  @@map("webhook_deliveries")
+}
+
+model Product {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId   String   @db.Uuid @map("workspace_id")
+  storeId       String   @db.Uuid @map("store_id")
+  externalId    String   @map("external_id")
+  name          String
+  firstSeenAt   DateTime @default(now()) @map("first_seen_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  store         Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  productCosts  ProductCost[]
+  orderItems    OrderItem[]
+  cardLinks     CardLink[]
+
+  @@unique([storeId, externalId])
+  @@map("products")
+}
+
+model ProductCost {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  productId     String   @db.Uuid @map("product_id")
+  costCents     BigInt   @map("cost_cents")
+  currency      String   @db.Char(3)
+  validFrom     DateTime @// date in SQL, using DateTime for Prisma
+  createdBy     String?  @map("created_by") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  product       Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  creator       User?     @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@unique([productId, validFrom])
+  @@map("product_costs")
+}
+
+model Order {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId       String    @db.Uuid @map("workspace_id")
+  storeId           String    @db.Uuid @map("store_id")
+  externalId        String    @map("external_id")
+  name              String
+  status            String
+  paymentMethod     String    @default("other") @map("payment_method")
+  currency          String    @db.Char(3)
+  totalCents        BigInt    @map("total_cents")
+  subtotalCents     BigInt    @default(0) @map("subtotal_cents")
+  shippingCents     BigInt    @default(0) @map("shipping_cents")
+  taxCents          BigInt    @default(0) @map("tax_cents")
+  discountCents     BigInt    @default(0) @map("discount_cents")
+  refundedCents     BigInt    @default(0) @map("refunded_cents")
+  gatewayFeeCents   BigInt?   @map("gateway_fee_cents")
+  interestCents     BigInt    @default(0) @map("interest_cents")
+  isTest            Boolean   @default(false) @map("is_test")
+  externalCustomerId String?  @map("external_customer_id")
+  customerOrderIndex Int?     @map("customer_order_index")
+  placedAt          DateTime  @map("placed_at")
+  paidAt           DateTime?  @map("paid_at")
+  refundedAt       DateTime?  @map("refunded_at")
+  cancelledAt      DateTime?  @map("cancelled_at")
+  sourceUpdatedAt   DateTime  @map("source_updated_at")
+  firstVisit        Json?     @map("first_visit")
+  lastVisit         Json?     @map("last_visit")
+  landingPage       String?   @map("landing_page")
+  daysToConversion  Int?      @map("days_to_conversion")
+  utmSource         String?   @map("utm_source")
+  utmMedium         String?   @map("utm_medium")
+  utmCampaign       String?   @map("utm_campaign")
+  utmContent        String?   @map("utm_content")
+  utmTerm           String?   @map("utm_term")
+  src               String?
+  sck               String?
+  attributionKeys   Json      @default("{}") @map("attribution_keys")
+  attributionStatus String    @default("pending") @map("attribution_status")
+  attributedPlatform String?   @map("attributed_platform")
+  campaignId        String?   @db.Uuid @map("campaign_id")
+  adSetId           String?   @db.Uuid @map("ad_set_id")
+  adId              String?   @db.Uuid @map("ad_id")
+  keywordId         String?   @db.Uuid @map("keyword_id")
+  journeyAttempts   Int       @default(0) @map("journey_attempts")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  workspace         Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  store             Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  campaign          Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  adSet             AdSet?    @relation(fields: [adSetId], references: [id], onDelete: SetNull)
+  ad                Ad?       @relation(fields: [adId], references: [id], onDelete: SetNull)
+  keyword           Keyword?  @relation(fields: [keywordId], references: [id], onDelete: SetNull)
+  orderItems        OrderItem[]
+  orderEvents       OrderEvent[]
+
+  @@unique([storeId, externalId])
+  @@map("orders")
+}
+
+model OrderItem {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orderId       String   @db.Uuid @map("order_id")
+  productId     String?  @db.Uuid @map("product_id")
+  externalLineId String   @map("external_line_id")
+  name          String
+  variantName   String?  @map("variant_name")
+  quantity      Int
+  unitPriceCents BigInt   @map("unit_price_cents")
+  totalCents    BigInt   @map("total_cents")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  order         Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product       Product?  @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@unique([orderId, externalLineId])
+  @@map("order_items")
+}
+
+model OrderEvent {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orderId           String   @db.Uuid @map("order_id")
+  status            String
+  occurredAt        DateTime @map("occurred_at")
+  topic             String
+  webhookDeliveryId String?   @db.Uuid @map("webhook_delivery_id")
+  createdAt         DateTime @// default(now()) @map("created_at")
+
+  order             Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  webhookDelivery   WebhookDelivery? @relation(fields: [webhookDeliveryId], references: [id], onDelete: SetNull)
+
+  @@map("order_events")
+}
+
+model CostSettings {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  dashboardId     String    @db.Uuid @map("dashboard_id")
+  validFrom       DateTime  @db.Date @map("valid_from")
+  salesTaxBp      Int       @default(0) @map("sales_tax_bp")
+  metaAdsTaxBp    Int       @// default(0) @map("meta_ads_tax_bp")
+  extraTaxes      Json      @default("[]") @map("extra_taxes")
+  createdBy       String?   @map("created_by") @db.Uuid
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  dashboard       Dashboard @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+  creator         User?     @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@unique([dashboardId, validFrom])
+  @@map("cost_settings")
+}
+
+model AdditionalFee {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  dashboardId    String    @db.Uuid @map("dashboard_id")
+  name          String
+  kind          String    // 'fixed' | 'percent'
+  amountCents    BigInt?   @map("amount_cents")
+  bp            Int?      // base points
+  scope         String    @default("all")
+  productId     String?   @db.Uuid @map("product_id")
+  paymentMethod  String?   @map("payment_method")
+  validFrom     DateTime  @default(dbgenerated("current_date")) @map("valid_from") @db.Date
+  validUntil    DateTime? @map("valid_until") @db.Date
+  createdBy     String?   @map("created_by") @db.Uuid
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  dashboard     Dashboard @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+  product       Product?  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  creator       User?     @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@map("additional_fees")
+}
+
+model CustomExpense {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  dashboardId   String    @db.Uuid @map("dashboard_id")
+  kind           String    // 'once' | 'recurring'
+  category      String
+  description   String
+  amountCents   BigInt    @map("amount_cents")
+  currency      String    @db.Char(3)
+  date          DateTime  @db.Date
+  endDate       DateTime? @map("end_date") @db.Date
+  createdBy     String?   @map("created_by") @db.Uuid
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  dashboard     Dashboard @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+  creator       User?     @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@map("expenses")
+}
+
+model IntegrationTest {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  dashboardId   String    @db.Uuid @map("dashboard_id")
+  trafficSource String
+  campaignUrl   String    @map("campaign_url")
+  testCode      String    @unique @map("test_code")
+  status        String    @default("waiting")
+  orderId       String?   @db.Uuid @map("order_id")
+  createdBy     String?   @map("created_by") @db.Uuid
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  dashboard     Dashboard @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+  order         Order?    @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  creator       User?     @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@map("integration_tests")
+}
+
+model FxRate {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  date      DateTime @db.Date
+  base      String   @db.Char(3)
+  quote     String   @db.Char(3)
+  rate      Decimal  @db.Decimal(18,8)
+  source    String   @default("bcb_ptax")
+  createdAt DateTime @// default(now()) @map("created_at")
+
+  @@unique([date, base, quote])
+  @@map("fx_rates")
+}
+
+// ============================================================
+// Automação
+// ============================================================
+
+model Automation {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  boardId         String    @db.Uuid @map("board_id")
+  type            String    // 'rule', 'scheduled', 'due_date', 'card_button', 'board_button', 'metric'
+  name            String
+  trigger         Json
+  actions         Json
+  enabled         Boolean   @default(true)
+  timezone        String    @default("America/Sao_Paulo")
+  nextRunAt       DateTime? @map("next_run_at")
+  dashboardId     String?   @db.Uuid @map("dashboard_id")
+  createdBy       String?   @map("created_by") @db.Uuid
+  failureCount    Int       @default(0) @map("failure_count")
+  disabledReason String?   @map("disabled_reason")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  board           Board     @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  dashboard       Dashboard? @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+  creator         User?     @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+  runs            AutomationRun[]
+
+  @@map("automations")
+}
+
+model Activity {
+  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId          String    @db.Uuid @map("workspace_id")
+  boardId              String?   @db.Uuid @map("board_id")
+  cardId               String?   @db.Uuid @map("card_id")
+  actorId              String?   @// map("actor_id") @db.Uuid
+  actorKind            String    @default("user") @map("actor_kind")
+  automationRunId     String?   @map("automation_run_id") @db.Uuid
+  type                 String
+  data                 Json      @default("{}")
+  automationCheckedAt DateTime? @map("automation_checked_at")
+  createdAt            DateTime  @default(now()) @map("created_at")
+
+  workspace           Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  board               Board?    @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  card                Card?     @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  user                User?     @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  automationRun       AutomationRun? @relation(fields: [automationRunId], references: [id], onDelete: SetNull)
+
+  @@map("activities")
+}
+
+model AutomationRun {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  automationId      String    @db.Uuid @map("automation_id")
+  triggerActivityId String?   @db.Uuid @map("trigger_activity_id")
+  cardId            String?   @db.Uuid @map("card_id")
+  status            String    @default("running")
+  dedupeKey         String?   @map("dedupe_key")
+  depth             Int       @default(0)
+  message           String?
+  operations        Int       @default(0)
+  startedAt         DateTime  @default(now()) @map("started_at")
+  finishedAt        DateTime? @map("finished_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+
+  automation       Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  activities       Activity[]
+  card             Card?      @relation(fields: [cardId], references: [id], onDelete: SetNull)
+
+  @@unique([automationId, dedupeKey])
+  @@map("automation_runs")
+}
+
+model CardLink {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cardId        String    @db.Uuid @map("card_id")
+  dashboardId   String    @db.Uuid @map("dashboard_id")
+  targetType    String    @map("target_type")
+  campaignId    String?   @db.Uuid @map("campaign_id")
+  adSetId       String?   @db.Uuid @map("ad_set_id")
+  adId          String?   @db.Uuid @map("ad_id")
+  productId     String?   @db.Uuid @map("product_id")
+  createdBy     String?   @map("created_by") @db.Uuid
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  card          Card      @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  dashboard     Dashboard @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+  campaign      Campaign? @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  adSet         AdSet?    @relation(fields: [adSetId], references: [id], onDelete: Cascade)
+  ad            Ad?       @relation(fields: [adId], references: [id], onDelete: Cascade)
+  product       Product?  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  creator       User?     @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@map("card_links")
+}
