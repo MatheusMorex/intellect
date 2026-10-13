@@ -11,6 +11,9 @@ import { generateNKeysBetween } from "fractional-indexing";
 
 import type {
   AdAccountRow,
+  AdConnectionRow,
+  KeywordInsightRow,
+  KeywordRow,
   AdInsightRow,
   AdRow,
   AdSetRow,
@@ -22,7 +25,7 @@ import type {
   Visit,
 } from "./types";
 
-export const STORE_VERSION = 1;
+export const STORE_VERSION = 2;
 export const SEED_TIMEZONE = "America/Sao_Paulo";
 const DAYS = 90;
 
@@ -101,6 +104,32 @@ export function createSeed(now: Date): Store {
 
   // Contas, campanhas, conjuntos e anúncios -------------------------------------
   const lastSyncedAt = new Date(now.getTime() - 8 * 60 * 1000).toISOString();
+  const connections: AdConnectionRow[] = [
+    {
+      id: id(),
+      workspaceId: workspace.id,
+      provider: "meta",
+      externalUserId: "10229384756610",
+      externalUserName: "Ana Lima",
+      tokenExpiresAt: new Date(now.getTime() + 41 * 86_400_000).toISOString(),
+      status: "active",
+      lastError: null,
+      createdBy: ana.id,
+      createdAt: seededAt,
+    },
+    {
+      id: id(),
+      workspaceId: workspace.id,
+      provider: "google",
+      externalUserId: "ana@intellect.test",
+      externalUserName: "Ana Lima",
+      tokenExpiresAt: null,
+      status: "active",
+      lastError: null,
+      createdBy: ana.id,
+      createdAt: seededAt,
+    },
+  ];
   const meta: AdAccountRow = {
     id: id(),
     workspaceId: workspace.id,
@@ -110,7 +139,10 @@ export function createSeed(now: Date): Store {
     currency: "BRL",
     timezone: tz,
     status: "active" as const,
+    connectionId: connections[0].id,
+    syncEnabled: true,
     lastSyncedAt,
+    lastSyncError: null,
   };
   const google: AdAccountRow = {
     id: id(),
@@ -121,7 +153,10 @@ export function createSeed(now: Date): Store {
     currency: "BRL",
     timezone: tz,
     status: "active" as const,
+    connectionId: connections[1].id,
+    syncEnabled: true,
     lastSyncedAt,
+    lastSyncError: null,
   };
 
   type Plan = {
@@ -131,6 +166,8 @@ export function createSeed(now: Date): Store {
     channelType: string | null;
     dailyBudgetCents: number;
     roas: number; // retorno médio que o seed tenta produzir
+    targetCpaCents?: number;
+    keywords?: string[];
     adSets: { name: string; ads: string[] }[];
     pausedDaysAgo?: number;
   };
@@ -186,6 +223,7 @@ export function createSeed(now: Date): Store {
       channelType: "SEARCH",
       dailyBudgetCents: 4_000,
       roas: 6.2,
+      keywords: ["intellect", "intellect kit"],
       adSets: [{ name: "Marca exata", ads: ["Anúncio responsivo marca"] }],
     },
     {
@@ -195,6 +233,8 @@ export function createSeed(now: Date): Store {
       channelType: "SEARCH",
       dailyBudgetCents: 12_000,
       roas: 1.3,
+      targetCpaCents: 9_000,
+      keywords: ["kit produtividade", "planner semanal", "como ser mais produtivo", "agenda de metas"],
       adSets: [{ name: "Kit produtividade", ads: ["Anúncio responsivo A", "Anúncio responsivo B"] }],
     },
     {
@@ -212,6 +252,8 @@ export function createSeed(now: Date): Store {
   const adSets: AdSetRow[] = [];
   const ads: AdRow[] = [];
   const insights: AdInsightRow[] = [];
+  const keywords: KeywordRow[] = [];
+  const keywordInsights: KeywordInsightRow[] = [];
   let externalCounter = 120_210_000_000;
   const nextExternal = () => String(externalCounter++ * 7 + 13);
 
@@ -227,6 +269,7 @@ export function createSeed(now: Date): Store {
       status: plan.status,
       channelType: plan.channelType,
       dailyBudgetCents: plan.dailyBudgetCents,
+      targetCpaCents: plan.targetCpaCents ?? null,
     };
     campaigns.push(campaign);
     if (plan.adSets.length === 0) {
@@ -244,6 +287,18 @@ export function createSeed(now: Date): Store {
         dailyBudgetCents: null,
       };
       adSets.push(adSet);
+      for (const [k, text] of (plan.keywords ?? []).entries()) {
+        keywords.push({
+          id: id(),
+          adAccountId: plan.account.id,
+          campaignId: campaign.id,
+          adSetId: adSet.id,
+          externalId: String(39_000_000_000 + keywords.length * 13 + k),
+          text,
+          matchType: k === 0 ? "exact" : k % 2 ? "phrase" : "broad",
+          status: "active",
+        });
+      }
       for (const adName of setPlan.ads) {
         const ad: AdRow = {
           id: id(),
@@ -289,6 +344,30 @@ export function createSeed(now: Date): Store {
         addToCarts: Math.round(clicks * between(0.05, 0.11)),
       });
       spendByTargetDay.set(`${targets.indexOf(target)}:${offset}`, spend);
+    }
+    // Palavras-chave: dividem o gasto do grupo; ficam fora dos totais (architecture.md).
+    for (const adSet of adSets) {
+      const words = keywords.filter((k) => k.adSetId === adSet.id);
+      if (!words.length) continue;
+      const setSpend = insights
+        .filter((i) => i.adSetId === adSet.id && i.date === dayKey(offset))
+        .reduce((sum, i) => sum + i.spendCents, 0);
+      const weights = words.map((_, i) => (i === 0 ? 3 : 1) * between(0.6, 1.4));
+      const total = weights.reduce((a, b) => a + b, 0);
+      words.forEach((word, i) => {
+        const spend = Math.round((setSpend * weights[i]) / total);
+        if (spend <= 0) return;
+        const impressions = Math.round((spend / between(1_500, 3_000)) * 1000);
+        keywordInsights.push({
+          id: id(),
+          keywordId: word.id,
+          date: dayKey(offset),
+          currency: "BRL",
+          spendCents: spend,
+          impressions,
+          clicks: Math.round(impressions * between(0.03, 0.09)),
+        });
+      });
     }
   }
 
@@ -585,6 +664,56 @@ export function createSeed(now: Date): Store {
     });
   }
 
+  // Custos -------------------------------------------------------------------------
+  const startKey = dayKey(DAYS - 1);
+  const costSettings = [
+    {
+      id: id(),
+      dashboardId: dashboard.id,
+      validFrom: startKey,
+      salesTaxBp: 600,
+      metaAdsTaxBp: 1_215,
+      extraTaxes: [] as { name: string; bp: number }[],
+      createdBy: ana.id,
+      createdAt: seededAt,
+    },
+  ];
+  const unitCosts = [4_800, 9_900, 900, 0];
+  const productCosts = products.map((p, i) => ({
+    id: id(),
+    productId: p.row.id,
+    costCents: unitCosts[i] ?? 0,
+    currency: "BRL",
+    validFrom: startKey,
+    createdBy: ana.id,
+    createdAt: seededAt,
+  }));
+  const additionalFees = [
+    {
+      id: id(),
+      dashboardId: dashboard.id,
+      name: "Embalagem e brinde",
+      kind: "fixed" as const,
+      amountCents: 350,
+      bp: null,
+      scope: "product" as const,
+      productId: products[1].row.id,
+      paymentMethod: null,
+      validFrom: startKey,
+      validUntil: null,
+      createdBy: ana.id,
+      createdAt: seededAt,
+    },
+  ];
+  const monthDay = (back: number) =>
+    format(new TZDate(today.getFullYear(), today.getMonth() - back, 5, 0, 0, 0, tz), "yyyy-MM-dd");
+  const expenses = [
+    { kind: "recurring" as const, category: "tools" as const, description: "Ferramentas de e-mail e design", amountCents: 29_700, date: monthDay(3) },
+    { kind: "recurring" as const, category: "accounting" as const, description: "Contabilidade", amountCents: 45_000, date: monthDay(3) },
+    { kind: "recurring" as const, category: "staff" as const, description: "Freelancer de edição de vídeo", amountCents: 120_000, date: monthDay(2) },
+    { kind: "once" as const, category: "traffic" as const, description: "Gravação de vídeos com criadora UGC", amountCents: 180_000, date: dayKey(18) },
+  ].map((e) => ({ id: id(), dashboardId: dashboard.id, currency: "BRL", endDate: null, createdBy: ana.id, createdAt: seededAt, ...e }));
+
   return {
     version: STORE_VERSION,
     seededAt,
@@ -592,12 +721,15 @@ export function createSeed(now: Date): Store {
     workspaces: [workspace],
     workspaceMembers,
     dashboards: [dashboard],
+    adConnections: connections,
     adAccounts: [meta, google],
     dashboardAdAccounts: [meta, google].map((a) => ({ id: id(), dashboardId: dashboard.id, adAccountId: a.id })),
     campaigns,
     adSets,
     ads,
     adInsightsDaily: insights,
+    keywords,
+    keywordInsightsDaily: keywordInsights,
     stores: [store],
     dashboardStores: [{ id: id(), dashboardId: dashboard.id, storeId: store.id }],
     webhookDeliveries: [],
@@ -605,6 +737,11 @@ export function createSeed(now: Date): Store {
     orders,
     orderItems,
     orderEvents,
+    costSettings,
+    productCosts,
+    additionalFees,
+    expenses,
+    integrationTests: [],
     boards: [board],
     boardMembers,
     lists,

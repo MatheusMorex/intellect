@@ -1,17 +1,17 @@
 import type { Metadata } from "next";
 
 import { CampaignsView } from "@/components/tracking/campaigns-view";
+import type { SearchParams } from "@/server/data/tracking";
 
 export const metadata: Metadata = { title: "Meta" };
 
-export default async function MetaPage({
+export default async function Page({
   params,
   searchParams,
 }: {
   params: Promise<{ dashboardId: string }>;
-  searchParams: Promise<{ periodo?: string }>;
+  searchParams: Promise<SearchParams>;
 }) {
   const { dashboardId } = await params;
-  const { periodo } = await searchParams;
-  return <CampaignsView dashboardId={dashboardId} provider="meta" periodo={periodo} />;
+  return <CampaignsView dashboardId={dashboardId} provider="meta" sp={await searchParams} />;
 }

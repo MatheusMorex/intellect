@@ -21,6 +21,8 @@ export type Attribution = {
   adSetId: Id | null;
   adId: Id | null;
   isTest: boolean;
+  /** Código do teste de integração (itl_test), quando o pedido veio de um link de teste. */
+  testCode: string | null;
   landingPage: string | null;
   utmSource: string | null;
   utmMedium: string | null;
@@ -81,6 +83,7 @@ export function attribute(
     adSetId: null,
     adId: null,
     isTest: params.has("itl_test"),
+    testCode: get("itl_test"),
     landingPage: visit?.landingPage ?? null,
     utmSource,
     utmMedium,

@@ -7,6 +7,7 @@
 //   --status pago|pendente     situação do pagamento (padrão: pago)
 //   --pagamento pix|cartao|boleto
 //   --sem-utm                  venda sem rastreio ("não trackeada")
+//   --teste CODIGO             pedido de um link de teste de integração (itl_test)
 //   --url http://localhost:3000
 //
 // Precisa do app rodando (npm run dev) e do .env.local com SHOPIFY_WEBHOOK_SECRET.
@@ -105,6 +106,12 @@ if (opts["sem-utm"]) {
     itl_a: ad?.externalId ?? "",
   });
   landingPage = `${shopUrl}/?${q}`;
+}
+
+if (typeof opts.teste === "string") {
+  const url = new URL(landingPage);
+  url.searchParams.set("itl_test", opts.teste);
+  landingPage = url.toString();
 }
 
 const value = typeof opts.valor === "string" ? Number(opts.valor.replace(/\./g, "").replace(",", ".")) : 197;

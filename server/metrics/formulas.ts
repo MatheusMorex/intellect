@@ -21,6 +21,8 @@ export type CostInputs = {
   productCostCents: number; // custo dos produtos vendidos no período
   additionalFeesCents: number;
   expensesCents: number;
+  /** Impostos já somados dia a dia (o percentual muda com o tempo); quando vem, ignora os bp acima. */
+  taxesCents?: number;
 };
 
 export const NO_COSTS: CostInputs = {
@@ -96,7 +98,8 @@ export function summarize({
   const gross = grossCents(orders, includeInterest);
   const net = netCents(orders, includeInterest);
   const base = revenueBasis === "gross" ? gross : net;
-  const taxes = bp(net, costs.salesTaxBp) + bp(metaSpendCents, costs.metaAdsTaxBp) + bp(net, costs.extraTaxesBp);
+  const taxes =
+    costs.taxesCents ?? bp(net, costs.salesTaxBp) + bp(metaSpendCents, costs.metaAdsTaxBp) + bp(net, costs.extraTaxesBp);
   const profit =
     net - spendCents - taxes - costs.productCostCents - costs.additionalFeesCents - costs.expensesCents;
 

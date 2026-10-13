@@ -78,7 +78,8 @@ export async function createCard(input: { boardId: string; listId: string; name:
 
 const fromRowInput = z.object({
   dashboardId: z.uuid(),
-  campaignId: z.uuid(),
+  level: z.enum(["campanhas", "conjuntos", "anuncios"]).default("campanhas"),
+  targetId: z.uuid(),
   listId: z.uuid(),
   name: cardName,
 });
@@ -86,33 +87,39 @@ const fromRowInput = z.object({
 /** "Criar card" numa linha do relatório (F16): o card nasce ligado à campanha. */
 export async function createCardFromRow(input: {
   dashboardId: string;
-  campaignId: string;
+  level?: "campanhas" | "conjuntos" | "anuncios";
+  targetId: string;
   listId: string;
   name: string;
 }): Promise<ActionResult<{ cardId: string; boardId: string; boardName: string }>> {
   const user = await requireUser();
   const parsed = fromRowInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
-  const { dashboardId, campaignId, listId, name } = parsed.data;
+  const { dashboardId, level, targetId, listId, name } = parsed.data;
   const { dashboard } = requireDashboard({ user }, dashboardId);
 
   const result = mutate((store) => {
     const accountIds = new Set(
       store.dashboardAdAccounts.filter((l) => l.dashboardId === dashboard.id).map((l) => l.adAccountId),
     );
-    const campaign = store.campaigns.find((c) => c.id === campaignId && accountIds.has(c.adAccountId));
+    const target =
+      level === "campanhas"
+        ? store.campaigns.find((c) => c.id === targetId && accountIds.has(c.adAccountId))
+        : level === "conjuntos"
+          ? store.adSets.find((s) => s.id === targetId && accountIds.has(s.adAccountId))
+          : store.ads.find((a) => a.id === targetId && accountIds.has(a.adAccountId));
     const list = store.lists.find((l) => l.id === listId && !l.archivedAt);
-    if (!campaign || !list) return null;
+    if (!target || !list) return null;
     requireBoard({ user }, list.boardId, "normal");
     const card = insertCard(store, list.boardId, list.id, name, user.id);
     store.cardLinks.push({
       id: newId(),
       cardId: card.id,
       dashboardId: dashboard.id,
-      targetType: "campaign",
-      campaignId: campaign.id,
-      adSetId: null,
-      adId: null,
+      targetType: level === "campanhas" ? "campaign" : level === "conjuntos" ? "ad_set" : "ad",
+      campaignId: level === "campanhas" ? target.id : null,
+      adSetId: level === "conjuntos" ? target.id : null,
+      adId: level === "anuncios" ? target.id : null,
       productId: null,
       createdBy: user.id,
       createdAt: nowIso(),

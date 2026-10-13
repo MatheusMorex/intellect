@@ -1,4 +1,4 @@
-import { ReceiptText } from "lucide-react";
+import { ReceiptText, Search } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 
@@ -6,6 +6,7 @@ import { StatusPill, type PillStatus } from "@/components/ds/badges";
 import { EmptyState } from "@/components/ds/empty-state";
 import { PageBody, PageHeader } from "@/components/shell/page-header";
 import { PeriodFilter } from "@/components/shell/period-filter";
+import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { dateTimeIn, integer, money } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -72,17 +73,20 @@ export default async function OrdersPage({
   searchParams,
 }: {
   params: Promise<{ dashboardId: string }>;
-  searchParams: Promise<{ periodo?: string; status?: string }>;
+  searchParams: Promise<{ periodo?: string; de?: string; ate?: string; status?: string; q?: string }>;
 }) {
   const { dashboardId } = await params;
   const sp = await searchParams;
   const user = await requireUser();
-  const data = await listOrders({ user }, dashboardId, { period: sp.periodo, status: sp.status });
+  const data = await listOrders({ user }, dashboardId, { period: sp.periodo, de: sp.de, ate: sp.ate, status: sp.status, q: sp.q });
   const tz = data.dashboard.timezone;
 
   const hrefFor = (status: OrderStatusFilter) => {
     const q = new URLSearchParams();
     if (sp.periodo) q.set("periodo", sp.periodo);
+    if (sp.de) q.set("de", sp.de);
+    if (sp.ate) q.set("ate", sp.ate);
+    if (sp.q) q.set("q", sp.q);
     if (status !== "todos") q.set("status", status);
     const s = q.toString();
     return `/d/${dashboardId}/orders${s ? `?${s}` : ""}`;
@@ -93,8 +97,14 @@ export default async function OrdersPage({
       <PageHeader
         title="Vendas"
         description={data.dashboard.name}
-        actions={<PeriodFilter value={data.period.id} description={data.period.description} />}
+        actions={<PeriodFilter period={data.period} />}
       />
+
+      <form action={`/d/${dashboardId}/orders`} role="search" className="relative w-full sm:w-80">
+        {(["periodo", "de", "ate", "status"] as const).map((k) => (sp[k] ? <input key={k} type="hidden" name={k} value={sp[k]} /> : null))}
+        <Search aria-hidden="true" className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Input type="search" name="q" defaultValue={data.q} placeholder="Buscar pelo número do pedido…" aria-label="Buscar pedido" className="pl-8" />
+      </form>
 
       <nav aria-label="Filtrar por situação" className="flex flex-wrap gap-1 rounded-md bg-muted p-1 sm:w-fit">
         {ORDER_STATUS_FILTERS.map((f) => (
@@ -147,7 +157,12 @@ export default async function OrdersPage({
                 <TableRow key={o.id}>
                   <TableCell>{dateTimeIn(o.placedAt, tz)}</TableCell>
                   <TableCell className="font-medium">
-                    {o.name}
+                    <Link
+                      href={`/d/${dashboardId}/orders/${o.id}`}
+                      className="rounded-sm outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      {o.name}
+                    </Link>
                     {o.isTest && (
                       <span className="ml-1.5">
                         <StatusPill status="test" />

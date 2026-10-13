@@ -42,7 +42,10 @@ export type AdAccountRow = {
   currency: string;
   timezone: string;
   status: "active" | "disabled" | "unsettled" | "closed" | "unknown";
+  connectionId: Id | null;
+  syncEnabled: boolean;
   lastSyncedAt: IsoDateTime | null;
+  lastSyncError: string | null;
 };
 
 export type DashboardAdAccountRow = { id: Id; dashboardId: Id; adAccountId: Id };
@@ -57,6 +60,7 @@ export type CampaignRow = {
   status: AdStatus;
   channelType: string | null;
   dailyBudgetCents: number | null;
+  targetCpaCents: number | null;
 };
 
 export type AdSetRow = {
@@ -255,6 +259,105 @@ export type ActivityRow = {
   createdAt: IsoDateTime;
 };
 
+export type AdConnectionRow = {
+  id: Id;
+  workspaceId: Id;
+  provider: "meta" | "google";
+  externalUserId: string;
+  externalUserName: string | null;
+  tokenExpiresAt: IsoDateTime | null;
+  status: "active" | "expired" | "revoked" | "error";
+  lastError: string | null;
+  createdBy: Id | null;
+  createdAt: IsoDateTime;
+};
+
+export type KeywordRow = {
+  id: Id;
+  adAccountId: Id;
+  campaignId: Id;
+  adSetId: Id;
+  externalId: string;
+  text: string;
+  matchType: "exact" | "phrase" | "broad";
+  status: AdStatus;
+};
+
+export type KeywordInsightRow = {
+  id: Id;
+  keywordId: Id;
+  date: DateKey;
+  currency: string;
+  spendCents: number;
+  impressions: number;
+  clicks: number;
+};
+
+export type CostSettingRow = {
+  id: Id;
+  dashboardId: Id;
+  validFrom: DateKey;
+  salesTaxBp: number;
+  metaAdsTaxBp: number;
+  extraTaxes: { name: string; bp: number }[];
+  createdBy: Id | null;
+  createdAt: IsoDateTime;
+};
+
+export type ProductCostRow = {
+  id: Id;
+  productId: Id;
+  costCents: number;
+  currency: string;
+  validFrom: DateKey;
+  createdBy: Id | null;
+  createdAt: IsoDateTime;
+};
+
+export type AdditionalFeeRow = {
+  id: Id;
+  dashboardId: Id;
+  name: string;
+  kind: "fixed" | "percent";
+  amountCents: number | null;
+  bp: number | null;
+  scope: "all" | "product" | "payment_method";
+  productId: Id | null;
+  paymentMethod: PaymentMethod | null;
+  validFrom: DateKey;
+  validUntil: DateKey | null;
+  createdBy: Id | null;
+  createdAt: IsoDateTime;
+};
+
+export type ExpenseCategory = "traffic" | "tools" | "staff" | "accounting" | "other";
+
+export type ExpenseRow = {
+  id: Id;
+  dashboardId: Id;
+  kind: "once" | "recurring";
+  category: ExpenseCategory;
+  description: string;
+  amountCents: number;
+  currency: string;
+  date: DateKey;
+  endDate: DateKey | null;
+  createdBy: Id | null;
+  createdAt: IsoDateTime;
+};
+
+export type IntegrationTestRow = {
+  id: Id;
+  dashboardId: Id;
+  trafficSource: "meta" | "google" | "organic";
+  campaignUrl: string;
+  testCode: string;
+  status: "waiting" | "received" | "attributed" | "failed";
+  orderId: Id | null;
+  createdBy: Id | null;
+  createdAt: IsoDateTime;
+};
+
 export type Store = {
   version: number;
   seededAt: IsoDateTime;
@@ -262,12 +365,15 @@ export type Store = {
   workspaces: WorkspaceRow[];
   workspaceMembers: WorkspaceMemberRow[];
   dashboards: DashboardRow[];
+  adConnections: AdConnectionRow[];
   adAccounts: AdAccountRow[];
   dashboardAdAccounts: DashboardAdAccountRow[];
   campaigns: CampaignRow[];
   adSets: AdSetRow[];
   ads: AdRow[];
   adInsightsDaily: AdInsightRow[];
+  keywords: KeywordRow[];
+  keywordInsightsDaily: KeywordInsightRow[];
   stores: StoreRow[];
   dashboardStores: DashboardStoreRow[];
   webhookDeliveries: WebhookDeliveryRow[];
@@ -275,6 +381,11 @@ export type Store = {
   orders: OrderRow[];
   orderItems: OrderItemRow[];
   orderEvents: OrderEventRow[];
+  costSettings: CostSettingRow[];
+  productCosts: ProductCostRow[];
+  additionalFees: AdditionalFeeRow[];
+  expenses: ExpenseRow[];
+  integrationTests: IntegrationTestRow[];
   boards: BoardRow[];
   boardMembers: BoardMemberRow[];
   lists: ListRow[];

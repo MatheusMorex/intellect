@@ -5,7 +5,7 @@ import { TZDate } from "@date-fns/tz";
 import { addDays, differenceInCalendarDays, format, parseISO, startOfMonth, endOfMonth, subMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
-import { DEFAULT_PERIOD, isPeriodId, periodLabel, type PeriodId } from "@/lib/periods";
+import { DATE_KEY, DEFAULT_PERIOD, isPeriodId, periodLabel, type PeriodId } from "@/lib/periods";
 import type { DateKey } from "@/server/store/types";
 
 export type DateRange = { from: DateKey; to: DateKey };
@@ -17,6 +17,8 @@ export type ResolvedPeriod = {
   previous: DateRange | null;
   /** "6 a 12 de out." */
   description: string;
+  /** Hoje no fuso (yyyy-MM-dd): o calendário não deixa escolher depois disso. */
+  today: DateKey;
 };
 
 const key = (date: Date) => format(date, "yyyy-MM-dd");
@@ -50,17 +52,26 @@ function shift(range: DateRange): DateRange {
   return { from: key(addDays(from, -length)), to: key(addDays(from, -1)) };
 }
 
+export type CustomRange = { de?: string | null; ate?: string | null };
+
 export function resolvePeriod(
   value: string | null | undefined,
   timezone: string,
   earliest: DateKey | null,
   now = new Date(),
+  custom?: CustomRange,
 ): ResolvedPeriod {
-  const id: PeriodId = isPeriodId(value) ? value : DEFAULT_PERIOD;
+  let id: PeriodId = isPeriodId(value) ? value : DEFAULT_PERIOD;
   const today = todayIn(timezone, now);
   const t = key(today);
+  const from = custom?.de && DATE_KEY.test(custom.de) ? custom.de : null;
+  const to = custom?.ate && DATE_KEY.test(custom.ate) ? custom.ate : null;
+  if (id === "personalizado" && (!from || !to || from > to)) id = DEFAULT_PERIOD;
   let range: DateRange;
   switch (id) {
+    case "personalizado":
+      range = { from: from!, to: to! > t ? t : to! };
+      break;
     case "hoje":
       range = { from: t, to: t };
       break;
@@ -92,5 +103,5 @@ export function resolvePeriod(
     const before = subMonths(today, 2);
     previous = { from: key(startOfMonth(before)), to: key(endOfMonth(before)) };
   }
-  return { id, label: periodLabel(id), range, previous, description: describe(range) };
+  return { id, label: periodLabel(id), range, previous, description: describe(range), today: t };
 }

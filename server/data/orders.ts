@@ -44,12 +44,20 @@ export type OrderList = {
   total: number;
   shown: number;
   counts: Record<OrderStatusFilter, number>;
+  q: string;
 };
 
 export async function listOrders(
   ctx: Ctx,
   dashboardId: string,
-  { period: periodId, status = "todos", limit = 100 }: { period?: string; status?: string; limit?: number },
+  {
+    period: periodId,
+    de,
+    ate,
+    status = "todos",
+    q,
+    limit = 100,
+  }: { period?: string; de?: string; ate?: string; status?: string; q?: string; limit?: number },
 ): Promise<OrderList> {
   const { dashboard } = requireDashboard(ctx, dashboardId);
   const store = readStore();
@@ -59,8 +67,13 @@ export async function listOrders(
     const day = dayKeyIn(o.placedAt, dashboard.timezone);
     return !min || day < min ? day : min;
   }, null);
-  const period = resolvePeriod(periodId, dashboard.timezone, earliest);
-  const inPeriod = all.filter((o) => inRange(dayKeyIn(o.placedAt, dashboard.timezone), period.range));
+  const period = resolvePeriod(periodId, dashboard.timezone, earliest, new Date(), { de, ate });
+  const term = q?.trim().replace(/^#/, "").toLowerCase();
+  const inPeriod = all.filter(
+    (o) =>
+      inRange(dayKeyIn(o.placedAt, dashboard.timezone), period.range) &&
+      (!term || o.name.toLowerCase().includes(term) || (o.utmCampaign ?? "").toLowerCase().includes(term)),
+  );
 
   const filter: OrderStatusFilter = (ORDER_STATUS_FILTERS as readonly string[]).includes(status)
     ? (status as OrderStatusFilter)
@@ -107,5 +120,6 @@ export async function listOrders(
     total: filtered.length,
     shown: rows.length,
     counts,
+    q: q ?? "",
   };
 }

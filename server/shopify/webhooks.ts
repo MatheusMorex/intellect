@@ -233,6 +233,15 @@ export async function processDelivery(deliveryId: string) {
       });
     }
 
+    // Teste de integração (F19): o pedido com itl_test fecha o teste.
+    if (result.testCode) {
+      const test = store.integrationTests.find((t) => t.testCode === result.testCode);
+      if (test) {
+        test.orderId = orderId;
+        test.status = result.status === "tracked" || (test.trafficSource === "organic" && result.status === "other_source") ? "attributed" : "received";
+      }
+    }
+
     store.orderEvents.push({
       id: newId(),
       orderId,
