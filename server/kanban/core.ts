@@ -11,12 +11,21 @@ export function touchBoard(store: Store, boardId: string) {
   store.boardStamps[boardId] = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+/** Quem fez a mudança, quando não é a pessoa logada: uma execução de automação. */
+export type AutomationActor = { automationRunId: string; automationName: string };
+
 export function logActivity(
   store: Store,
-  entry: Pick<ActivityRow, "workspaceId" | "boardId" | "cardId" | "actorId" | "type" | "data"> & { actorKind?: ActivityRow["actorKind"] },
+  entry: Pick<ActivityRow, "workspaceId" | "boardId" | "cardId" | "actorId" | "type" | "data"> & {
+    actorKind?: ActivityRow["actorKind"];
+    automationRunId?: string | null;
+  },
 ) {
-  store.activities.push({ id: newId(), actorKind: entry.actorKind ?? "user", createdAt: nowIso(), ...entry });
+  // automationCheckedAt nulo: o motor de automação ainda não avaliou esta atividade.
+  const row: ActivityRow = { id: newId(), actorKind: entry.actorKind ?? "user", automationCheckedAt: null, createdAt: nowIso(), ...entry };
+  store.activities.push(row);
   if (entry.boardId) touchBoard(store, entry.boardId);
+  return row;
 }
 
 const byRank = <T extends { rank: string; id: string }>(a: T, b: T) => (a.rank < b.rank ? -1 : a.rank > b.rank ? 1 : a.id.localeCompare(b.id));
@@ -42,6 +51,7 @@ export function insertCard(
   name: string,
   userId: string,
   where: "top" | "bottom" = "bottom",
+  via?: AutomationActor,
 ): CardRow {
   const board = store.boards.find((b) => b.id === boardId)!;
   const siblings = cardsOfList(store, listId);
@@ -75,7 +85,8 @@ export function insertCard(
     cardId: card.id,
     actorId: userId,
     type: "card.created",
-    data: { name, listName: store.lists.find((l) => l.id === listId)?.name ?? "" },
+    data: { name, listId, listName: store.lists.find((l) => l.id === listId)?.name ?? "", ...(via ? { automationName: via.automationName } : {}) },
+    ...(via ? { actorKind: "automation" as const, automationRunId: via.automationRunId } : {}),
   });
   return card;
 }

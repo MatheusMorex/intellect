@@ -125,7 +125,7 @@ function resolve(store: Store, dashboard: DashboardRow, sp: SearchParams) {
 }
 
 /** Receita de um pedido na base do dashboard (líquido ou bruto). */
-function orderBase(o: OrderRow, dashboard: DashboardRow) {
+export function orderBase(o: OrderRow, dashboard: DashboardRow) {
   if (o.status !== "paid") return 0;
   const gross = o.totalCents - o.refundedCents - (dashboard.includeInterest ? 0 : o.interestCents);
   return dashboard.revenueBasis === "gross" ? gross : gross - (o.gatewayFeeCents ?? 0);

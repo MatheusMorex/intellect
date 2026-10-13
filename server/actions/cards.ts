@@ -1,5 +1,8 @@
 "use server";
 
+// Carrega o motor de automação: as regras avaliam as atividades de cada mudança.
+import "@/server/automation/engine";
+
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 

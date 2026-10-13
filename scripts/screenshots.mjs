@@ -31,7 +31,15 @@ for (const shot of shots) {
   first = false;
   try {
     await page.goto(url, { waitUntil: "load" });
-    await page.waitForTimeout(1500);
+    // Espera a tela ficar estável: o servidor de desenvolvimento às vezes recarrega a página
+    // logo depois de compilar uma rota nova.
+    let last = -1;
+    for (let i = 0; i < 20; i++) {
+      await page.waitForTimeout(1500);
+      const size = await page.evaluate(() => (document.querySelector("main")?.innerText ?? "").trim().length).catch(() => 0);
+      if (size > 20 && size === last) break;
+      last = size;
+    }
     const file = path.join(dir, `${name}.png`);
     await page.screenshot({ path: file });
     console.log(`ok ${file}`);

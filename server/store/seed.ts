@@ -10,6 +10,7 @@ import { addDays, format } from "date-fns";
 import { generateNKeysBetween } from "fractional-indexing";
 
 import type {
+  AutomationRow,
   AdAccountRow,
   AdConnectionRow,
   KeywordInsightRow,
@@ -25,7 +26,7 @@ import type {
   Visit,
 } from "./types";
 
-export const STORE_VERSION = 3;
+export const STORE_VERSION = 4;
 export const SEED_TIMEZONE = "America/Sao_Paulo";
 const DAYS = 90;
 
@@ -864,6 +865,77 @@ export function createSeed(now: Date): Store {
     createdAt: seededAt,
   }));
 
+  // Automação (S14): exemplos de cada tipo ------------------------------------------------------
+  const listBy = (name: string) => lists.find((l) => l.name === name)!;
+  const nextMonday = (() => {
+    const today = new TZDate(now.getTime(), tz);
+    for (let i = 1; i <= 7; i++) {
+      const d = addDays(today, i);
+      if (d.getDay() === 1) return new Date(new TZDate(d.getFullYear(), d.getMonth(), d.getDate(), 9, 0, 0, tz).getTime()).toISOString();
+    }
+    return seededAt;
+  })();
+  const automation = (type: AutomationRow["type"], name: string, trigger: Record<string, unknown>, actions: Record<string, unknown>[], extra: Partial<AutomationRow> = {}): AutomationRow => ({
+    id: id(),
+    boardId: board.id,
+    type,
+    name,
+    trigger,
+    filters: [],
+    actions,
+    enabled: true,
+    timezone: tz,
+    nextRunAt: null,
+    dashboardId: null,
+    createdBy: ana.id,
+    failureCount: 0,
+    disabledReason: null,
+    createdAt: seededAt,
+    updatedAt: seededAt,
+    ...extra,
+  });
+  const automations: AutomationRow[] = [
+    automation("rule", "Concluir ao chegar em Feito", { kind: "card_moved", toListId: listBy("Feito").id, fromListId: null }, [
+      { kind: "complete_due" },
+      { kind: "add_comment", text: "Concluído por {username} em {date}." },
+    ]),
+    automation(
+      "metric",
+      "ROAS baixo nos últimos 7 dias",
+      {
+        kind: "metric",
+        dashboardId: dashboard.id,
+        level: "campaign",
+        status: "active",
+        provider: "any",
+        nameContains: "",
+        conditions: [{ metric: "roas", op: "lt", value: 2 }],
+        window: "7d",
+        everyMinutes: 60,
+        createInListId: null,
+      },
+      [
+        { kind: "add_label", labelId: labelBy("Urgente").id },
+        { kind: "add_comment", text: "ROAS de {roas} nos últimos 7 dias em {campaign} (gasto de {spend}). Vale revisar lances e criativos." },
+      ],
+      { dashboardId: dashboard.id, nextRunAt: seededAt },
+    ),
+    automation("card_button", "Pedir revisão", { kind: "button", label: "Pedir revisão" }, [
+      { kind: "add_member", userId: bruno.id },
+      { kind: "move_card", listId: listBy("Em andamento").id, position: "top" },
+      { kind: "add_comment", text: "Bruno, pode revisar este card? {cardlink}" },
+    ]),
+    automation("board_button", "Arquivar o que está em Feito", { kind: "button", label: "Limpar Feito" }, [{ kind: "archive_list_cards", listId: listBy("Feito").id }]),
+    automation(
+      "scheduled",
+      "Revisão semanal",
+      { kind: "schedule", every: "week", time: "09:00", weekday: 1, monthDay: 1 },
+      [{ kind: "create_card", listId: listBy("A fazer").id, name: "Revisão semanal das campanhas ({date})" }],
+      { nextRunAt: nextMonday },
+    ),
+    automation("due_date", "Prazo estourado vira urgente", { kind: "due", when: "after", amount: 0, unit: "hours" }, [{ kind: "add_label", labelId: labelBy("Urgente").id }]),
+  ];
+
   return {
     version: STORE_VERSION,
     seededAt,
@@ -914,6 +986,8 @@ export function createSeed(now: Date): Store {
     comments,
     notifications,
     outbox: [],
+    automations,
+    automationRuns: [],
     boardStamps: {},
     cardLinks,
     activities: [],

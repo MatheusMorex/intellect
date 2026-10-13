@@ -1,5 +1,8 @@
 "use server";
 
+// Carrega o motor de automação: as regras avaliam as atividades de cada mudança.
+import "@/server/automation/engine";
+
 import { addDays, addMonths, addWeeks } from "date-fns";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -301,7 +304,7 @@ export async function moveAllCards(listId: string, toListId: string): Promise<Ac
       c.listId = toListId;
       c.rank = rankBetween(last, null);
       last = c.rank;
-      activity(store, ctx.user, c, "card.moved", { from: ctx.list.name, to: target.name });
+      activity(store, ctx.user, c, "card.moved", { from: ctx.list.name, to: target.name, fromListId: ctx.list.id, toListId: target.id });
     }
     return cards.length;
   });
@@ -354,7 +357,7 @@ export async function moveCard(input: z.input<typeof moveInput>): Promise<Action
     const changedList = card.listId !== target.id;
     card.listId = target.id;
     card.rank = rank;
-    if (changedList) activity(store, ctx.user, card, "card.moved", { from: fromList?.name ?? "", to: target.name });
+    if (changedList) activity(store, ctx.user, card, "card.moved", { from: fromList?.name ?? "", to: target.name, fromListId: fromList?.id ?? null, toListId: target.id });
     else bumpCard(store, card);
     return { rank, boardId: card.boardId };
   });
@@ -556,12 +559,12 @@ export async function toggleCardMember(cardId: string, userId: string, on: boole
     const who = store.users.find((u) => u.id === userId)?.name ?? "";
     if (on && !exists) {
       store.cardMembers.push({ id: newId(), cardId, userId, createdAt: nowIso() });
-      activity(store, ctx.user, card, "card.member", { added: true, name: who });
+      activity(store, ctx.user, card, "card.member", { added: true, name: who, userId });
       notify(store, { userId, type: "assigned", boardId: card.boardId, cardId, actorId: ctx.user.id, data: { cardName: card.name } });
     }
     if (!on && exists) {
       store.cardMembers = store.cardMembers.filter((m) => !(m.cardId === cardId && m.userId === userId));
-      activity(store, ctx.user, card, "card.member", { added: false, name: who });
+      activity(store, ctx.user, card, "card.member", { added: false, name: who, userId });
     }
   });
   refresh(ctx.board.id);
@@ -580,7 +583,7 @@ export async function toggleCardLabel(cardId: string, labelId: string, on: boole
     const exists = store.cardLabels.some((l) => l.cardId === cardId && l.labelId === labelId);
     if (on && !exists) store.cardLabels.push({ id: newId(), cardId, labelId });
     if (!on) store.cardLabels = store.cardLabels.filter((l) => !(l.cardId === cardId && l.labelId === labelId));
-    if (on !== exists) activity(store, ctx.user, card, "card.label", { added: on, name: label.name, color: label.color });
+    if (on !== exists) activity(store, ctx.user, card, "card.label", { added: on, name: label.name, color: label.color, labelId: label.id });
   });
   refresh(ctx.board.id);
   return ok(undefined);
@@ -743,7 +746,7 @@ export async function updateChecklistItem(itemId: string, input: z.input<typeof 
     if (v.name !== undefined) item.name = v.name;
     if (v.done !== undefined && v.done !== !!item.completedAt) {
       item.completedAt = v.done ? nowIso() : null;
-      activity(store, ctx.user, card, "card.item", { done: v.done, name: item.name });
+      activity(store, ctx.user, card, "card.item", { done: v.done, name: item.name, checklistId: item.checklistId });
     }
     if (v.dueAt !== undefined) item.dueAt = v.dueAt;
     if (v.assigneeId !== undefined) {

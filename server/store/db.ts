@@ -52,10 +52,18 @@ export function readStore(): Store {
   return seeded;
 }
 
+const afterHooks: ((store: Store) => void)[] = [];
+
+/** Roda antes de gravar cada mutate (o motor de automação avalia as atividades novas aqui). */
+export function afterMutate(hook: (store: Store) => void) {
+  if (!afterHooks.includes(hook)) afterHooks.push(hook);
+}
+
 /** Muda o armazenamento e grava. Tudo dentro de fn acontece de uma vez (como uma transação). */
 export function mutate<T>(fn: (store: Store) => T): T {
   const store = readStore();
   const result = fn(store);
+  for (const hook of afterHooks) hook(store);
   writeFile(store);
   return result;
 }

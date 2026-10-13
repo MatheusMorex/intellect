@@ -40,8 +40,10 @@ export function dateTime(date: Date) {
   return formatDate(date, "dd/MM/yyyy HH:mm", { locale: ptBR });
 }
 
+/** "há 5 minutos" ou, no futuro, "em 45 minutos". */
 export function relative(date: Date) {
-  return `há ${formatDistanceToNowStrict(date, { locale: ptBR })}`;
+  const distance = formatDistanceToNowStrict(date, { locale: ptBR });
+  return date.getTime() > Date.now() ? `em ${distance}` : `há ${distance}`;
 }
 
 export const EMPTY = "—";

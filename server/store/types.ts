@@ -289,6 +289,10 @@ export type ActivityRow = {
   actorKind: "user" | "automation" | "system";
   type: string;
   data: Record<string, unknown>;
+  /** Execução de automação que gerou a atividade (proteção contra loop). */
+  automationRunId?: Id | null;
+  /** Nulo: as regras de automação ainda não olharam esta atividade. */
+  automationCheckedAt?: IsoDateTime | null;
   createdAt: IsoDateTime;
 };
 
@@ -433,6 +437,8 @@ export type CommentRow = {
   body: unknown; // documento do editor (Tiptap)
   bodyText: string;
   mentions: Id[];
+  /** Comentário feito por uma automação (mostra "via automação"). */
+  automationName?: string | null;
   editedAt: IsoDateTime | null;
   createdAt: IsoDateTime;
 };
@@ -451,6 +457,43 @@ export type NotificationRow = {
 
 /** E-mail que sairia (convite, menção). No modo simulado fica só aqui, como o Mailpit. */
 export type OutboxRow = { id: Id; to: string; subject: string; text: string; link: string | null; createdAt: IsoDateTime };
+
+/** Automação do quadro (S14/S15). trigger, filters e actions seguem lib/automation/schema.ts. */
+export type AutomationRow = {
+  id: Id;
+  boardId: Id;
+  type: "rule" | "metric" | "scheduled" | "due_date" | "card_button" | "board_button";
+  name: string;
+  trigger: Record<string, unknown>;
+  filters: Record<string, unknown>[];
+  actions: Record<string, unknown>[];
+  enabled: boolean;
+  timezone: string;
+  nextRunAt: IsoDateTime | null;
+  dashboardId: Id | null;
+  createdBy: Id | null;
+  failureCount: number;
+  disabledReason: string | null;
+  createdAt: IsoDateTime;
+  updatedAt: IsoDateTime;
+};
+
+/** Execução de uma automação (S16). depth e chain protegem contra loop. */
+export type AutomationRunRow = {
+  id: Id;
+  automationId: Id;
+  boardId: Id;
+  triggerActivityId: Id | null;
+  cardId: Id | null;
+  status: "success" | "error" | "skipped";
+  dedupeKey: string | null;
+  depth: number;
+  chain: Id[];
+  message: string | null;
+  operations: number;
+  startedAt: IsoDateTime;
+  finishedAt: IsoDateTime | null;
+};
 
 export type Store = {
   version: number;
@@ -495,6 +538,8 @@ export type Store = {
   comments: CommentRow[];
   notifications: NotificationRow[];
   outbox: OutboxRow[];
+  automations: AutomationRow[];
+  automationRuns: AutomationRunRow[];
   /** Carimbo por quadro: muda a cada alteração e avisa quem está com o quadro aberto (tempo real). */
   boardStamps: Record<Id, string>;
   cardLinks: CardLinkRow[];

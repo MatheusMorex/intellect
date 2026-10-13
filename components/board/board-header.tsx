@@ -1,6 +1,6 @@
 "use client";
 
-import { Globe, Lock, Menu, Star, UserPlus, Workflow } from "lucide-react";
+import { Globe, Lock, Menu, Star, UserPlus, Workflow, Zap } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
@@ -11,12 +11,14 @@ import { BoardMenu, type BoardArchive } from "@/components/board/board-menu";
 import { ShareDialog, type BoardSharing } from "@/components/board/share-dialog";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { initials } from "@/lib/initials";
 import { cn } from "@/lib/utils";
+import { pressButton } from "@/server/actions/automation";
 import { starBoard, updateBoard } from "@/server/actions/kanban";
 import type { BoardView } from "@/server/data/boards";
 
@@ -129,6 +131,35 @@ export function BoardHeader({
       <div className="flex-1" />
 
       <BoardFilterButton labels={view.labels} members={view.members} open={filterOpen} onOpenChange={setFilterOpen} />
+      {view.canEdit && view.buttons.board.length > 0 && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="sm" className={onBoard} disabled={pending}>
+              <Zap aria-hidden="true" />
+              Botões
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuLabel>Botões do quadro</DropdownMenuLabel>
+            {view.buttons.board.map((b) => (
+              <DropdownMenuItem
+                key={b.id}
+                onSelect={() =>
+                  startTransition(async () => {
+                    const result = await pressButton(b.id, null);
+                    if (!result.ok) toast.error(result.error);
+                    else if (result.data.status === "error") toast.error(result.data.message ?? "O botão deu erro.");
+                    else toast.success(`${b.label}: feito`);
+                    router.refresh();
+                  })
+                }
+              >
+                {b.label}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
       <Button asChild variant="ghost" size="sm" className={onBoard}>
         <Link href={`/b/${view.board.id}/automation`}>
           <Workflow aria-hidden="true" />

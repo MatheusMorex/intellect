@@ -214,6 +214,75 @@ await step("notificações: o Bruno vê a menção e marca como lida", async () 
   await page.getByRole("heading", { name: /Olá, Ana/ }).waitFor();
 });
 
+// ---- automação (etapa 2.3) ----------------------------------------------------------------------------
+
+await step("automação: criar regra pelo construtor", async () => {
+  await page.goto(`${BASE}/b/${boardId}/automation`);
+  await page.getByRole("heading", { name: "Concluir ao chegar em Feito" }).waitFor();
+  await page.getByRole("link", { name: "Criar regra" }).first().click();
+  await page.waitForURL(/automation\/new\?tipo=rule/);
+  await page.getByLabel("Nome da automação").fill("Criativo novo ganha etiqueta");
+  await page.getByLabel("Quando", { exact: true }).click();
+  await page.getByRole("option", { name: "Um card for criado" }).click();
+  await page.getByLabel("Na lista").click();
+  await page.getByRole("option", { name: "Ideias" }).click();
+  await page.getByLabel("Ação 1").click();
+  await page.getByRole("option", { name: "Colocar etiqueta" }).click();
+  await page.getByLabel("Etiqueta", { exact: true }).click();
+  await page.getByRole("option", { name: "Criativo" }).click();
+  await page.getByText(/criado em “Ideias”: colocar a etiqueta “Criativo”/).waitFor();
+  await page.getByRole("button", { name: "Criar automação" }).click();
+  await page.waitForURL(/automation\?aba=regras/);
+  await page.getByRole("heading", { name: "Criativo novo ganha etiqueta" }).waitFor();
+});
+
+await step("automação: a regra roda quando o card nasce", async () => {
+  await page.goto(`${BASE}/b/${boardId}`);
+  const list = page.getByRole("region", { name: "Lista Ideias" });
+  await list.getByRole("button", { name: "Adicionar card" }).click();
+  await list.getByRole("textbox").fill("Ideia de criativo com a regra");
+  await list.getByRole("textbox").press("Enter");
+  await list.getByRole("button", { name: "Ideia de criativo com a regra", exact: true }).waitFor();
+  const s = store();
+  const card = s.cards.find((c) => c.name === "Ideia de criativo com a regra");
+  const criativo = s.labels.find((l) => l.boardId === boardId && l.name === "Criativo");
+  assert.ok(s.cardLabels.some((l) => l.cardId === card.id && l.labelId === criativo.id), "a regra deveria ter colocado a etiqueta");
+  const auto = s.automations.find((a) => a.name === "Criativo novo ganha etiqueta");
+  assert.equal(s.automationRuns.filter((r) => r.automationId === auto.id).at(-1).status, "success");
+});
+
+await step("automação: botão do card no verso", async () => {
+  const card = store().cards.find((c) => c.name === "Roteiro de vídeo com depoimento de cliente");
+  await page.goto(`${BASE}/b/${boardId}?card=${card.id}`);
+  await page.getByRole("dialog").getByRole("button", { name: "Pedir revisão" }).click();
+  await page.getByText("Pedir revisão: feito").waitFor();
+  const s = store();
+  const bruno = s.users.find((u) => u.email.startsWith("bruno"));
+  const after = s.cards.find((c) => c.id === card.id);
+  assert.ok(s.cardMembers.some((m) => m.cardId === card.id && m.userId === bruno.id));
+  assert.equal(s.lists.find((l) => l.id === after.listId).name, "Em andamento");
+  await page.getByRole("dialog").getByText(/via automação Pedir revisão/).waitFor();
+  await page.keyboard.press("Escape");
+});
+
+await step("automação: regra de métrica roda agora e aparece no histórico", async () => {
+  await page.goto(`${BASE}/b/${boardId}/automation?aba=metricas`);
+  await page.getByRole("button", { name: "Ações de ROAS baixo nos últimos 7 dias" }).click();
+  await page.getByRole("menuitem", { name: "Rodar agora" }).click();
+  await page.getByText(/^Rodou:/).waitFor();
+  await page.goto(`${BASE}/b/${boardId}/automation?aba=historico`);
+  await page.getByRole("heading", { name: /Histórico de execuções/ }).waitFor();
+  await page.getByRole("link", { name: "ROAS baixo nos últimos 7 dias" }).first().waitFor();
+});
+
+await step("automação: desligar pelo diretório", async () => {
+  await page.goto(`${BASE}/b/${boardId}/automation?aba=regras`);
+  await page.getByRole("switch", { name: "Criativo novo ganha etiqueta: ligada" }).click();
+  await page.getByRole("switch", { name: "Criativo novo ganha etiqueta: desligada" }).waitFor();
+  for (let i = 0; i < 20 && store().automations.find((a) => a.name === "Criativo novo ganha etiqueta").enabled; i++) await page.waitForTimeout(300);
+  assert.equal(store().automations.find((a) => a.name === "Criativo novo ganha etiqueta").enabled, false);
+});
+
 await step("período: escolher Ontem muda a URL", async () => {
   await page.goto(`${BASE}/d/${dashboardId}`);
   await page.getByRole("button", { name: /Últimos 7 dias/ }).click();
