@@ -260,7 +260,7 @@ export async function updateWorkspace(input: z.input<typeof workspaceUpdate>): P
 
 // ---- aceitar convite (S02) --------------------------------------------------------------------------
 
-export type InviteState = { error?: string };
+export type InviteState = { error?: string; name?: string; email?: string };
 
 const PASSWORD_RULE = "A senha precisa de 8 a 50 caracteres, com letra maiúscula, número e caractere especial.";
 const strongPassword = z
@@ -282,13 +282,14 @@ export async function acceptInvite(_prev: InviteState, form: FormData): Promise<
     const email = String(form.get("email") ?? invite.email ?? "").trim().toLowerCase();
     const name = String(form.get("name") ?? "").trim();
     const password = String(form.get("password") ?? "");
-    if (!z.email().safeParse(email).success) return { error: "Digite um e-mail válido." };
-    if (invite.email && email !== invite.email) return { error: "Este convite é para outro e-mail." };
+    const typed = { name, email };
+    if (!z.email().safeParse(email).success) return { error: "Digite um e-mail válido.", ...typed };
+    if (invite.email && email !== invite.email) return { error: "Este convite é para outro e-mail.", ...typed };
     const existing = readStore().users.find((u) => u.email.toLowerCase() === email);
-    if (existing) return { error: "Já existe uma conta com este e-mail. Entre com ela e abra o convite de novo." };
-    if (!name) return { error: "Digite seu nome." };
+    if (existing) return { error: "Já existe uma conta com este e-mail. Entre com ela e abra o convite de novo.", ...typed };
+    if (!name) return { error: "Digite seu nome.", ...typed };
     const pw = strongPassword.safeParse(password);
-    if (!pw.success) return { error: firstIssue(pw.error) };
+    if (!pw.success) return { error: firstIssue(pw.error), ...typed };
     userId = mutate((store) => {
       const user = {
         id: newId(),

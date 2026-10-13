@@ -44,12 +44,13 @@ export function requireDashboard(
   return { dashboard, role };
 }
 
-/** Papel efetivo no quadro: o de membro; ou, em quadro do workspace, "normal" para quem é do workspace. */
+/** Papel efetivo no quadro: o de membro; ou, em quadro do workspace, o de quem é do workspace
+ *  ("normal", ou "observer" se o quadro desligou "O workspace edita"). */
 export function boardRole(ctx: Ctx, board: BoardRow): BoardRole | null {
   const store = readStore();
   const member = store.boardMembers.find((m) => m.boardId === board.id && m.userId === ctx.user.id);
   if (member) return member.role;
-  if (board.visibility === "workspace" && workspaceRole(ctx, board.workspaceId)) return "normal";
+  if (board.visibility === "workspace" && workspaceRole(ctx, board.workspaceId)) return board.prefs.workspaceCanEdit ? "normal" : "observer";
   return null;
 }
 

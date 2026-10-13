@@ -98,3 +98,12 @@ export function sendEmail(store: Store, to: string, subject: string, text: strin
 export function appUrl(path: string) {
   return `${process.env.APP_URL ?? "http://localhost:3000"}${path}`;
 }
+
+/** Conteúdo do editor como JSON simples (rejeita o que não for dado puro). */
+export function plainJson(value: unknown): { ok: true; value: unknown } | { ok: false } {
+  try {
+    return { ok: true, value: JSON.parse(JSON.stringify(value ?? null)) };
+  } catch {
+    return { ok: false };
+  }
+}

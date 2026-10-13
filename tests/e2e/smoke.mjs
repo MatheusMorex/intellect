@@ -65,9 +65,153 @@ await step("criar card no quadro", async () => {
   const name = `Card do teste automático ${Date.now()}`;
   await list.getByRole("textbox").fill(name);
   await list.getByRole("textbox").press("Enter");
-  await list.getByRole("link", { name }).waitFor();
+  await list.getByRole("button", { name, exact: true }).waitFor();
   await list.getByRole("textbox").waitFor();
   assert.equal(await list.getByRole("textbox").inputValue(), "", "o campo deveria limpar e continuar aberto");
+});
+
+// ---- kanban (etapa 2.2) -------------------------------------------------------------------------------
+
+const FRETE = "Testar frete grátis acima de R$ 200";
+const cardByName = (name) => store().cards.find((c) => c.name === name);
+const listOf = (card) => store().lists.find((l) => l.id === card.listId)?.name;
+
+await step("quadro: Enter abre o verso do card", async () => {
+  await page.goto(`${BASE}/b/${boardId}`);
+  await page.getByRole("button", { name: FRETE, exact: true }).focus();
+  await page.keyboard.press("Enter");
+  await page.waitForURL(/card=/);
+  await page.getByRole("dialog").getByRole("heading", { name: /Testar frete grátis/ }).waitFor();
+});
+
+await step("card: descrição salva com Ctrl+Enter", async () => {
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("button", { name: /Adicione uma descrição/ }).click();
+  const editor = dialog.getByRole("textbox", { name: "Descrição do card" });
+  await editor.click();
+  await editor.pressSequentially("Comparar a conversão com e sem frete grátis.");
+  await page.keyboard.press("Control+Enter");
+  await editor.waitFor({ state: "detached" });
+  await dialog.getByText("Comparar a conversão com e sem frete grátis.").waitFor();
+  assert.match(cardByName(FRETE).descriptionText, /frete grátis/);
+});
+
+await step("card: checklist com item concluído", async () => {
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("button", { name: "Checklist", exact: true }).click();
+  await page.getByLabel("Nome", { exact: true }).fill("Passos do teste");
+  await page.getByRole("button", { name: "Adicionar", exact: true }).click();
+  await dialog.getByRole("heading", { name: "Passos do teste" }).waitFor();
+  await dialog.getByRole("button", { name: "Adicionar um item" }).click();
+  await dialog.getByRole("textbox", { name: "Novo item" }).fill("Primeiro passo");
+  await dialog.getByRole("textbox", { name: "Novo item" }).press("Enter");
+  await dialog.getByRole("checkbox", { name: "Primeiro passo" }).click();
+  await dialog.getByText("100%").waitFor();
+});
+
+await step("card: comentário com @menção avisa o Bruno", async () => {
+  const s0 = store();
+  const bruno = s0.users.find((u) => u.email.startsWith("bruno"));
+  const before = s0.notifications.filter((n) => n.userId === bruno.id && n.type === "mention").length;
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("button", { name: "Escreva um comentário…" }).click();
+  const editor = dialog.getByRole("textbox", { name: "Novo comentário" });
+  await editor.pressSequentially("Pode revisar, @bru");
+  await page.getByRole("option", { name: /Bruno Rocha/ }).waitFor();
+  await page.keyboard.press("Enter");
+  await editor.pressSequentially("obrigado!");
+  await dialog.getByRole("button", { name: "Comentar", exact: true }).click();
+  await editor.waitFor({ state: "detached" });
+  await dialog.getByText("obrigado!").waitFor();
+  const after = store().notifications.filter((n) => n.userId === bruno.id && n.type === "mention").length;
+  assert.equal(after, before + 1, "o Bruno deveria ter uma menção nova");
+});
+
+await step("quadro: Esc fecha o card e o teclado move o card de lista", async () => {
+  await page.keyboard.press("Escape");
+  await page.waitForURL((u) => !new URL(u).searchParams.has("card"));
+  assert.equal(listOf(cardByName(FRETE)), "Ideias");
+  await page.getByRole("button", { name: FRETE, exact: true }).focus();
+  await page.keyboard.press("Space");
+  await page.waitForTimeout(400);
+  await page.keyboard.press("ArrowRight");
+  await page.waitForTimeout(400);
+  await page.keyboard.press("Space");
+  for (let i = 0; i < 20 && listOf(cardByName(FRETE)) === "Ideias"; i++) await page.waitForTimeout(500);
+  assert.equal(listOf(cardByName(FRETE)), "A fazer");
+});
+
+await step("compartilhar: e-mail de fora recebe convite", async () => {
+  await page.getByRole("button", { name: "Compartilhar" }).click();
+  await page.getByLabel("E-mail ou nome").fill("convidada.teste@intellect.test");
+  await page.getByRole("dialog").getByRole("button", { name: "Convidar" }).click();
+  await page.getByLabel("Link do convite").waitFor();
+  const mail = store().outbox.at(-1);
+  assert.equal(mail.to, "convidada.teste@intellect.test");
+  assert.ok(mail.link?.includes("/invite/"), "o e-mail deveria ter o link do convite");
+  await page.keyboard.press("Escape");
+});
+
+await step("convite: senha fraca dá erro, depois cria a conta e abre o quadro", async () => {
+  const link = store().outbox.at(-1).link;
+  const guest = await browser.newContext({ locale: "pt-BR", reducedMotion: "reduce" });
+  guest.setDefaultTimeout(90_000);
+  const gp = await guest.newPage();
+  await gp.goto(link);
+  await gp.getByRole("heading", { name: /convidou você para o quadro/ }).waitFor();
+  await gp.getByLabel("Seu nome").fill("Convidada Teste");
+  await gp.getByLabel("Crie uma senha").fill("fraca");
+  await gp.getByRole("button", { name: "Criar conta e entrar" }).click();
+  await gp.getByText(/A senha precisa de 8 a 50 caracteres/).waitFor();
+  assert.equal(await gp.getByLabel("Seu nome").inputValue(), "Convidada Teste", "o nome digitado deveria continuar no campo");
+  await gp.getByLabel("Crie uma senha").fill(`Teste#${Date.now()}`);
+  await gp.getByRole("button", { name: "Criar conta e entrar" }).click();
+  await gp.waitForURL(new RegExp(`/b/${boardId}`));
+  await guest.close();
+  const s = store();
+  const guestUser = s.users.find((u) => u.email === "convidada.teste@intellect.test");
+  assert.ok(s.boardMembers.some((m) => m.boardId === boardId && m.userId === guestUser.id), "a convidada deveria virar membro do quadro");
+});
+
+await step("busca global: / acha o card e abre", async () => {
+  await page.goto(`${BASE}/w/intellect`);
+  await page.getByRole("heading", { name: /Olá, Ana/ }).click();
+  await page.keyboard.press("/");
+  await page.getByPlaceholder(/Buscar quadros, cards/).fill("remarketing");
+  await page.getByRole("option", { name: /Escalar o Remarketing 30d/ }).click();
+  await page.waitForURL(/card=/);
+  await page.getByRole("dialog").getByRole("heading", { name: /Escalar o Remarketing 30d/ }).waitFor();
+});
+
+await step("criar quadro pelo Início", async () => {
+  await page.goto(`${BASE}/w/intellect`);
+  await page.getByRole("main").getByRole("button", { name: "Criar quadro" }).first().click();
+  await page.getByLabel("Nome do quadro").fill("Quadro do teste automático");
+  await page.getByRole("radio", { name: "verde" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Criar quadro" }).click();
+  await page.waitForURL(/\/b\//);
+  await page.getByRole("heading", { name: /Quadro do teste automático/ }).waitFor();
+});
+
+await step("perfil: modo para daltônicos liga e desliga", async () => {
+  await page.goto(`${BASE}/me`);
+  const toggle = page.getByRole("switch", { name: "Modo para daltônicos" });
+  await toggle.click();
+  await page.getByRole("button", { name: "Salvar", exact: true }).click();
+  await page.waitForFunction(() => document.documentElement.dataset.colorblind === "on");
+  await toggle.click();
+  await page.getByRole("button", { name: "Salvar", exact: true }).click();
+  await page.waitForFunction(() => document.documentElement.dataset.colorblind !== "on");
+});
+
+await step("notificações: o Bruno vê a menção e marca como lida", async () => {
+  await page.goto(`${BASE}/api/dev/login?email=bruno@intellect.test&next=${encodeURIComponent("/w/intellect")}`);
+  await page.getByRole("button", { name: /Notificações, \d+ não lidas/ }).click();
+  await page.getByText(/mencionou você em Testar frete grátis/).first().waitFor();
+  await page.getByRole("button", { name: "Marcar todas como lidas" }).click();
+  await page.getByRole("button", { name: "Notificações", exact: true }).waitFor();
+  await page.goto(`${BASE}/api/dev/login?email=ana@intellect.test&next=${encodeURIComponent("/w/intellect")}`);
+  await page.getByRole("heading", { name: /Olá, Ana/ }).waitFor();
 });
 
 await step("período: escolher Ontem muda a URL", async () => {
@@ -155,7 +299,15 @@ await step("Despesas: lançar e excluir", async () => {
 
 await step("Integrações: teste de integração recebe o pedido simulado", async () => {
   await page.goto(`${BASE}/d/${dashboardId}/integrations?aba=testes`);
-  await page.getByLabel("Link da página da campanha").fill("https://intellect-loja-demo.myshopify.com/products/kit-essencial");
+  await page.waitForLoadState("networkidle");
+  const field = page.getByLabel("Link da página da campanha");
+  const url = "https://intellect-loja-demo.myshopify.com/products/kit-essencial";
+  // Preenche de novo se a página terminar de carregar e limpar o campo.
+  for (let i = 0; i < 5; i++) {
+    await field.fill(url);
+    await page.waitForTimeout(300);
+    if ((await field.inputValue()) === url) break;
+  }
   await page.getByRole("button", { name: "Gerar link de teste" }).click();
   await page.getByText(/simulate:order -- --teste/).waitFor();
   const code = store().integrationTests.at(-1).testCode;

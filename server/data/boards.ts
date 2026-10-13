@@ -1,6 +1,8 @@
 // Leituras do kanban: S03 Início, S05 Quadro, S06 Verso do card, S08 Menu,
 // S09 Compartilhar, S10 Busca, S11 Notificações, S12 Workspace, S30 Meus cards.
 
+import { createHash } from "node:crypto";
+
 import { notFound } from "next/navigation";
 
 import { boardRole, requireBoard, requireWorkspace, workspaceRole, type BoardRole, type Ctx } from "@/server/access";
@@ -539,4 +541,35 @@ export async function getCardPreview(ctx: Ctx, cardId: string) {
   if (!card) return null;
   requireBoard(ctx, card.boardId);
   return { boardId: card.boardId };
+}
+
+// ---- aceitar convite (S02) --------------------------------------------------------------------------
+
+/** Lê o convite pelo token do link (o banco só guarda o hash). Público: não exige login. */
+export function getInviteByToken(token: string, userId: string | null) {
+  const store = readStore();
+  const tokenHash = createHash("sha256").update(token).digest("hex");
+  const invite = store.invites.find((i) => i.tokenHash === tokenHash);
+  if (!invite) return { status: "invalid" as const };
+  const workspace = store.workspaces.find((w) => w.id === invite.workspaceId);
+  const board = invite.boardId ? store.boards.find((b) => b.id === invite.boardId) : null;
+  const base = {
+    workspaceName: workspace?.name ?? "",
+    workspaceSlug: workspace?.slug ?? "",
+    boardId: board?.id ?? null,
+    boardName: board?.name ?? null,
+    inviter: person(store, invite.createdBy).name,
+    email: invite.email,
+    role: invite.role,
+  };
+  if (invite.revokedAt) return { status: "revoked" as const, ...base };
+  if (new Date(invite.expiresAt).getTime() < Date.now()) return { status: "expired" as const, ...base };
+  const member = userId
+    ? board
+      ? store.boardMembers.some((m) => m.boardId === board.id && m.userId === userId)
+      : store.workspaceMembers.some((m) => m.workspaceId === invite.workspaceId && m.userId === userId)
+    : false;
+  if (member) return { status: "member" as const, ...base };
+  if (invite.maxUses != null && invite.usedCount >= invite.maxUses) return { status: "used" as const, ...base };
+  return { status: "valid" as const, ...base };
 }

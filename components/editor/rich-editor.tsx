@@ -25,7 +25,9 @@ function collectMentions(doc: JSONContent, out: string[] = []) {
 }
 
 export function valueOf(editor: Editor): EditorValue {
-  const doc = editor.getJSON();
+  // O ProseMirror cria os attrs com Object.create(null); o React não manda esse tipo
+  // de objeto para o servidor como dado comum. A cópia em JSON deixa tudo simples.
+  const doc = JSON.parse(JSON.stringify(editor.getJSON())) as JSONContent;
   return { doc, text: editor.getText({ blockSeparator: "\n" }).trim(), mentions: [...new Set(collectMentions(doc))] };
 }
 

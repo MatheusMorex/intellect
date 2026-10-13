@@ -12,16 +12,22 @@ import {
   Menu,
   Percent,
   Plug,
+  Plus,
   ReceiptText,
   Search,
   Settings,
+  Users,
   Wallet,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { CreateBoardDialog } from "@/components/board/create-board-dialog";
 import { BrandSymbol, Logo } from "@/components/brand/logo";
+import { GlobalSearch } from "@/components/shell/global-search";
+import { NotificationsBell } from "@/components/shell/notifications";
+import { ApplyPreferences, Shortcuts } from "@/components/shell/shortcuts";
 import { UserMenu } from "@/components/shell/user-menu";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -35,9 +41,11 @@ import { cn } from "@/lib/utils";
 
 export type ShellProps = {
   user: { name: string; email: string; avatarColor: string };
-  workspace: { name: string; slug: string } | null;
+  workspace: { id: string; name: string; slug: string } | null;
   boards: { id: string; name: string; background: string }[];
   dashboards: { id: string; name: string; adPlatforms: ("meta" | "google")[] }[];
+  unreadNotifications: number;
+  preferences: { colorblind: boolean; reduceMotion: boolean; singleKeyShortcuts: boolean };
   children: React.ReactNode;
 };
 
@@ -122,6 +130,7 @@ function SidebarNav({
   const work: NavItem[] = [
     { href: `/w/${slug}`, label: "Início", icon: Home, exact: true },
     { href: "/me/cards", label: "Meus cards", icon: ListChecks },
+    { href: `/w/${slug}/members`, label: "Membros", icon: Users },
   ];
   const sales: NavItem[] = dashboard
     ? [
@@ -155,6 +164,18 @@ function SidebarNav({
             item={{ href: `/b/${board.id}`, label: board.name, swatch: board.background }}
           />
         ))}
+        {props.workspace && !collapsed && (
+          <CreateBoardDialog
+            workspaceId={props.workspace.id}
+            workspaceName={props.workspace.name}
+            trigger={
+              <button type="button" className="flex h-8 items-center gap-2.5 rounded-md px-2.5 text-sm text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
+                <Plus aria-hidden="true" className="size-4 shrink-0" />
+                Criar quadro
+              </button>
+            }
+          />
+        )}
       </div>
 
       {dashboard && (
@@ -228,7 +249,23 @@ export function AppShell({ user, children, ...props }: ShellProps) {
           <Logo />
         </Link>
         <div className="flex-1" />
+        <GlobalSearch singleKeyShortcuts={props.preferences.singleKeyShortcuts} workspaceSlug={props.workspace?.slug ?? null} />
+        {props.workspace && (
+          <CreateBoardDialog
+            workspaceId={props.workspace.id}
+            workspaceName={props.workspace.name}
+            trigger={
+              <Button size="sm" className="hidden sm:inline-flex">
+                <Plus aria-hidden="true" />
+                Criar
+              </Button>
+            }
+          />
+        )}
+        <NotificationsBell unread={props.unreadNotifications} />
+        <Shortcuts enabled={props.preferences.singleKeyShortcuts} />
         <UserMenu user={user} />
+        <ApplyPreferences colorblind={props.preferences.colorblind} reduceMotion={props.preferences.reduceMotion} />
       </header>
 
       <div className="flex min-h-0 flex-1">

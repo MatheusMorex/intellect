@@ -1,11 +1,12 @@
 "use server";
 
+import { addDays, addMonths, addWeeks } from "date-fns";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { requireBoard, requireDashboard, requireWorkspace, type BoardRole } from "@/server/access";
 import { requireUser, type SessionUser } from "@/server/auth/session";
-import { bumpCard, cardsOfList, insertCard, listsOfBoard, logActivity, notify, rankBetween, touchBoard } from "@/server/kanban/core";
+import { bumpCard, cardsOfList, insertCard, listsOfBoard, logActivity, notify, plainJson, rankBetween, touchBoard } from "@/server/kanban/core";
 import { mutate, newId, nowIso, readStore } from "@/server/store/db";
 import type { BoardRow, CardRow, Store } from "@/server/store/types";
 
@@ -383,6 +384,11 @@ export async function updateCard(input: z.input<typeof cardUpdate>): Promise<Act
   const parsed = cardUpdate.safeParse(input);
   if (!parsed.success) return fail(firstIssue(parsed.error));
   const v = parsed.data;
+  if (v.description !== undefined) {
+    const doc = plainJson(v.description);
+    if (!doc.ok) return fail("Não consegui ler o texto da descrição.");
+    v.description = doc.value;
+  }
   const ctx = await onCard(v.cardId);
   if (!ctx) return fail("Este card não existe mais.");
   const blocked = closed(ctx.board);
@@ -412,12 +418,20 @@ export async function updateCard(input: z.input<typeof cardUpdate>): Promise<Act
       if (!v.dueAt) card.dueComplete = false;
       activity(store, ctx.user, card, "card.due", { dueAt: v.dueAt });
     }
-    if (v.dueComplete !== undefined && v.dueComplete !== card.dueComplete) {
-      card.dueComplete = v.dueComplete;
-      activity(store, ctx.user, card, "card.completed", { done: v.dueComplete });
-    }
     if (v.dueReminderMinutes !== undefined) card.dueReminderMinutes = v.dueReminderMinutes;
     if (v.dueRecurrence !== undefined) card.dueRecurrence = v.dueRecurrence;
+    if (v.dueComplete !== undefined && v.dueComplete !== card.dueComplete) {
+      activity(store, ctx.user, card, "card.completed", { done: v.dueComplete });
+      if (v.dueComplete && card.dueRecurrence && card.dueAt) {
+        // Prazo que se repete: concluir leva a entrega (e o início) para a próxima vez.
+        const step = { daily: (d: Date) => addDays(d, 1), weekly: (d: Date) => addWeeks(d, 1), monthly: (d: Date) => addMonths(d, 1) }[card.dueRecurrence];
+        const nextDue = step(new Date(card.dueAt));
+        if (card.startAt) card.startAt = new Date(new Date(card.startAt).getTime() + (nextDue.getTime() - new Date(card.dueAt).getTime())).toISOString();
+        card.dueAt = nextDue.toISOString();
+        card.dueComplete = false;
+        activity(store, ctx.user, card, "card.due", { dueAt: card.dueAt });
+      } else card.dueComplete = v.dueComplete;
+    }
     if (v.cover !== undefined) card.cover = v.cover;
     bumpCard(store, card);
     return { conflict: false as const, version: card.version };
@@ -783,6 +797,9 @@ const commentInput = z.object({
 export async function addComment(cardId: string, input: z.input<typeof commentInput>): Promise<ActionResult<{ id: string }>> {
   const parsed = commentInput.safeParse(input);
   if (!parsed.success) return fail(firstIssue(parsed.error));
+  const doc = plainJson(parsed.data.body);
+  if (!doc.ok) return fail("Não consegui ler o texto do comentário.");
+  parsed.data.body = doc.value;
   const ctx = await onCard(cardId, "observer");
   if (!ctx) return fail("Este card não existe mais.");
   if (ctx.board.closedAt) return fail("Este quadro está fechado.");
@@ -808,6 +825,9 @@ export async function addComment(cardId: string, input: z.input<typeof commentIn
 export async function editComment(commentId: string, input: z.input<typeof commentInput>): Promise<ActionResult> {
   const parsed = commentInput.safeParse(input);
   if (!parsed.success) return fail(firstIssue(parsed.error));
+  const doc = plainJson(parsed.data.body);
+  if (!doc.ok) return fail("Não consegui ler o texto do comentário.");
+  parsed.data.body = doc.value;
   const comment = readStore().comments.find((c) => c.id === commentId);
   if (!comment) return fail("Este comentário não existe mais.");
   const ctx = await onCard(comment.cardId, "observer");
