@@ -136,11 +136,18 @@ export function expenseOccurrences(expense: Pick<ExpenseRow, "kind" | "date" | "
   return out;
 }
 
-export function expensesInRange(expenses: ExpenseRow[], range: { from: DateKey; to: DateKey }) {
+/** Converte um valor para a moeda do dashboard pela cotação do dia (server/fx). */
+export type ConvertCents = (amountCents: number, currency: string, day: DateKey) => number;
+
+const sameCurrency: ConvertCents = (amount) => amount;
+
+/** Soma das despesas no período; cada ocorrência é convertida pela cotação do dia dela. */
+export function expensesInRange(expenses: ExpenseRow[], range: { from: DateKey; to: DateKey }, convert: ConvertCents = sameCurrency) {
   const byCategory: Record<ExpenseCategory, number> = { traffic: 0, tools: 0, staff: 0, accounting: 0, other: 0 };
   let totalCents = 0;
   for (const e of expenses) {
-    const value = expenseOccurrences(e, range).length * e.amountCents;
+    let value = 0;
+    for (const day of expenseOccurrences(e, range)) value += convert(e.amountCents, e.currency, day);
     byCategory[e.category] += value;
     totalCents += value;
   }

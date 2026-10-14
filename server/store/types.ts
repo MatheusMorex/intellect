@@ -17,7 +17,23 @@ export type UserRow = {
   avatarColor: string; // tom de etiqueta usado nas iniciais
   bio: string;
   preferences: UserPreferences;
+  /** Foto de perfil enviada pela pessoa (FileRow do tipo "avatar"). Sem foto, ficam as iniciais. */
+  avatarFileId: Id | null;
+  appearance: UserAppearance;
   lastActiveAt: IsoDateTime | null;
+};
+
+/** Plano de fundo do app: a imagem, o quanto o tema cobre a imagem (dim, 0–90%) e o desfoque (blur, 0–20 px). */
+export type Wallpaper = { fileId: Id; dim: number; blur: number };
+
+export type HomePage = "inicio" | "meus-cards" | "resumo";
+
+export type UserAppearance = {
+  wallpaper: Wallpaper | null;
+  /** A frase em destaque sobre a INtellect no topo do Início. */
+  showTaglines: boolean;
+  /** Tela que abre depois de entrar. */
+  homePage: HomePage;
 };
 
 export type UserPreferences = {
@@ -90,6 +106,9 @@ export type AdSetRow = {
   dailyBudgetCents: number | null;
 };
 
+/** Formato do criativo. Hook e hold só existem para vídeo. */
+export type AdFormat = "video" | "image" | "carousel" | null;
+
 export type AdRow = {
   id: Id;
   adAccountId: Id;
@@ -98,6 +117,7 @@ export type AdRow = {
   externalId: string;
   name: string;
   status: AdStatus;
+  format: AdFormat;
 };
 
 export type AdInsightRow = {
@@ -112,6 +132,10 @@ export type AdInsightRow = {
   impressions: number;
   clicks: number;
   addToCarts: number;
+  /** Visualizações de pelo menos 3 segundos do vídeo (o "hook" do Meta). */
+  videoViews3s: number;
+  /** Visualizações até 75% do vídeo (o "hold" de 75%). */
+  videoP75Views: number;
 };
 
 export type StoreRow = {
@@ -216,12 +240,15 @@ export type OrderEventRow = {
   webhookDeliveryId: Id | null;
 };
 
+/** Fundo do quadro: uma cor da paleta (lib/board-backgrounds.ts) ou uma imagem enviada (FileRow "board_background"). */
+export type BoardBackground = { type: "color"; value: string } | { type: "image"; fileId: Id };
+
 export type BoardRow = {
   id: Id;
   workspaceId: Id;
   name: string;
   description: string;
-  background: { type: "color"; value: string };
+  background: BoardBackground;
   visibility: "private" | "workspace";
   prefs: BoardPrefs;
   nextCardNumber: number;
@@ -357,6 +384,8 @@ export type AdditionalFeeRow = {
   name: string;
   kind: "fixed" | "percent";
   amountCents: number | null;
+  /** Moeda do valor fixo (a do dashboard quando a taxa foi salva). */
+  currency: string;
   bp: number | null;
   scope: "all" | "product" | "payment_method";
   productId: Id | null;
@@ -495,6 +524,24 @@ export type AutomationRunRow = {
   finishedAt: IsoDateTime | null;
 };
 
+/** Imagem enviada do computador da pessoa. O arquivo fica em .data/uploads/<id>.<ext> (no Supabase, no Storage). */
+export type FileRow = {
+  id: Id;
+  ownerId: Id;
+  kind: "avatar" | "wallpaper" | "board_background";
+  /** Quadro do fundo (só "board_background"). */
+  boardId: Id | null;
+  mime: "image/jpeg" | "image/png" | "image/webp";
+  size: number;
+  createdAt: IsoDateTime;
+};
+
+/** Cotação de referência do Banco Central Europeu: 1 BRL = rate unidades de quote, no dia útil date. */
+export type FxRateRow = { date: DateKey; quote: string; rate: number };
+
+/** Até onde as cotações de cada moeda já foram buscadas (fim de semana e feriado não têm cotação). */
+export type FxCoverage = { from: DateKey; to: DateKey; fetchedAt: IsoDateTime };
+
 export type Store = {
   version: number;
   seededAt: IsoDateTime;
@@ -544,4 +591,7 @@ export type Store = {
   boardStamps: Record<Id, string>;
   cardLinks: CardLinkRow[];
   activities: ActivityRow[];
+  files: FileRow[];
+  fxRates: FxRateRow[];
+  fxCoverage: Record<string, FxCoverage>;
 };

@@ -4,12 +4,12 @@ import { Check, Globe, Lock } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
-import { LABEL_HUES, LABEL_HUE_NAME } from "@/components/ds/label-chip";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { BOARD_COLORS, boardColorHex, DEFAULT_BOARD_COLOR, type BoardColorKey } from "@/lib/board-backgrounds";
 import { cn } from "@/lib/utils";
 import { createBoard } from "@/server/actions/kanban";
 
@@ -18,14 +18,14 @@ export function CreateBoardDialog({ workspaceId, workspaceName, trigger }: { wor
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
-  const [background, setBackground] = useState<string>("purple");
+  const [background, setBackground] = useState<BoardColorKey>(DEFAULT_BOARD_COLOR);
   const [visibility, setVisibility] = useState<"private" | "workspace">("workspace");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   const reset = () => {
     setName("");
-    setBackground("purple");
+    setBackground(DEFAULT_BOARD_COLOR);
     setVisibility("workspace");
     setError(null);
   };
@@ -44,7 +44,7 @@ export function CreateBoardDialog({ workspaceId, workspaceName, trigger }: { wor
           <DialogTitle>Criar quadro</DialogTitle>
           <DialogDescription>Um quadro junta listas e cards de um projeto ou rotina.</DialogDescription>
         </DialogHeader>
-        <div aria-hidden="true" className="flex h-24 items-start rounded-lg p-3 text-sm font-semibold text-white" style={{ background: `var(--ds-label-${background}-bold)` }}>
+        <div aria-hidden="true" className="flex h-24 items-start rounded-lg p-3 text-sm font-semibold text-white" style={{ background: boardColorHex(background) }}>
           <span className="truncate">{name.trim() || "Nome do quadro"}</span>
         </div>
         <form
@@ -84,24 +84,26 @@ export function CreateBoardDialog({ workspaceId, workspaceName, trigger }: { wor
           <fieldset className="grid gap-2">
             <legend className="mb-1.5 text-sm font-medium">Fundo</legend>
             <div role="radiogroup" aria-label="Cor do fundo" className="grid grid-cols-5 gap-2">
-              {LABEL_HUES.map((hue) => (
+              {BOARD_COLORS.map((c) => (
                 <button
-                  key={hue}
+                  key={c.key}
                   type="button"
                   role="radio"
-                  aria-checked={background === hue}
-                  aria-label={LABEL_HUE_NAME[hue]}
-                  onClick={() => setBackground(hue)}
+                  aria-checked={background === c.key}
+                  aria-label={c.name}
+                  title={c.name}
+                  onClick={() => setBackground(c.key)}
                   className={cn(
-                    "grid h-10 place-items-center rounded-md text-white outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-popover",
-                    background === hue && "ring-2 ring-ring ring-offset-2 ring-offset-popover",
+                    "grid h-9 place-items-center rounded-md text-white outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-popover",
+                    background === c.key && "ring-2 ring-ring ring-offset-2 ring-offset-popover",
                   )}
-                  style={{ background: `var(--ds-label-${hue}-bold)` }}
+                  style={{ background: c.hex }}
                 >
-                  {background === hue && <Check aria-hidden="true" className="size-4" />}
+                  {background === c.key && <Check aria-hidden="true" className="size-4" />}
                 </button>
               ))}
             </div>
+            <p className="text-xs text-muted-foreground">Quer uma foto? Depois de criar, abra o menu do quadro em “Mudar o fundo (papel de parede)”.</p>
           </fieldset>
           <fieldset>
             <legend className="mb-1.5 text-sm font-medium">Quem vê</legend>

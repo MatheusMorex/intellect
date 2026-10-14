@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { describeAutomation, type Names } from "@/lib/automation/describe";
 import type { AutomationAction, AutomationType, CardFilter } from "@/lib/automation/schema";
 import { requireBoard, type Ctx } from "@/server/access";
+import { backgroundView } from "@/server/data/boards";
 import { listDashboardsFor } from "@/server/data/tracking";
 import { listsOfBoard } from "@/server/kanban/core";
 import { readStore } from "@/server/store/db";
@@ -14,10 +15,13 @@ export type AutomationOptions = {
   lists: { id: string; name: string }[];
   labels: { id: string; name: string; color: string | null }[];
   people: { id: string; name: string }[];
-  dashboards: { id: string; name: string }[];
+  dashboards: DashboardOption[];
 };
 
-function boardNames(store: Store, boardId: string, dashboards: { id: string; name: string }[]): Names {
+/** Dashboard que uma regra por métrica pode olhar; os valores dela ficam na moeda dele. */
+type DashboardOption = { id: string; name: string; currency: string };
+
+function boardNames(store: Store, boardId: string, dashboards: DashboardOption[]): Names {
   const board = store.boards.find((b) => b.id === boardId)!;
   const people = new Set(store.boardMembers.filter((m) => m.boardId === boardId).map((m) => m.userId));
   if (board.visibility === "workspace") for (const m of store.workspaceMembers.filter((x) => x.workspaceId === board.workspaceId)) people.add(m.userId);
@@ -27,10 +31,11 @@ function boardNames(store: Store, boardId: string, dashboards: { id: string; nam
     labels: Object.fromEntries(store.labels.filter((l) => l.boardId === boardId).map((l) => [l.id, l.name || `etiqueta ${l.color ?? "sem cor"}`])),
     people: Object.fromEntries(store.users.filter((u) => people.has(u.id)).map((u) => [u.id, u.name])),
     dashboards: Object.fromEntries(dashboards.map((d) => [d.id, d.name])),
+    currencies: Object.fromEntries(dashboards.map((d) => [d.id, d.currency])),
   };
 }
 
-function options(store: Store, boardId: string, dashboards: { id: string; name: string }[]): AutomationOptions {
+function options(store: Store, boardId: string, dashboards: DashboardOption[]): AutomationOptions {
   const board = store.boards.find((b) => b.id === boardId)!;
   const people = new Set(store.boardMembers.filter((m) => m.boardId === boardId).map((m) => m.userId));
   if (board.visibility === "workspace") for (const m of store.workspaceMembers.filter((x) => x.workspaceId === board.workspaceId)) people.add(m.userId);
@@ -54,11 +59,11 @@ export async function getAutomationDirectory(ctx: Ctx, boardId: string) {
   const store = readStore();
   const dashboards = listDashboardsFor(ctx)
     .filter((d) => d.workspaceId === board.workspaceId)
-    .map((d) => ({ id: d.id, name: d.name }));
+    .map((d) => ({ id: d.id, name: d.name, currency: d.currency }));
   const names = boardNames(store, boardId, dashboards);
   const runsOf = (id: string) => store.automationRuns.filter((r) => r.automationId === id);
   return {
-    board: { id: board.id, name: board.name, background: board.background.value, closed: !!board.closedAt },
+    board: { id: board.id, name: board.name, background: backgroundView(board.background), closed: !!board.closedAt },
     canEdit: role !== "observer" && !board.closedAt,
     automations: store.automations
       .filter((a) => a.boardId === boardId)
@@ -115,7 +120,7 @@ export async function getAutomationEditor(ctx: Ctx, boardId: string, automationI
   const store = readStore();
   const dashboards = listDashboardsFor(ctx)
     .filter((d) => d.workspaceId === board.workspaceId)
-    .map((d) => ({ id: d.id, name: d.name }));
+    .map((d) => ({ id: d.id, name: d.name, currency: d.currency }));
   const automation = automationId ? store.automations.find((a) => a.id === automationId && a.boardId === boardId) : null;
   if (automationId && !automation) notFound();
   return {

@@ -4,7 +4,7 @@ import { AlignLeft, Check, MessageSquare } from "lucide-react";
 
 import { ChecklistBadge, DueBadge, MetricBadge } from "@/components/ds/badges";
 import { LabelChip } from "@/components/ds/label-chip";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { roas } from "@/lib/format";
 import { initials } from "@/lib/initials";
 import { cn } from "@/lib/utils";
@@ -119,6 +119,7 @@ export function CardFrontView({
             <span className="ml-auto flex -space-x-1" aria-label={`Membros: ${members.map((m) => m.name).join(", ")}`}>
               {members.slice(0, 3).map((m) => (
                 <Avatar key={m.id} className="size-6 ring-2 ring-card" title={m.name}>
+                  {m.avatarUrl && <AvatarImage src={m.avatarUrl} alt="" className="object-cover" />}
                   <AvatarFallback className="text-[10px] font-semibold" style={{ background: `var(--ds-label-${m.avatarColor}-bold)`, color: "var(--ds-label-text-bold)" }}>
                     {initials(m.name)}
                   </AvatarFallback>

@@ -17,6 +17,11 @@ export function money(cents: number, currency = "BRL") {
   );
 }
 
+/** Símbolo da moeda como aparece nos valores: "R$", "€", "£", "CHF". */
+export function currencySymbol(currency: string) {
+  return new Intl.NumberFormat("pt-BR", { style: "currency", currency }).formatToParts(0).find((p) => p.type === "currency")?.value ?? currency;
+}
+
 export function percent(basisPoints: number, digits = 1) {
   return withMinus(
     new Intl.NumberFormat("pt-BR", {
@@ -62,4 +67,27 @@ export function percentOf(fraction: number | null, digits = 1) {
   return withMinus(
     new Intl.NumberFormat("pt-BR", { style: "percent", minimumFractionDigits: digits, maximumFractionDigits: digits }).format(fraction),
   );
+}
+
+// Sem número de verdade (sem venda, sem gasto), os valores do tracking aparecem
+// zerados: R$ 0,00, ROAS 0,00 e 0,0%. O travessão fica só para o que não é número.
+
+export const ZERO_RATIO = "0,00";
+
+export function moneyOrZero(cents: number | null | undefined, currency = "BRL") {
+  return money(cents ?? 0, currency);
+}
+
+export function roasOrZero(value: number | null | undefined) {
+  return roas(value) ?? ZERO_RATIO;
+}
+
+export function percentOrZero(fraction: number | null | undefined, digits = 1) {
+  return percentOf(fraction ?? null, digits) ?? percentOf(0, digits)!;
+}
+
+/** Número com casas decimais (frequência 3,5), zerado quando não há número. */
+export function decimalOrZero(value: number | null | undefined, digits = 1) {
+  const v = value == null || !Number.isFinite(value) ? 0 : value;
+  return new Intl.NumberFormat("pt-BR", { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(v);
 }

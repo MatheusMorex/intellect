@@ -6,6 +6,7 @@ import { AutomationMenu, AutomationToggle } from "@/components/automation/direct
 import { StatusPill } from "@/components/ds/badges";
 import { Banner } from "@/components/ds/banner";
 import { EmptyState } from "@/components/ds/empty-state";
+import { HelpTip } from "@/components/ds/help-tip";
 import { PageBody, PageHeader } from "@/components/shell/page-header";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -66,6 +67,7 @@ export default async function AutomationPage({ params, searchParams }: { params:
       </div>
       <PageHeader
         title="Automação"
+        help="automacao"
         description={`Regras, botões e checagens de métrica do quadro ${data.board.name}.`}
         actions={
           data.canEdit &&
@@ -197,9 +199,12 @@ async function RunHistory({ boardId, sp, automations }: { boardId: string; sp: S
   );
   return (
     <section aria-labelledby="historico" className="grid gap-3">
-      <h2 id="historico" className="text-base font-semibold">
-        Histórico de execuções{filtered ? `: ${filtered.name}` : ""}
-      </h2>
+      <div className="flex items-center gap-1">
+        <h2 id="historico" className="text-base font-semibold">
+          Histórico de execuções{filtered ? `: ${filtered.name}` : ""}
+        </h2>
+        <HelpTip topic="automacao-historico" className="size-5" />
+      </div>
       <div className="flex flex-wrap items-center gap-2">
         {chip("Todas", undefined)}
         {chip("Sucesso", "success")}

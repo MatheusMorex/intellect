@@ -54,7 +54,7 @@ export type Summary = {
   chargebackRate: number | null;
 };
 
-/** a ÷ b, ou null quando b é zero (a tela mostra "—"). */
+/** a ÷ b, ou null quando b é zero (a tela mostra zerado: 0,00 ou 0,0%). */
 export function ratio(a: number, b: number): number | null {
   return b === 0 ? null : a / b;
 }

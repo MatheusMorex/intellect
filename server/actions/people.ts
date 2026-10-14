@@ -12,7 +12,7 @@ import { z } from "zod";
 import { requireBoard, requireWorkspace } from "@/server/access";
 import { requireUser, startSession, getCurrentUser } from "@/server/auth/session";
 import { appUrl, logActivity, notify, sendEmail, touchBoard } from "@/server/kanban/core";
-import { hashPassword } from "@/server/store/seed";
+import { DEFAULT_APPEARANCE, hashPassword } from "@/server/store/seed";
 import { mutate, newId, nowIso, readStore } from "@/server/store/db";
 import type { InviteRow, Store } from "@/server/store/types";
 
@@ -305,6 +305,8 @@ export async function acceptInvite(_prev: InviteState, form: FormData): Promise<
         avatarColor: ["purple", "sky", "orange", "green", "pink", "blue"][store.users.length % 6],
         bio: "",
         preferences: { colorblind: false, reduceMotion: false, singleKeyShortcuts: true, emailNotifications: "periodic" as const },
+        avatarFileId: null,
+        appearance: { ...DEFAULT_APPEARANCE },
         lastActiveAt: nowIso(),
       };
       store.users.push(user);

@@ -7,6 +7,9 @@ import { useCallback, useSyncExternalStore } from "react";
 
 const EVENT = "itl-flag-change";
 
+/** Menu lateral recolhido (só os ícones). Uma escolha para todas as telas; o padrão é aberto. */
+export const SIDEBAR_COLLAPSED_KEY = "itl-menu-recolhido";
+
 function read(key: string, fallback: boolean) {
   try {
     const value = window.localStorage.getItem(key);

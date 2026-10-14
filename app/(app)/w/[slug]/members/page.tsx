@@ -16,7 +16,7 @@ export default async function WorkspaceMembersPage({ params }: { params: Promise
 
   return (
     <PageBody>
-      <PageHeader title={data.workspace.name} description="Quem faz parte do workspace e com qual papel." />
+      <PageHeader title={data.workspace.name} help="membros" description="Quem faz parte do workspace e com qual papel." />
       <WorkspaceTabs slug={slug} active="members" />
       {data.isAdmin && <InviteToWorkspace workspaceId={data.workspace.id} domain={data.workspace.allowedEmailDomain} />}
       <MembersTable data={data} />

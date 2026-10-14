@@ -5,6 +5,7 @@ import Link from "next/link";
 import { StatusPill, type PillStatus } from "@/components/ds/badges";
 import { Banner } from "@/components/ds/banner";
 import { CodeBox } from "@/components/ds/code-box";
+import { HelpTip } from "@/components/ds/help-tip";
 import { PageBody, PageHeader } from "@/components/shell/page-header";
 import {
   AccountSwitch,
@@ -14,6 +15,7 @@ import {
   UtmGenerator,
 } from "@/components/tracking/integrations-client";
 import { dateTimeIn, relative } from "@/lib/format";
+import type { HelpTopic } from "@/lib/help";
 import { cn } from "@/lib/utils";
 import { requireUser } from "@/server/auth/session";
 import { getIntegrations } from "@/server/data/settings";
@@ -41,11 +43,14 @@ const TEST_STATUS: Record<string, { label: string; pill: PillStatus }> = {
   failed: { label: "Falhou", pill: "error" },
 };
 
-function Section({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
+function Section({ title, description, help, children }: { title: string; description?: string; help: HelpTopic; children: React.ReactNode }) {
   return (
     <section className="grid gap-4 rounded-lg border bg-card p-4 sm:p-6">
       <div>
-        <h2 className="text-base font-semibold">{title}</h2>
+        <div className="flex items-center gap-1">
+          <h2 className="text-base font-semibold">{title}</h2>
+          <HelpTip topic={help} className="size-5" />
+        </div>
         {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
       </div>
       {children}
@@ -71,7 +76,7 @@ export default async function IntegrationsPage({
 
   return (
     <PageBody>
-      <PageHeader title="Integrações" description={data.dashboard.name} />
+      <PageHeader title="Integrações" help="integracoes" description={data.dashboard.name} />
       {data.mode === "fake" && (
         <Banner variant="info" title="Modo de teste">
           Meta, Google e Shopify estão simulados com dados de exemplo. Nenhuma conta real é acessada. A conexão real entra quando o dono do negócio aprovar.
@@ -102,6 +107,7 @@ export default async function IntegrationsPage({
             <Section
               key={p.provider}
               title={name}
+              help="integ-anuncios"
               description={
                 p.provider === "meta"
                   ? "Gasto, impressões e cliques por anúncio e por dia, e o status das campanhas."
@@ -156,7 +162,7 @@ export default async function IntegrationsPage({
         })}
 
       {tab === "loja" && (
-        <Section title="Shopify" description="Os pedidos chegam por webhook assim que são feitos; a origem vem da jornada do cliente na Shopify.">
+        <Section title="Shopify" help="integ-loja" description="Os pedidos chegam por webhook assim que são feitos; a origem vem da jornada do cliente na Shopify.">
           {!data.shop ? (
             <p className="text-muted-foreground">Nenhuma loja conectada a este dashboard.</p>
           ) : (
@@ -217,14 +223,15 @@ export default async function IntegrationsPage({
         <>
           <Section
             title="Meta Ads: parâmetros de URL"
+            help="integ-meta-url"
             description="Cole no campo Parâmetros de URL de cada anúncio (ou no nível da campanha). Os ids não mudam quando você renomeia a campanha."
           >
             <CodeBox label="Parâmetros de URL do Meta" value={data.templates.meta} wrap />
           </Section>
-          <Section title="Google Ads: sufixo de URL final" description="Cole em Configurações da conta → Sufixo de URL final. Vale para todas as campanhas da conta.">
+          <Section title="Google Ads: sufixo de URL final" help="integ-google-url" description="Cole em Configurações da conta → Sufixo de URL final. Vale para todas as campanhas da conta.">
             <CodeBox label="Sufixo de URL final do Google" value={data.templates.google} wrap />
           </Section>
-          <Section title="UTMs para tráfego orgânico" description="Para links na bio, no WhatsApp ou no e-mail: a venda aparece em Outras fontes com a origem certa.">
+          <Section title="UTMs para tráfego orgânico" help="integ-utm-organico" description="Para links na bio, no WhatsApp ou no e-mail: a venda aparece em Outras fontes com a origem certa.">
             <UtmGenerator />
           </Section>
         </>
@@ -232,10 +239,10 @@ export default async function IntegrationsPage({
 
       {tab === "testes" && (
         <>
-          <Section title="Testar a integração" description="Gera um link de teste. A compra feita por ele aparece aqui e não entra nos números do dashboard.">
+          <Section title="Testar a integração" help="integ-teste" description="Gera um link de teste. A compra feita por ele aparece aqui e não entra nos números do dashboard.">
             <IntegrationTestForm dashboardId={dashboardId} canManage={data.canManage} mode={data.mode} />
           </Section>
-          <Section title="Últimos testes">
+          <Section title="Últimos testes" help="integ-testes-lista">
             {data.tests.length === 0 ? (
               <p className="text-sm text-muted-foreground">Nenhum teste ainda.</p>
             ) : (

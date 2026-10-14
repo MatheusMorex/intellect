@@ -17,6 +17,7 @@ import type { AutomationAction, BoardAction, CardAction, CardFilter, DueTrigger,
 import { fillVariables, isCardAction } from "@/lib/automation/schema";
 import { orderBase } from "@/server/data/tracking";
 import { appUrl, cardsOfList, insertCard, logActivity, notify, rankBetween, sendEmail, touchBoard, type AutomationActor } from "@/server/kanban/core";
+import { makeConverter } from "@/server/fx/convert";
 import { dayKeyIn, inRange, todayIn, type DateRange } from "@/server/period";
 import { afterMutate, newId, nowIso } from "@/server/store/db";
 import type { AutomationRow, AutomationRunRow, CardRow, Store } from "@/server/store/types";
@@ -526,10 +527,13 @@ export function metricObjects(store: Store, t: MetricTrigger, now: Date): { obje
   const ids = new Set(chosen.map((o) => o.id));
   const range = windowRange(t.window, dashboard.timezone, now);
   const keyOf = (r: { campaignId: string | null; adSetId: string | null; adId: string | null }) => (t.level === "campaign" ? r.campaignId : t.level === "ad_set" ? r.adSetId : r.adId);
+  // Tudo na moeda do dashboard, pelas cotações guardadas (o Resumo busca as que faltam).
+  const fx = makeConverter(store.fxRates, dashboard.currency);
+  const toDashboard = (cents: number, currency: string, day: string) => fx.cents(cents, currency, day) ?? 0;
   const spend = new Map<string, number>();
   for (const i of store.adInsightsDaily) {
     const k = keyOf(i);
-    if (k && ids.has(k) && inRange(i.date, range)) spend.set(k, (spend.get(k) ?? 0) + i.spendCents);
+    if (k && ids.has(k) && inRange(i.date, range)) spend.set(k, (spend.get(k) ?? 0) + toDashboard(i.spendCents, i.currency, i.date));
   }
   const storeIds = new Set(store.dashboardStores.filter((l) => l.dashboardId === dashboard.id).map((l) => l.storeId));
   const revenue = new Map<string, number>();
@@ -537,10 +541,13 @@ export function metricObjects(store: Store, t: MetricTrigger, now: Date): { obje
   for (const o of store.orders) {
     if (!storeIds.has(o.storeId) || o.isTest || o.status !== "paid") continue;
     const k = keyOf(o);
-    if (!k || !ids.has(k) || !inRange(dayKeyIn(o.placedAt, dashboard.timezone), range)) continue;
-    revenue.set(k, (revenue.get(k) ?? 0) + orderBase(o, dashboard));
+    const day = dayKeyIn(o.placedAt, dashboard.timezone);
+    if (!k || !ids.has(k) || !inRange(day, range)) continue;
+    revenue.set(k, (revenue.get(k) ?? 0) + toDashboard(orderBase(o, dashboard), o.currency, day));
     sales.set(k, (sales.get(k) ?? 0) + 1);
   }
+  // Agir em cima de número convertido pela metade seria pior do que não agir.
+  if (fx.misses() > 0) throw new AutomationError("Faltou a cotação de alguma moeda para converter os valores. A regra roda de novo na próxima vez.");
   const objects = chosen.map((o) => {
     const s = spend.get(o.id) ?? 0;
     const r = revenue.get(o.id) ?? 0;
@@ -558,7 +565,7 @@ export function conditionsMet(t: MetricTrigger, o: MetricObject) {
   });
 }
 
-const money = (reais: number) => reais.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const money = (value: number, currency: string) => value.toLocaleString("pt-BR", { style: "currency", currency });
 
 /** Roda uma regra de métrica: cada objeto que bate as condições aciona os cards ligados a ele. */
 export function runMetricAutomation(store: Store, automation: AutomationRow, now: Date) {
@@ -575,7 +582,12 @@ export function runMetricAutomation(store: Store, automation: AutomationRow, now
   let runs = 0;
   for (const o of matched) {
     const windowKey = `${automation.id}:${o.id}:${result.range.from}:${result.range.to}`;
-    const extra = { campaign: o.name, roas: o.values.roas == null ? "—" : o.values.roas.toLocaleString("pt-BR", { maximumFractionDigits: 2 }), spend: money(o.values.spend ?? 0) };
+    const currency = store.dashboards.find((d) => d.id === t.dashboardId)?.currency ?? "BRL";
+    const extra = {
+      campaign: o.name,
+      roas: (o.values.roas ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+      spend: money(o.values.spend ?? 0, currency),
+    };
     const targetKey = t.level === "campaign" ? "campaignId" : t.level === "ad_set" ? "adSetId" : "adId";
     const cards = store.cardLinks
       .filter((l) => l.dashboardId === t.dashboardId && l.targetType === t.level && l[targetKey] === o.id)

@@ -1,10 +1,10 @@
 "use client";
 
-import { ListChecks, LogOut, Monitor, Moon, Palette, Sun, User } from "lucide-react";
+import { ListChecks, LogOut, Monitor, Moon, Palette, Settings, Sun, User } from "lucide-react";
 import Link from "next/link";
 import { useTheme } from "next-themes";
 
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { UserAvatar } from "@/components/ds/user-avatar";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -19,23 +19,21 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { initials } from "@/lib/initials";
 import { logout } from "@/server/actions/auth";
 
-export function UserMenu({ user }: { user: { name: string; email: string; avatarColor: string } }) {
+export function UserMenu({
+  user,
+  settingsHref,
+}: {
+  user: { name: string; email: string; avatarColor: string; avatarUrl: string | null };
+  settingsHref: string;
+}) {
   const { theme, setTheme } = useTheme();
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="icon" className="rounded-full" aria-label={`Menu de ${user.name}`}>
-          <Avatar className="size-8">
-            <AvatarFallback
-              className="text-xs font-semibold"
-              style={{ background: `var(--ds-label-${user.avatarColor}-bold)`, color: "var(--ds-label-text-bold)" }}
-            >
-              {initials(user.name)}
-            </AvatarFallback>
-          </Avatar>
+          <UserAvatar person={user} className="size-8" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-60">
@@ -54,6 +52,12 @@ export function UserMenu({ user }: { user: { name: string; email: string; avatar
           <Link href="/me/cards">
             <ListChecks aria-hidden="true" />
             Meus cards
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link href={settingsHref}>
+            <Settings aria-hidden="true" />
+            Configurações
           </Link>
         </DropdownMenuItem>
         <DropdownMenuSub>

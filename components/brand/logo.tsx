@@ -5,14 +5,15 @@ import { cn } from "@/lib/utils";
 
 const LOGO_RATIO = 485.87 / 100;
 
-export function Logo({ height = 24, className }: { height?: number; className?: string }) {
+/** imgClassName muda o tamanho por tela (ex.: menor no celular), mantendo a proporção com w-auto. */
+export function Logo({ height = 24, className, imgClassName }: { height?: number; className?: string; imgClassName?: string }) {
   const width = Math.round(height * LOGO_RATIO);
   return (
     <span className={cn("inline-flex", className)}>
       {/* eslint-disable-next-line @next/next/no-img-element -- SVG estático, sem otimização */}
-      <img src="/marca/intellect-logo-para-fundo-claro.svg" alt="INtellect" width={width} height={height} className="block dark:hidden" />
+      <img src="/marca/intellect-logo-para-fundo-claro.svg" alt="INtellect" width={width} height={height} className={cn("block dark:hidden", imgClassName)} />
       {/* eslint-disable-next-line @next/next/no-img-element -- SVG estático, sem otimização */}
-      <img src="/marca/intellect-logo-para-fundo-escuro.svg" alt="INtellect" width={width} height={height} className="hidden dark:block" />
+      <img src="/marca/intellect-logo-para-fundo-escuro.svg" alt="INtellect" width={width} height={height} className={cn("hidden dark:block", imgClassName)} />
     </span>
   );
 }

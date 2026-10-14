@@ -56,7 +56,8 @@ export async function setAdObjectBudget(input: z.input<typeof budgetInput>): Pro
   if (!parsed.success) return { ok: false, error: "Dados inválidos." };
   const { dashboardId, level: lvl, id, value } = parsed.data;
   const cents = parseMoneyToCents(value);
-  if (cents == null || cents < 100) return { ok: false, error: "Use um orçamento diário de pelo menos R$ 1,00, como 80,00." };
+  // O mínimo vale na moeda da conta de anúncio, que é a do campo de orçamento.
+  if (cents == null || cents < 100) return { ok: false, error: "Use um orçamento diário de pelo menos 1,00, como 80,00." };
   requireDashboard({ user }, dashboardId, "admin");
   if (process.env.INTEGRATIONS_MODE === "live") {
     return { ok: false, error: "Mudar orçamento na conta real ainda não está ligado." };

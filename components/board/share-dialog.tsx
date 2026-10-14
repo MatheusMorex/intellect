@@ -6,7 +6,7 @@ import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { CodeBox } from "@/components/ds/code-box";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -113,6 +113,7 @@ export function ShareDialog({
                   <li key={p.id}>
                     <button type="button" className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring" onClick={() => invite(p.id)}>
                       <Avatar className="size-6">
+                        {p.avatarUrl && <AvatarImage src={p.avatarUrl} alt="" className="object-cover" />}
                         <AvatarFallback className="text-[10px] font-semibold" style={{ background: `var(--ds-label-${p.avatarColor}-bold)`, color: "var(--ds-label-text-bold)" }}>
                           {initials(p.name)}
                         </AvatarFallback>
@@ -183,6 +184,7 @@ export function ShareDialog({
             {sharing.members.map((m) => (
               <li key={m.id} className="flex items-center gap-2 py-1">
                 <Avatar className="size-8">
+                  {m.avatarUrl && <AvatarImage src={m.avatarUrl} alt="" className="object-cover" />}
                   <AvatarFallback className="text-xs font-semibold" style={{ background: `var(--ds-label-${m.avatarColor}-bold)`, color: "var(--ds-label-text-bold)" }}>
                     {initials(m.name)}
                   </AvatarFallback>

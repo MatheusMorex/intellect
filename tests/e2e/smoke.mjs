@@ -226,7 +226,7 @@ await step("automação: criar regra pelo construtor", async () => {
   await page.getByRole("option", { name: "Um card for criado" }).click();
   await page.getByLabel("Na lista").click();
   await page.getByRole("option", { name: "Ideias" }).click();
-  await page.getByLabel("Ação 1").click();
+  await page.getByLabel("Ação 1", { exact: true }).click();
   await page.getByRole("option", { name: "Colocar etiqueta" }).click();
   await page.getByLabel("Etiqueta", { exact: true }).click();
   await page.getByRole("option", { name: "Criativo" }).click();

@@ -2,8 +2,8 @@
 
 import {
   BarChart3,
-  ChevronsLeft,
-  ChevronsRight,
+  ChevronLeft,
+  ChevronRight,
   FileSpreadsheet,
   Home,
   Link2,
@@ -33,19 +33,22 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { usePersistentFlag } from "@/lib/use-persistent-flag";
+import { SIDEBAR_COLLAPSED_KEY, usePersistentFlag } from "@/lib/use-persistent-flag";
 import { cn } from "@/lib/utils";
 
 // Estrutura de todas as telas logadas (components.md, "Layout"): barra superior
-// de 56 px, menu lateral de 248 px que recolhe para 56 px e vira gaveta abaixo de 1024 px.
+// de 56 px e menu lateral de 248 px. O menu nunca recolhe sozinho: só pelo
+// botão com a flecha no meio da borda dele (fica só com os ícones, 56 px).
+// Abaixo de 768 px não cabe ao lado do conteúdo e vira gaveta.
 
 export type ShellProps = {
-  user: { name: string; email: string; avatarColor: string };
+  user: { name: string; email: string; avatarColor: string; avatarUrl: string | null };
   workspace: { id: string; name: string; slug: string } | null;
-  boards: { id: string; name: string; background: string }[];
+  boards: { id: string; name: string }[];
   dashboards: { id: string; name: string; adPlatforms: ("meta" | "google")[] }[];
   unreadNotifications: number;
   preferences: { colorblind: boolean; reduceMotion: boolean; singleKeyShortcuts: boolean };
+  appearance: { wallpaper: { url: string; dim: number; blur: number } | null };
   children: React.ReactNode;
 };
 
@@ -53,12 +56,18 @@ type NavItem = {
   href: string;
   label: string;
   icon?: React.ComponentType<{ className?: string }>;
-  swatch?: string; // cor do quadro, no lugar do ícone
   exact?: boolean;
 };
 
 function isActive(pathname: string, item: NavItem) {
   return item.exact ? pathname === item.href : pathname === item.href || pathname.startsWith(`${item.href}/`);
+}
+
+/** Duas primeiras letras do nome do quadro, para o menu recolhido. */
+function shortName(name: string) {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  const letters = words.length > 1 ? words[0][0] + words[1][0] : (words[0] ?? "?").slice(0, 2);
+  return letters.toUpperCase();
 }
 
 function NavLink({
@@ -87,13 +96,12 @@ function NavLink({
     >
       {item.icon ? (
         <item.icon aria-hidden="true" className="size-4 shrink-0" />
-      ) : (
-        <span
-          aria-hidden="true"
-          className="size-4 shrink-0 rounded-sm"
-          style={{ background: `var(--ds-label-${item.swatch ?? "black"}-bold)` }}
-        />
-      )}
+      ) : collapsed ? (
+        // Quadro no menu recolhido: as iniciais do nome, sem cor.
+        <span aria-hidden="true" className="text-[11px] font-semibold tracking-wide text-muted-foreground">
+          {shortName(item.label)}
+        </span>
+      ) : null}
       {!collapsed && <span className="truncate">{item.label}</span>}
     </Link>
   );
@@ -119,7 +127,7 @@ function SidebarNav({
 }: {
   pathname: string;
   collapsed: boolean;
-  props: Omit<ShellProps, "children" | "user">;
+  props: Omit<ShellProps, "children" | "user" | "appearance">;
   onNavigate?: () => void;
 }) {
   const router = useRouter();
@@ -156,13 +164,7 @@ function SidebarNav({
           <NavLink key={item.href} item={item} pathname={pathname} collapsed={collapsed} onNavigate={onNavigate} />
         ))}
         {props.boards.map((board) => (
-          <NavLink
-            key={board.id}
-            pathname={pathname}
-            collapsed={collapsed}
-            onNavigate={onNavigate}
-            item={{ href: `/b/${board.id}`, label: board.name, swatch: board.background }}
-          />
+          <NavLink key={board.id} pathname={pathname} collapsed={collapsed} onNavigate={onNavigate} item={{ href: `/b/${board.id}`, label: board.name }} />
         ))}
         {props.workspace && !collapsed && (
           <CreateBoardDialog
@@ -209,26 +211,35 @@ function SidebarNav({
       )}
 
       <div className="mt-auto grid gap-0.5 pt-4">
-        <NavLink
-          item={{ href: `/w/${slug}/settings`, label: "Configurações", icon: Settings }}
-          pathname={pathname}
-          collapsed={collapsed}
-          onNavigate={onNavigate}
-        />
+        <NavLink item={{ href: "/settings", label: "Configurações", icon: Settings }} pathname={pathname} collapsed={collapsed} onNavigate={onNavigate} />
       </div>
     </nav>
   );
 }
 
-export function AppShell({ user, children, ...props }: ShellProps) {
+export function AppShell({ user, appearance, children, ...props }: ShellProps) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const onBoard = pathname.startsWith("/b/");
-  const [collapsedChoice, setCollapsed] = usePersistentFlag(onBoard ? "itl-menu-recolhido-quadro" : "itl-menu-recolhido", onBoard);
-  const collapsed = collapsedChoice;
+  // Uma escolha só, para todas as telas; começa aberto e só muda pelo botão.
+  const [collapsed, setCollapsed] = usePersistentFlag(SIDEBAR_COLLAPSED_KEY, false);
+  const wallpaper = appearance.wallpaper;
 
   return (
     <div className="flex min-h-dvh flex-col">
+      {/* Plano de fundo escolhido pela pessoa: fica atrás do conteúdo; a camada da cor do tema por cima controla a intensidade. */}
+      {wallpaper && (
+        <div aria-hidden="true" className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
+          <div
+            className="absolute inset-0 bg-cover bg-center"
+            style={{
+              backgroundImage: `url("${wallpaper.url}")`,
+              filter: wallpaper.blur ? `blur(${wallpaper.blur}px)` : undefined,
+              transform: wallpaper.blur ? "scale(1.06)" : undefined,
+            }}
+          />
+          <div className="absolute inset-0 bg-background" style={{ opacity: wallpaper.dim / 100 }} />
+        </div>
+      )}
       <a
         href="#conteudo"
         className="sr-only z-80 rounded-md bg-card px-3 py-2 focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:ring-2 focus:ring-ring"
@@ -236,17 +247,12 @@ export function AppShell({ user, children, ...props }: ShellProps) {
         Pular para o conteúdo
       </a>
       <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-3 border-b bg-card px-3 sm:px-4">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="lg:hidden"
-          aria-label="Abrir menu"
-          onClick={() => setMobileOpen(true)}
-        >
+        <Button variant="ghost" size="icon" className="md:hidden" aria-label="Abrir menu" onClick={() => setMobileOpen(true)}>
           <Menu aria-hidden="true" />
         </Button>
-        <Link href={props.workspace ? `/w/${props.workspace.slug}` : "/"} aria-label="INtellect, início" className="rounded-sm">
-          <Logo />
+        <Link href={props.workspace ? `/w/${props.workspace.slug}` : "/"} aria-label="INtellect, início" className="shrink-0 rounded-sm">
+          {/* 37 px; no celular fica com 30 px para caber na barra junto com os botões. */}
+          <Logo height={37} imgClassName="h-[30px] w-auto sm:h-[37px]" />
         </Link>
         <div className="flex-1" />
         <GlobalSearch singleKeyShortcuts={props.preferences.singleKeyShortcuts} workspaceSlug={props.workspace?.slug ?? null} />
@@ -264,31 +270,33 @@ export function AppShell({ user, children, ...props }: ShellProps) {
         )}
         <NotificationsBell unread={props.unreadNotifications} />
         <Shortcuts enabled={props.preferences.singleKeyShortcuts} />
-        <UserMenu user={user} />
+        <UserMenu user={user} settingsHref="/settings" />
         <ApplyPreferences colorblind={props.preferences.colorblind} reduceMotion={props.preferences.reduceMotion} />
       </header>
 
       <div className="flex min-h-0 flex-1">
         <aside
           className={cn(
-            "sticky top-14 hidden h-[calc(100dvh-3.5rem)] shrink-0 flex-col border-r bg-card lg:flex",
+            "sticky top-14 hidden h-[calc(100dvh-3.5rem)] shrink-0 flex-col border-r bg-card transition-[width] duration-200 md:flex",
             collapsed ? "w-14" : "w-62",
           )}
         >
           <SidebarNav pathname={pathname} collapsed={collapsed} props={props} />
-          <div className="border-t p-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              className={cn("w-full justify-start text-muted-foreground", collapsed && "justify-center px-0")}
-              onClick={() => setCollapsed(!collapsed)}
-              aria-label={collapsed ? "Abrir menu lateral" : "Recolher menu lateral"}
-              aria-expanded={!collapsed}
-            >
-              {collapsed ? <ChevronsRight aria-hidden="true" /> : <ChevronsLeft aria-hidden="true" />}
-              {!collapsed && "Recolher"}
-            </Button>
-          </div>
+          {/* O botão de abrir e recolher fica no meio da borda do menu. */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={() => setCollapsed(!collapsed)}
+                aria-label={collapsed ? "Abrir o menu lateral" : "Recolher o menu lateral (fica só com os ícones)"}
+                aria-expanded={!collapsed}
+                className="absolute top-1/2 -right-3 z-30 grid size-6 -translate-y-1/2 place-items-center rounded-full border bg-card text-muted-foreground shadow-card outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                {collapsed ? <ChevronRight aria-hidden="true" className="size-4" /> : <ChevronLeft aria-hidden="true" className="size-4" />}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right">{collapsed ? "Abrir o menu" : "Recolher o menu"}</TooltipContent>
+          </Tooltip>
         </aside>
 
         <main id="conteudo" tabIndex={-1} className="min-w-0 flex-1 outline-none">
@@ -299,7 +307,7 @@ export function AppShell({ user, children, ...props }: ShellProps) {
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
         <SheetContent side="left" className="w-[280px] gap-0 p-0">
           <SheetHeader className="flex-row items-center gap-2 border-b">
-            <BrandSymbol size={24} alt="" />
+            <BrandSymbol size={28} alt="" />
             <SheetTitle className="text-base">Menu</SheetTitle>
             <SheetDescription className="sr-only">Navegação principal do INtellect</SheetDescription>
           </SheetHeader>
@@ -309,4 +317,3 @@ export function AppShell({ user, children, ...props }: ShellProps) {
     </div>
   );
 }
-

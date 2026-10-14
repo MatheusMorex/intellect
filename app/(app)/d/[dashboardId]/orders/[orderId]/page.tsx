@@ -4,6 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { StatusPill, type PillStatus } from "@/components/ds/badges";
+import { HelpTip } from "@/components/ds/help-tip";
 import { PageBody } from "@/components/shell/page-header";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -91,6 +92,7 @@ export default async function OrderPage({ params }: { params: Promise<{ dashboar
       <article className="grid max-w-card-modal gap-6 rounded-lg border bg-card p-6">
         <header className="flex flex-wrap items-center gap-3">
           <h1 className="text-xl">Pedido {order.name}</h1>
+          <HelpTip topic="pedido" className="-ml-2" />
           <StatusPill status={STATUS[order.status].pill}>{STATUS[order.status].label}</StatusPill>
           {order.isTest && <StatusPill status="test" />}
         </header>

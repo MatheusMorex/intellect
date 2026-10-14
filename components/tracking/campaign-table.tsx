@@ -47,7 +47,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCaption, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { EMPTY, integer, money, percentOf, roas } from "@/lib/format";
+import { currencySymbol, decimalOrZero, EMPTY, integer, money, moneyOrZero, percentOrZero, roasOrZero } from "@/lib/format";
 import { centsToInput } from "@/lib/parse";
 import { useStoredList } from "@/lib/use-stored-list";
 import { cn } from "@/lib/utils";
@@ -87,7 +87,12 @@ type ColumnKey =
   | "impressions"
   | "clicks"
   | "atc"
-  | "costPerAtc";
+  | "costPerAtc"
+  | "reach"
+  | "frequency"
+  | "videoViews"
+  | "hook"
+  | "hold";
 
 type Column = {
   key: ColumnKey;
@@ -99,30 +104,38 @@ type Column = {
 };
 
 function columns(currency: string): Column[] {
-  const m = (c: number | null) => (c == null ? EMPTY : money(c, currency));
+  // Resultado sem dado aparece zerado; orçamento e CPA desejado sem valor ficam com o travessão (não foram definidos ali).
+  const m = (c: number | null) => moneyOrZero(c, currency);
+  const setting = (c: number | null, r: ReportRow) => (c == null ? EMPTY : money(c, r.budgetCurrency));
   return [
     { key: "channel", label: "Tipo", value: () => null, show: (r) => (r.channelType ? (CHANNEL[r.channelType] ?? r.channelType) : EMPTY), only: { providers: ["google"], levels: ["campanhas"] } },
-    { key: "budget", label: "Orçamento diário", value: (r) => r.dailyBudgetCents, show: (r) => m(r.dailyBudgetCents), only: { levels: ["campanhas", "conjuntos"] } },
-    { key: "targetCpa", label: "CPA desejado", value: (r) => r.targetCpaCents, show: (r) => m(r.targetCpaCents), only: { providers: ["google"], levels: ["campanhas"] } },
+    { key: "budget", label: "Orçamento diário", value: (r) => r.dailyBudgetCents, show: (r) => setting(r.dailyBudgetCents, r), only: { levels: ["campanhas", "conjuntos"] } },
+    { key: "targetCpa", label: "CPA desejado", value: (r) => r.targetCpaCents, show: (r) => setting(r.targetCpaCents, r), only: { providers: ["google"], levels: ["campanhas"] } },
     { key: "spend", label: "Gasto", value: (r) => r.spendCents, show: (r) => m(r.spendCents) },
     { key: "sales", label: "Vendas", value: (r) => r.sales, show: (r) => integer(r.sales) },
     { key: "revenue", label: "Faturamento", value: (r) => r.revenueCents, show: (r) => m(r.revenueCents) },
     { key: "profit", label: "Lucro", value: (r) => r.profitCents, show: (r) => m(r.profitCents), negative: (r) => r.profitCents < 0 },
-    { key: "roas", label: "ROAS", value: (r) => r.roas, show: (r) => roas(r.roas) ?? EMPTY, negative: (r) => r.roas != null && r.roas < 1 },
-    { key: "margin", label: "Margem", value: (r) => r.margin, show: (r) => percentOf(r.margin) ?? EMPTY, negative: (r) => (r.margin ?? 0) < 0 },
-    { key: "roi", label: "ROI", value: (r) => r.roi, show: (r) => percentOf(r.roi) ?? EMPTY, negative: (r) => (r.roi ?? 0) < 0 },
+    { key: "roas", label: "ROAS", value: (r) => r.roas, show: (r) => roasOrZero(r.roas), negative: (r) => r.roas != null && r.roas < 1 },
+    { key: "margin", label: "Margem", value: (r) => r.margin, show: (r) => percentOrZero(r.margin), negative: (r) => (r.margin ?? 0) < 0 },
+    { key: "roi", label: "ROI", value: (r) => r.roi, show: (r) => percentOrZero(r.roi), negative: (r) => (r.roi ?? 0) < 0 },
     { key: "cpa", label: "CPA", value: (r) => r.cpaCents, show: (r) => m(r.cpaCents) },
-    { key: "ctr", label: "CTR", value: (r) => r.ctr, show: (r) => percentOf(r.ctr, 2) ?? EMPTY },
+    { key: "ctr", label: "CTR", value: (r) => r.ctr, show: (r) => percentOrZero(r.ctr, 2) },
     { key: "cpc", label: "CPC", value: (r) => r.cpcCents, show: (r) => m(r.cpcCents) },
     { key: "cpm", label: "CPM", value: (r) => r.cpmCents, show: (r) => m(r.cpmCents) },
     { key: "impressions", label: "Impressões", value: (r) => r.impressions, show: (r) => integer(r.impressions) },
     { key: "clicks", label: "Cliques", value: (r) => r.clicks, show: (r) => integer(r.clicks) },
     { key: "atc", label: "Adições ao carrinho", value: (r) => r.addToCarts, show: (r) => integer(r.addToCarts), only: { providers: ["meta"] } },
     { key: "costPerAtc", label: "Custo por adição", value: (r) => r.costPerAddToCartCents, show: (r) => m(r.costPerAddToCartCents), only: { providers: ["meta"] } },
+    { key: "reach", label: "Alcance", value: (r) => r.reach, show: (r) => integer(r.reach ?? 0), only: { providers: ["meta"] } },
+    { key: "frequency", label: "Frequência", value: (r) => r.frequency, show: (r) => decimalOrZero(r.frequency), only: { providers: ["meta"] } },
+    { key: "videoViews", label: "Visualizações (3 s)", value: (r) => r.videoViews, show: (r) => integer(r.videoViews), only: { providers: ["meta"] } },
+    // Hook e hold só existem para vídeo: em imagem e carrossel, o travessão (não se aplica, não é zero).
+    { key: "hook", label: "Hook", value: (r) => r.hookRate, show: (r) => (r.hookRate == null ? EMPTY : percentOrZero(r.hookRate)), only: { providers: ["meta"] } },
+    { key: "hold", label: "Hold 75%", value: (r) => r.holdRate, show: (r) => (r.holdRate == null ? EMPTY : percentOrZero(r.holdRate)), only: { providers: ["meta"] } },
   ];
 }
 
-const DEFAULT_COLUMNS: ColumnKey[] = ["channel", "budget", "targetCpa", "spend", "sales", "revenue", "profit", "roas", "cpa", "ctr", "cpc", "cpm", "impressions"];
+const DEFAULT_COLUMNS: ColumnKey[] = ["channel", "budget", "targetCpa", "spend", "sales", "revenue", "profit", "roas", "cpa", "ctr", "cpc", "cpm", "impressions", "frequency", "hook", "hold"];
 
 type ReportProps = {
   dashboardId: string;
@@ -505,7 +518,7 @@ function BudgetDialog({
                 setError(result.error);
                 return;
               }
-              toast.success(`Orçamento mudou para ${money(result.data.cents, currency)}`);
+              toast.success(`Orçamento mudou para ${money(result.data.cents, target.budgetCurrency)}`);
               onClose();
               router.refresh();
             });
@@ -519,7 +532,7 @@ function BudgetDialog({
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-1.5">
-            <Label htmlFor="budget">Novo orçamento (R$)</Label>
+            <Label htmlFor="budget">Novo orçamento ({currencySymbol(target?.budgetCurrency ?? currency)})</Label>
             <Input
               id="budget"
               name="budget"

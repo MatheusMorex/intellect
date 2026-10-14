@@ -16,7 +16,7 @@ export default async function WorkspaceSettingsPage({ params }: { params: Promis
 
   return (
     <PageBody>
-      <PageHeader title={data.workspace.name} description="Nome, descrição e regras de convite." />
+      <PageHeader title={data.workspace.name} help="workspace" description="Nome, descrição e regras de convite." />
       <WorkspaceTabs slug={slug} active="settings" />
       <WorkspaceSettingsForm workspace={data.workspace} canEdit={data.isAdmin} />
     </PageBody>

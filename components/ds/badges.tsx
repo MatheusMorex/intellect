@@ -1,6 +1,6 @@
 import { AlertTriangle, ArrowDown, ArrowUp, Check, CheckSquare, Clock } from "lucide-react";
 
-import { EMPTY, shortDate } from "@/lib/format";
+import { shortDate, ZERO_RATIO } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 // Badges da frente do card e pills de status (components.md, "Badge" e "Pill de status").
@@ -57,7 +57,7 @@ export function ChecklistBadge({ done, total }: { done: number; total: number })
 }
 
 // Badge de métrica do card ligado a uma campanha. trend diz se o resultado é bom
-// (up) ou ruim (down); sem valor, mostra o travessão.
+// (up) ou ruim (down); sem valor, mostra 0,00 em cinza, sem seta.
 export function MetricBadge({
   label,
   value,
@@ -80,7 +80,7 @@ export function MetricBadge({
   return (
     <span className={cn(badgeBase, style)} aria-label={spoken}>
       {Icon && <Icon aria-hidden="true" className="size-3" />}
-      {label} {value ?? EMPTY}
+      {label} {value ?? ZERO_RATIO}
     </span>
   );
 }

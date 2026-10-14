@@ -65,7 +65,9 @@ import { Label } from "@/components/ui/label";
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
+import { HelpTip } from "@/components/ds/help-tip";
 import { dateTime, money, relative, roas } from "@/lib/format";
+import type { HelpTopic } from "@/lib/help";
 import { cn } from "@/lib/utils";
 import {
   addChecklistItem,
@@ -100,13 +102,16 @@ function useRun() {
   return { pending, run };
 }
 
-function SectionTitle({ icon: Icon, id, children, actions }: { icon: React.ElementType; id: string; children: React.ReactNode; actions?: React.ReactNode }) {
+function SectionTitle({ icon: Icon, id, help, children, actions }: { icon: React.ElementType; id: string; help?: HelpTopic; children: React.ReactNode; actions?: React.ReactNode }) {
   return (
     <div className="flex items-center gap-3">
       <Icon aria-hidden="true" className="size-5 shrink-0 text-muted-foreground" />
-      <h3 id={id} className="flex-1 text-base font-semibold">
-        {children}
-      </h3>
+      <div className="flex flex-1 items-center gap-1">
+        <h3 id={id} className="text-base font-semibold">
+          {children}
+        </h3>
+        {help && <HelpTip topic={help} className="size-5" />}
+      </div>
       {actions}
     </div>
   );
@@ -403,6 +408,7 @@ function Description({ detail, members }: { detail: CardDetail; members: Person[
       <SectionTitle
         icon={AlignLeft}
         id="card-desc"
+        help="card-descricao"
         actions={
           detail.canEdit &&
           !editing &&
@@ -532,6 +538,7 @@ function ChecklistBlock({ checklist, canEdit, members }: { checklist: Checklist;
       <SectionTitle
         icon={CheckSquare}
         id={titleId}
+        help="card-checklist"
         actions={
           <div className="flex gap-1">
             {done > 0 && (
@@ -826,6 +833,7 @@ function Conversation({ detail, members }: { detail: CardDetail; members: Person
       <SectionTitle
         icon={MessageSquare}
         id="card-activity"
+        help="card-atividade"
         actions={
           <Button variant="secondary" size="sm" aria-pressed={details} onClick={() => setDetails((d) => !d)}>
             {details ? "Ocultar detalhes" : "Mostrar detalhes"}
@@ -1027,10 +1035,13 @@ function MetricsPanel({ detail, canEdit }: { detail: CardDetail; canEdit: boolea
   if (links.length === 0) return null;
   return (
     <section aria-labelledby="card-metrics" className="grid gap-2 rounded-md bg-muted p-3">
-      <h3 id="card-metrics" className="flex items-center gap-2 text-sm font-semibold">
-        <BarChart3 aria-hidden="true" className="size-4" />
-        Métricas
-      </h3>
+      <div className="flex items-center gap-1">
+        <h3 id="card-metrics" className="flex items-center gap-2 text-sm font-semibold">
+          <BarChart3 aria-hidden="true" className="size-4" />
+          Métricas
+        </h3>
+        <HelpTip topic="card-metricas" className="size-5" />
+      </div>
       {metric && (
         <div className="grid gap-1.5">
           <div className="flex flex-wrap items-center gap-2">
@@ -1039,9 +1050,9 @@ function MetricsPanel({ detail, canEdit }: { detail: CardDetail; canEdit: boolea
           </div>
           <dl className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-xs">
             <dt className="text-muted-foreground">Gasto</dt>
-            <dd className="text-right tabular-nums">{money(metric.spendCents)}</dd>
+            <dd className="text-right tabular-nums">{money(metric.spendCents, metric.currency)}</dd>
             <dt className="text-muted-foreground">Faturamento</dt>
-            <dd className="text-right tabular-nums">{money(metric.revenueCents)}</dd>
+            <dd className="text-right tabular-nums">{money(metric.revenueCents, metric.currency)}</dd>
             <dt className="text-muted-foreground">Vendas</dt>
             <dd className="text-right tabular-nums">{metric.sales}</dd>
           </dl>

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { endSession, fakeAuthAllowed, safeNext, startSession, verifyPassword } from "@/server/auth/session";
+import { homeHref } from "@/server/data/boards";
 import { readStore } from "@/server/store/db";
 
 export type LoginState = { error?: string; email?: string };
@@ -29,7 +30,13 @@ export async function login(_prev: LoginState, formData: FormData): Promise<Logi
     return { error: "E-mail ou senha não conferem.", email };
   }
   await startSession(user.id);
-  redirect(safeNext(parsed.data.next));
+  redirect(afterLogin(user.id, parsed.data.next));
+}
+
+/** Sem destino pedido, vai direto para a tela inicial da pessoa (dois redirecionamentos seguidos quebram a medição de desempenho do React no modo de desenvolvimento). */
+function afterLogin(userId: string, next: string | undefined) {
+  const target = safeNext(next);
+  return target === "/" ? homeHref(userId) : target;
 }
 
 /** Só no modo simulado: entra com um usuário de exemplo, sem senha. */
@@ -39,7 +46,7 @@ export async function loginAsTestUser(formData: FormData) {
   const user = readStore().users.find((u) => u.id === userId);
   if (!user) redirect("/login");
   await startSession(user.id);
-  redirect(safeNext(String(formData.get("next") ?? "")));
+  redirect(afterLogin(user.id, String(formData.get("next") ?? "")));
 }
 
 export async function logout() {

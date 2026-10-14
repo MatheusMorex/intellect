@@ -7,7 +7,15 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const user = await requireUser();
   const shell = await getShellData({ user });
   return (
-    <AppShell user={user} workspace={shell.workspace} boards={shell.boards} dashboards={shell.dashboards} unreadNotifications={shell.unreadNotifications} preferences={shell.preferences}>
+    <AppShell
+      user={{ name: user.name, email: user.email, avatarColor: user.avatarColor, avatarUrl: shell.avatarUrl }}
+      workspace={shell.workspace}
+      boards={shell.boards.map((b) => ({ id: b.id, name: b.name }))}
+      dashboards={shell.dashboards}
+      unreadNotifications={shell.unreadNotifications}
+      preferences={shell.preferences}
+      appearance={{ wallpaper: shell.appearance.wallpaper }}
+    >
       {children}
     </AppShell>
   );

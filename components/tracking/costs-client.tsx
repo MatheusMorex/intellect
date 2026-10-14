@@ -31,6 +31,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { currencySymbol } from "@/lib/format";
 import { bpToInput, centsToInput } from "@/lib/parse";
 import { deleteAdditionalFee, deleteExpense, saveCostSettings, saveExpense, setProductCost, upsertAdditionalFee } from "@/server/actions/costs";
 
@@ -158,6 +159,7 @@ type Fee = {
   name: string;
   kind: "fixed" | "percent";
   amountCents: number | null;
+  currency: string;
   bp: number | null;
   scope: "all" | "product" | "payment_method";
   productId: string | null;
@@ -168,16 +170,20 @@ type Fee = {
 export function FeeDialog({
   dashboardId,
   today,
+  currency,
   products,
   fee,
   trigger,
 }: {
   dashboardId: string;
   today: string;
+  /** Moeda do dashboard (taxa nova). Taxa já salva continua na moeda dela. */
+  currency: string;
   products: { id: string; name: string }[];
   fee?: Fee;
   trigger: React.ReactNode;
 }) {
+  const symbol = currencySymbol(fee?.currency ?? currency);
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -236,7 +242,7 @@ export function FeeDialog({
             <legend className="mb-1 text-sm font-medium">Tipo</legend>
             <RadioGroup value={kind} onValueChange={(v) => setKind(v as Fee["kind"])} className="flex gap-6">
               <Label className="font-normal">
-                <RadioGroupItem value="fixed" /> Valor fixo (R$)
+                <RadioGroupItem value="fixed" /> Valor fixo ({symbol})
               </Label>
               <Label className="font-normal">
                 <RadioGroupItem value="percent" /> Percentual (%)
@@ -244,7 +250,7 @@ export function FeeDialog({
             </RadioGroup>
           </fieldset>
           <div className="grid gap-1.5">
-            <Label htmlFor="fee-value">{kind === "fixed" ? "Valor por pedido (R$)" : "Percentual sobre o valor (%)"}</Label>
+            <Label htmlFor="fee-value">{kind === "fixed" ? `Valor por pedido (${symbol})` : "Percentual sobre o valor (%)"}</Label>
             <Input
               id="fee-value"
               name="value"
@@ -366,12 +372,17 @@ export function FeeDelete({ dashboardId, feeId, name }: { dashboardId: string; f
 export function ProductCostDialog({
   dashboardId,
   today,
+  currency,
   product,
 }: {
   dashboardId: string;
   today: string;
-  product: { id: string; name: string; costCents: number | null };
+  /** Moeda do dashboard: o custo novo é salvo nela. */
+  currency: string;
+  product: { id: string; name: string; costCents: number | null; costCurrency: string };
 }) {
+  // O valor atual só vem preenchido se estiver na mesma moeda do campo.
+  const current = product.costCurrency === currency ? centsToInput(product.costCents) : "";
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -417,8 +428,8 @@ export function ProductCostDialog({
             <DialogDescription>Quanto custa cada unidade. Vendas anteriores à data mantêm o custo antigo.</DialogDescription>
           </DialogHeader>
           <div className="grid gap-1.5">
-            <Label htmlFor="cost">Custo por unidade (R$)</Label>
-            <Input id="cost" name="cost" inputMode="decimal" autoFocus defaultValue={centsToInput(product.costCents)} />
+            <Label htmlFor="cost">Custo por unidade ({currencySymbol(currency)})</Label>
+            <Input id="cost" name="cost" inputMode="decimal" autoFocus defaultValue={current} />
           </div>
           <div className="grid gap-1.5">
             <Label htmlFor="cost-from">Vale a partir de</Label>
@@ -449,6 +460,7 @@ type Expense = {
   category: "traffic" | "tools" | "staff" | "accounting" | "other";
   description: string;
   amountCents: number;
+  currency: string;
   date: string;
   endDate: string | null;
 };
@@ -461,7 +473,20 @@ export const CATEGORY_OPTIONS = [
   { value: "other", label: "Outros" },
 ] as const;
 
-export function ExpenseDialog({ dashboardId, today, expense, trigger }: { dashboardId: string; today: string; expense?: Expense; trigger: React.ReactNode }) {
+export function ExpenseDialog({
+  dashboardId,
+  today,
+  currency,
+  expense,
+  trigger,
+}: {
+  dashboardId: string;
+  today: string;
+  /** Moeda do dashboard (despesa nova). Despesa já lançada continua na moeda dela. */
+  currency: string;
+  expense?: Expense;
+  trigger: React.ReactNode;
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -516,7 +541,7 @@ export function ExpenseDialog({ dashboardId, today, expense, trigger }: { dashbo
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="grid gap-1.5">
-              <Label htmlFor="exp-amount">Valor (R$)</Label>
+              <Label htmlFor="exp-amount">Valor ({currencySymbol(expense?.currency ?? currency)})</Label>
               <Input id="exp-amount" name="amount" inputMode="decimal" defaultValue={centsToInput(expense?.amountCents)} />
             </div>
             <div className="grid gap-1.5">

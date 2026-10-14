@@ -9,6 +9,8 @@ import { z } from "zod";
 
 import { requireBoard, requireDashboard, requireWorkspace, type BoardRole } from "@/server/access";
 import { requireUser, type SessionUser } from "@/server/auth/session";
+import { dropFile } from "@/server/files";
+import { BOARD_COLOR_KEYS } from "@/lib/board-backgrounds";
 import { bumpCard, cardsOfList, insertCard, listsOfBoard, logActivity, notify, plainJson, rankBetween, touchBoard } from "@/server/kanban/core";
 import { mutate, newId, nowIso, readStore } from "@/server/store/db";
 import type { BoardRow, CardRow, Store } from "@/server/store/types";
@@ -57,7 +59,7 @@ function activity(store: Store, user: SessionUser, card: CardRow, type: string, 
 const boardInput = z.object({
   workspaceId: z.uuid(),
   name: name("ao quadro"),
-  background: z.string().regex(LABEL_COLOR),
+  background: z.enum(BOARD_COLOR_KEYS, { error: "Escolha uma das cores do fundo." }),
   visibility: z.enum(["private", "workspace"]),
 });
 
@@ -98,7 +100,7 @@ const boardUpdate = z.object({
   boardId: z.uuid(),
   name: name("ao quadro").optional(),
   description: z.string().max(16384).optional(),
-  background: z.string().regex(LABEL_COLOR).optional(),
+  background: z.enum(BOARD_COLOR_KEYS, { error: "Escolha uma das cores do fundo." }).optional(),
   visibility: z.enum(["private", "workspace"]).optional(),
   prefs: z
     .object({
@@ -126,7 +128,11 @@ export async function updateBoard(input: z.input<typeof boardUpdate>): Promise<A
     const b = store.boards.find((x) => x.id === board.id)!;
     if (v.name) b.name = v.name;
     if (v.description !== undefined) b.description = v.description;
-    if (v.background) b.background = { type: "color", value: v.background };
+    if (v.background) {
+      // Trocar a imagem por uma cor: a imagem antiga não é mais usada.
+      if (b.background.type === "image") dropFile(store, b.background.fileId);
+      b.background = { type: "color", value: v.background };
+    }
     if (v.visibility) b.visibility = v.visibility;
     if (v.prefs) b.prefs = { ...b.prefs, ...v.prefs };
     logActivity(store, { workspaceId: b.workspaceId, boardId: b.id, cardId: null, actorId: user.id, type: "board.updated", data: {} });
@@ -167,6 +173,7 @@ export async function deleteBoard(boardId: string): Promise<ActionResult> {
     store.invites = store.invites.filter((i) => i.boardId !== boardId);
     store.notifications = store.notifications.filter((n) => n.boardId !== boardId);
     store.activities = store.activities.filter((a) => a.boardId !== boardId);
+    for (const f of store.files.filter((x) => x.boardId === boardId)) dropFile(store, f.id);
     store.boards = store.boards.filter((b) => b.id !== boardId);
   });
   revalidatePath("/", "layout");

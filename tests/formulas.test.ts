@@ -38,7 +38,7 @@ test("ROAS, ROI, margem e CPA", () => {
   assert.equal(s.averageTicketCents, 10_000);
 });
 
-test("sem gasto o ROAS fica vazio (a tela mostra —), não infinito", () => {
+test("sem gasto o ROAS fica vazio (a tela mostra 0,00), não infinito", () => {
   const s = summarize({ orders: [order()], spendCents: 0, revenueBasis: "net", includeInterest: false });
   assert.equal(s.roas, null);
   assert.equal(s.roi, null);

@@ -12,13 +12,19 @@
     "seed": "node scripts/reset-data.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.check.json",
     "test:e2e": "node tests/e2e/smoke.mjs",
-    "screenshots": "node scripts/screenshots.mjs"
+    "screenshots": "node scripts/screenshots.mjs",
+    "db:login": "..\\tools\\supabase-cli\\supabase.exe login",
+    "db:link": "..\\tools\\supabase-cli\\supabase.exe link --project-ref dxtytutmrsbeuwaiqlxi",
+    "db:push": "..\\tools\\supabase-cli\\supabase.exe db push --linked",
+    "db:setup": "npm run db:login && npm run db:link && npm run db:push"
   },
   "dependencies": {
     "@date-fns/tz": "^1.5.0",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
+    "@supabase/ssr": "^0.12.7",
+    "@supabase/supabase-js": "^2.117.3",
     "@tiptap/extension-link": "^3.31.4",
     "@tiptap/extension-mention": "^3.31.4",
     "@tiptap/extension-placeholder": "^3.31.4",

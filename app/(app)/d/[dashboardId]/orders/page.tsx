@@ -96,6 +96,7 @@ export default async function OrdersPage({
     <PageBody>
       <PageHeader
         title="Vendas"
+        help="vendas"
         description={data.dashboard.name}
         actions={<PeriodFilter period={data.period} />}
       />

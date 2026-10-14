@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Kbd } from "@/components/ui/kbd";
+import { boardBackgroundStyle } from "@/lib/board-backgrounds";
 import { useStoredList } from "@/lib/use-stored-list";
 import { globalSearch } from "@/server/actions/shell";
 
@@ -116,7 +117,7 @@ export function GlobalSearch({ singleKeyShortcuts, workspaceSlug }: { singleKeyS
                 <CommandGroup heading="Quadros">
                   {shown.boards.map((b) => (
                     <CommandItem key={b.id} value={`board-${b.id}`} onSelect={() => go(`/b/${b.id}`)}>
-                      <span aria-hidden="true" className="size-4 rounded-sm" style={{ background: `var(--ds-label-${b.background}-bold)` }} />
+                      <span aria-hidden="true" className="size-4 rounded-sm" style={boardBackgroundStyle(b.background)} />
                       {b.name}
                       {b.closed && <span className="text-xs text-muted-foreground">fechado</span>}
                     </CommandItem>

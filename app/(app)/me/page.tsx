@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { ProfileForm } from "@/components/me/profile-form";
+import { AvatarSettings } from "@/components/settings/avatar-settings";
 import { PageBody, PageHeader } from "@/components/shell/page-header";
 import { dateTime, relative } from "@/lib/format";
 import { requireUser } from "@/server/auth/session";
@@ -17,18 +18,21 @@ export default async function ProfilePage() {
 
   return (
     <PageBody>
-      <PageHeader title="Perfil e preferências" description={profile.email} />
+      <PageHeader title="Perfil e preferências" help="perfil" description={profile.email} />
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <ProfileForm
-          profile={{
-            name: profile.name,
-            username: profile.username,
-            bio: profile.bio,
-            timezone: profile.timezone,
-            theme: profile.theme,
-            preferences: profile.preferences,
-          }}
-        />
+        <div className="grid content-start gap-6">
+          <AvatarSettings person={{ name: profile.name, avatarColor: profile.avatarColor, avatarUrl: profile.avatarUrl }} />
+          <ProfileForm
+            profile={{
+              name: profile.name,
+              username: profile.username,
+              bio: profile.bio,
+              timezone: profile.timezone,
+              theme: profile.theme,
+              preferences: profile.preferences,
+            }}
+          />
+        </div>
         <div className="grid content-start gap-6">
           <section aria-labelledby="seguranca" className="grid gap-2 rounded-lg border bg-card p-4">
             <h2 id="seguranca" className="flex items-center gap-2 text-base font-semibold">

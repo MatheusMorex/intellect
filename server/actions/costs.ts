@@ -31,7 +31,7 @@ function money(label: string, allowZero = true) {
   return z.string().transform((v, ctx) => {
     const cents = parseMoneyToCents(v);
     if (cents == null || cents < 0 || (!allowZero && cents === 0)) {
-      ctx.addIssue({ code: "custom", message: `${label}: use um valor em reais, como 49,90.` });
+      ctx.addIssue({ code: "custom", message: `${label}: use um valor como 49,90.` });
       return z.NEVER;
     }
     return cents;
@@ -134,7 +134,7 @@ const feeInput = z
     if (parsed == null || parsed <= 0 || (v.kind === "percent" && parsed > 10000)) {
       ctx.addIssue({
         code: "custom",
-        message: v.kind === "fixed" ? "Use um valor em reais, como 3,50." : "Use um percentual entre 0 e 100, como 2,5.",
+        message: v.kind === "fixed" ? "Use um valor como 3,50." : "Use um percentual entre 0 e 100, como 2,5.",
       });
     }
   });
@@ -144,7 +144,7 @@ export async function upsertAdditionalFee(input: z.input<typeof feeInput>): Prom
   const parsed = feeInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
   const v = parsed.data;
-  requireDashboard({ user }, v.dashboardId, "admin");
+  const { dashboard } = requireDashboard({ user }, v.dashboardId, "admin");
   mutate((store) => {
     const row = {
       id: v.feeId ?? newId(),
@@ -152,6 +152,8 @@ export async function upsertAdditionalFee(input: z.input<typeof feeInput>): Prom
       name: v.name,
       kind: v.kind,
       amountCents: v.kind === "fixed" ? parseMoneyToCents(v.value) : null,
+      // Taxa já salva continua na moeda em que foi cadastrada (o formulário mostra essa moeda).
+      currency: store.additionalFees.find((f) => f.id === v.feeId && f.dashboardId === v.dashboardId)?.currency ?? dashboard.currency,
       bp: v.kind === "percent" ? parsePercentToBp(v.value) : null,
       scope: v.scope,
       productId: v.scope === "product" ? v.productId : null,
@@ -211,7 +213,8 @@ export async function saveExpense(input: z.input<typeof expenseInput>): Promise<
       category: v.category as ExpenseCategory,
       description: v.description,
       amountCents: v.amount,
-      currency: dashboard.currency,
+      // Despesa já lançada continua na moeda dela (o formulário mostra essa moeda).
+      currency: store.expenses.find((e) => e.id === v.expenseId && e.dashboardId === v.dashboardId)?.currency ?? dashboard.currency,
       date: v.date,
       endDate: v.kind === "recurring" ? v.endDate : null,
       createdBy: user.id,

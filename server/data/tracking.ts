@@ -1,8 +1,12 @@
 // Leituras do tracking: S17 Resumo, S18 Meta/Google, S25 badge do card.
 // Assinaturas pensadas para a versão com banco: (ctx, ids, filtros) → dados prontos para a tela.
 
+import { adInsights, type InsightMetrics, type Sentence } from "@/lib/ad-insights";
 import { requireDashboard, type Ctx } from "@/server/access";
-import { expensesInRange, metaAdsTaxCents, orderCosts, type OrderCosts } from "@/server/metrics/costs";
+import { combineReach, reachFromImpressions, simulatedAudience } from "@/server/ads/simulation";
+import { identityConverter, type Converter } from "@/server/fx/convert";
+import { cachedConverter, prepareDashboardFx } from "@/server/fx/rates";
+import { expensesInRange, metaAdsTaxCents, orderCosts, type ConvertCents, type OrderCosts } from "@/server/metrics/costs";
 import { change, ratio, summarize, type Summary } from "@/server/metrics/formulas";
 import { dayKeyIn, inRange, resolvePeriod, type DateRange, type ResolvedPeriod } from "@/server/period";
 import { readStore } from "@/server/store/db";
@@ -50,7 +54,9 @@ export function sourceOf(o: Pick<OrderRow, "attributionStatus" | "attributedPlat
 
 type Scope = ReturnType<typeof buildScope>;
 
-function buildScope(store: Store, dashboard: DashboardRow, filters: TrackingFilters) {
+function buildScope(store: Store, dashboard: DashboardRow, filters: TrackingFilters, fx: Converter = identityConverter(dashboard.currency)) {
+  // Valor em outra moeda vira a do dashboard pela cotação do dia; sem cotação conta 0 e fx.misses() acusa.
+  const convert: ConvertCents = (amount, currency, day) => fx.cents(amount, currency, day) ?? 0;
   const linkedAccounts = new Set(
     store.dashboardAdAccounts.filter((l) => l.dashboardId === dashboard.id).map((l) => l.adAccountId),
   );
@@ -94,15 +100,42 @@ function buildScope(store: Store, dashboard: DashboardRow, filters: TrackingFilt
     includeInterest: dashboard.includeInterest,
   };
 
-  const costsOf = (o: OrderRow): OrderCosts =>
-    orderCosts(
+  // Custo de produto e taxa fixa em outra moeda: convertidos pela cotação do dia da venda.
+  const foreignCosts =
+    costCtx.productCosts.some((c) => c.currency !== dashboard.currency) ||
+    costCtx.fees.some((f) => f.kind === "fixed" && f.currency !== dashboard.currency);
+  const ctxByDay = new Map<string, typeof costCtx>();
+  const costCtxOn = (day: string) => {
+    if (!foreignCosts) return costCtx;
+    let ctx = ctxByDay.get(day);
+    if (!ctx) {
+      ctx = {
+        ...costCtx,
+        productCosts: costCtx.productCosts.map((c) =>
+          c.currency === dashboard.currency ? c : { ...c, currency: dashboard.currency, costCents: convert(c.costCents, c.currency, day) },
+        ),
+        fees: costCtx.fees.map((f) =>
+          f.kind !== "fixed" || f.amountCents == null || f.currency === dashboard.currency
+            ? f
+            : { ...f, currency: dashboard.currency, amountCents: convert(f.amountCents, f.currency, day) },
+        ),
+      };
+      ctxByDay.set(day, ctx);
+    }
+    return ctx;
+  };
+
+  const costsOf = (o: OrderRow): OrderCosts => {
+    const day = dayKeyIn(o.placedAt, dashboard.timezone);
+    return orderCosts(
       o,
       (itemsByOrder.get(o.id) ?? []).map((i) => ({ productId: i.productId, quantity: i.quantity, totalCents: i.totalCents })),
-      dayKeyIn(o.placedAt, dashboard.timezone),
-      costCtx,
+      day,
+      costCtxOn(day),
     );
+  };
 
-  return { accounts, storeIds, campaignAccount, accountProvider, itemsByOrder, spendAccounts, orderMatches, costCtx, costsOf };
+  return { accounts, storeIds, campaignAccount, accountProvider, itemsByOrder, spendAccounts, orderMatches, costCtx, costsOf, convert };
 }
 
 function earliestDay(store: Store, dashboard: DashboardRow): string | null {
@@ -178,6 +211,7 @@ function totalsFor(store: Store, dashboard: DashboardRow, scope: Scope, range: D
   const expenses = expensesInRange(
     store.expenses.filter((e) => e.dashboardId === dashboard.id),
     range,
+    scope.convert,
   );
   const expensesCents = filtered ? 0 : expenses.totalCents;
 
@@ -280,14 +314,17 @@ export type DashboardSummary = {
   charts: ReturnType<typeof charts>;
   lastSyncedAt: string | null;
   setupIncomplete: string[];
+  /** Algum valor em outra moeda ficou sem cotação: a tela não mostra números pela metade. */
+  fxUnavailable: boolean;
 };
 
 export async function getDashboardSummary(ctx: Ctx, dashboardId: string, sp: SearchParams = {}): Promise<DashboardSummary> {
   const { dashboard } = requireDashboard(ctx, dashboardId);
-  const store = readStore();
+  const fx = await prepareDashboardFx(dashboard);
+  const store = fx.store;
   const filters = parseFilters(sp);
   const period = resolve(store, dashboard, sp);
-  const scope = buildScope(store, dashboard, filters);
+  const scope = buildScope(store, dashboard, filters, fx.converter);
   const filtered = filters.accounts.length + filters.products.length + filters.sources.length > 0;
   const current = totalsFor(store, dashboard, scope, period.range, filtered);
   const previous = period.previous ? totalsFor(store, dashboard, scope, period.previous, filtered) : null;
@@ -298,6 +335,7 @@ export async function getDashboardSummary(ctx: Ctx, dashboardId: string, sp: Sea
     if (!scope.accounts.some((a) => a.provider === p)) setupIncomplete.push(p === "meta" ? "conectar o Meta Ads" : "conectar o Google Ads");
   }
   if (scope.storeIds.size === 0) setupIncomplete.push("conectar a loja Shopify");
+  const chartData = charts(store, dashboard, scope, period.range);
 
   return {
     dashboard: {
@@ -319,9 +357,10 @@ export async function getDashboardSummary(ctx: Ctx, dashboardId: string, sp: Sea
       roi: ch(current.roi, previous?.roi),
       margin: ch(current.margin, previous?.margin),
     },
-    charts: charts(store, dashboard, scope, period.range),
+    charts: chartData,
     lastSyncedAt: lastSyncedAt(store, dashboard),
     setupIncomplete,
+    fxUnavailable: fx.converter.misses() > 0,
   };
 }
 
@@ -368,6 +407,8 @@ export type ReportRow = {
   channelType: string | null;
   dailyBudgetCents: number | null;
   targetCpaCents: number | null;
+  /** Orçamento e CPA alvo ficam na moeda da conta de anúncio (é nela que a plataforma recebe a mudança). */
+  budgetCurrency: string;
   spendCents: number;
   impressions: number;
   clicks: number;
@@ -383,7 +424,24 @@ export type ReportRow = {
   cpcCents: number | null;
   cpmCents: number | null;
   costPerAddToCartCents: number | null;
+  /** Pessoas diferentes alcançadas (só Meta; no modo de teste, estimado pelo modelo de server/ads/simulation.ts). */
+  reach: number | null;
+  /** Impressões ÷ alcance. */
+  frequency: number | null;
+  /** Visualizações de 3 s dos vídeos. */
+  videoViews: number;
+  /** Visualizações até 75% dos vídeos. */
+  videoP75Views: number;
+  /** Impressões dos anúncios em vídeo (a base do hook). */
+  videoImpressions: number;
+  /** Visualizações de 3 s ÷ impressões dos vídeos. */
+  hookRate: number | null;
+  /** Visualizações até 75% ÷ visualizações de 3 s. */
+  holdRate: number | null;
 };
+
+/** Leitura em frases de uma linha da tabela (lib/ad-insights.ts). */
+export type RowInsight = { id: string; name: string; sentences: Sentence[] };
 
 export type TrafficReport = {
   dashboard: { id: string; name: string; currency: string; adPlatforms: Provider[] };
@@ -397,15 +455,54 @@ export type TrafficReport = {
   totals: ReportRow;
   lastSyncedAt: string | null;
   canManage: boolean;
+  fxUnavailable: boolean;
+  /** Leitura das linhas da tabela, da que mais gastou para a que menos gastou. */
+  insights: RowInsight[];
 };
 
-type Bucket = { spend: number; impressions: number; clicks: number; atc: number; sales: number; revenue: number; costs: number };
-const emptyBucket = (): Bucket => ({ spend: 0, impressions: 0, clicks: 0, atc: 0, sales: 0, revenue: 0, costs: 0 });
+type Bucket = {
+  spend: number;
+  impressions: number;
+  clicks: number;
+  atc: number;
+  sales: number;
+  revenue: number;
+  costs: number;
+  views3s: number;
+  p75: number;
+  videoImpressions: number;
+  /** Impressões de cada anúncio do grupo no período (para o alcance, que não se soma dia a dia). */
+  adImpressions: Map<string, number>;
+};
+const emptyBucket = (): Bucket => ({
+  spend: 0,
+  impressions: 0,
+  clicks: 0,
+  atc: 0,
+  sales: 0,
+  revenue: 0,
+  costs: 0,
+  views3s: 0,
+  p75: 0,
+  videoImpressions: 0,
+  adImpressions: new Map(),
+});
 
-function metrics(b: Bucket, metaTaxBp: number) {
+/** Alcance de um grupo de anúncios. null quando a plataforma não informa (Google) ou ainda não está ligado às contas reais. */
+type ReachOf = (b: Bucket) => number | null;
+
+function metrics(b: Bucket, metaTaxBp: number, reachOf: ReachOf) {
   const spendTax = Math.round((b.spend * metaTaxBp) / 10000);
   const profit = b.revenue - b.spend - b.costs - spendTax;
+  const reach = reachOf(b);
   return {
+    reach,
+    frequency: reach ? b.impressions / reach : null,
+    videoViews: b.views3s,
+    videoP75Views: b.p75,
+    videoImpressions: b.videoImpressions,
+    hookRate: ratio(b.views3s, b.videoImpressions),
+    holdRate: ratio(b.p75, b.views3s),
     spendCents: b.spend,
     impressions: b.impressions,
     clicks: b.clicks,
@@ -443,11 +540,14 @@ export async function getTrafficReport(
   sp: SearchParams = {},
 ): Promise<TrafficReport> {
   const { dashboard, role } = requireDashboard(ctx, dashboardId);
-  const store = readStore();
+  const fx = await prepareDashboardFx(dashboard);
+  const store = fx.store;
   const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
   const period = resolve(store, dashboard, sp);
-  const scope = buildScope(store, dashboard, { accounts: [], products: [], sources: [] });
+  const scope = buildScope(store, dashboard, { accounts: [], products: [], sources: [] }, fx.converter);
   const accounts = scope.accounts.filter((a) => a.provider === provider);
+  const accountCurrency = new Map(accounts.map((a) => [a.id, a.currency]));
+  const campaignCurrency = (campaignId: string) => accountCurrency.get(scope.campaignAccount.get(campaignId) ?? "") ?? dashboard.currency;
   const accountIds = new Set(accounts.map((a) => a.id));
   const levels: ReportLevel[] =
     provider === "google" ? ["contas", "campanhas", "conjuntos", "anuncios", "palavras"] : ["contas", "campanhas", "conjuntos", "anuncios"];
@@ -470,6 +570,13 @@ export async function getTrafficReport(
   const accountName = new Map(accounts.map((a) => [a.id, a.name]));
 
   const insights = store.adInsightsDaily.filter((i) => accountIds.has(i.adAccountId) && inRange(i.date, period.range));
+  const adFormat = new Map(ads.map((a) => [a.id, a.format]));
+  // Alcance: no modo de teste, estimado pelo modelo de saturação de cada anúncio. Com as contas
+  // reais ele vem pronto da API do Meta para o período (ainda não ligado): até lá, fica sem alcance.
+  const reachOf: ReachOf =
+    provider === "meta" && process.env.INTEGRATIONS_MODE !== "live"
+      ? (b) => combineReach([...b.adImpressions].map(([adId, impressions]) => reachFromImpressions(impressions, simulatedAudience(adId)))) || null
+      : () => null;
   const orders = store.orders.filter(
     (o) =>
       scope.storeIds.has(o.storeId) &&
@@ -494,6 +601,12 @@ export async function getTrafficReport(
       b.impressions += i.impressions;
       b.clicks += i.clicks;
       b.atc += i.addToCarts;
+      b.views3s += i.videoViews3s;
+      b.p75 += i.videoP75Views;
+      if (i.adId) {
+        if (adFormat.get(i.adId) === "video") b.videoImpressions += i.impressions;
+        b.adImpressions.set(i.adId, (b.adImpressions.get(i.adId) ?? 0) + i.impressions);
+      }
     }
     for (const o of orders) {
       const k = keyOfOrder(o);
@@ -518,7 +631,8 @@ export async function getTrafficReport(
     channelType: null,
     dailyBudgetCents: null,
     targetCpaCents: null,
-    ...metrics(b ?? emptyBucket(), metaTaxBp),
+    budgetCurrency: dashboard.currency,
+    ...metrics(b ?? emptyBucket(), metaTaxBp, reachOf),
     ...extra,
   });
 
@@ -547,6 +661,7 @@ export async function getTrafficReport(
             channelType: c.channelType,
             dailyBudgetCents: c.dailyBudgetCents,
             targetCpaCents: c.targetCpaCents,
+            budgetCurrency: accountCurrency.get(c.adAccountId) ?? dashboard.currency,
             parent: accountName.get(c.adAccountId) ?? null,
           },
           map.get(c.id),
@@ -561,7 +676,12 @@ export async function getTrafficReport(
     rows = adSets
       .filter((s) => !parentFilter || s.campaignId === parentFilter.id)
       .map((s) =>
-        base(s.id, s.name, { status: s.status, dailyBudgetCents: s.dailyBudgetCents, parent: campaignName.get(s.campaignId) ?? null }, map.get(s.id)),
+        base(
+          s.id,
+          s.name,
+          { status: s.status, dailyBudgetCents: s.dailyBudgetCents, budgetCurrency: campaignCurrency(s.campaignId), parent: campaignName.get(s.campaignId) ?? null },
+          map.get(s.id),
+        ),
       );
   } else if (level === "anuncios") {
     const map = bucketBy(
@@ -628,9 +748,33 @@ export async function getTrafficReport(
       sales: acc.sales + r.sales,
       revenue: acc.revenue + r.revenueCents,
       costs: acc.costs + (r.revenueCents - r.spendCents - r.profitCents - Math.round((r.spendCents * metaTaxBp) / 10000)),
+      views3s: acc.views3s + r.videoViews,
+      p75: acc.p75 + r.videoP75Views,
+      videoImpressions: acc.videoImpressions + r.videoImpressions,
+      adImpressions: acc.adImpressions,
     }),
     emptyBucket(),
   );
+  // Alcance do total: as linhas são itens diferentes, mas parte das pessoas vê mais de um.
+  const totalsBase = base("total", "Total", {}, sum);
+  const totalReach = rows.some((r) => r.reach != null) ? combineReach(rows.map((r) => r.reach ?? 0)) || null : null;
+  const totals: ReportRow = { ...totalsBase, reach: totalReach, frequency: totalReach ? totalsBase.impressions / totalReach : null };
+
+  // Leitura em frases: cada linha comparada com a média da plataforma inteira no período.
+  const all = bucketBy(
+    () => "all",
+    () => "all",
+  ).get("all");
+  const baseline = toInsightMetrics(base("all", "Conta", {}, all));
+  const days = Math.round((Date.parse(period.range.to) - Date.parse(period.range.from)) / 86_400_000) + 1;
+  const compare = !(level === "contas" && rows.length <= 1);
+  const rowInsights: RowInsight[] = rows
+    .filter((r) => r.spendCents > 0 || r.impressions > 0)
+    .map((r) => ({
+      id: r.id,
+      name: r.name,
+      sentences: adInsights({ provider, level, metrics: toInsightMetrics(r), baseline, compare, currency: dashboard.currency, days }),
+    }));
 
   return {
     dashboard: { id: dashboard.id, name: dashboard.name, currency: dashboard.currency, adPlatforms: dashboard.adPlatforms },
@@ -641,9 +785,32 @@ export async function getTrafficReport(
     levels,
     parentFilter,
     rows,
-    totals: base("total", "Total", {}, sum),
+    totals,
     lastSyncedAt: accounts.map((a) => a.lastSyncedAt).filter((t): t is string => !!t).sort()[0] ?? null,
     canManage: role === "admin",
+    fxUnavailable: fx.converter.misses() > 0,
+    insights: rowInsights,
+  };
+}
+
+function toInsightMetrics(r: ReportRow): InsightMetrics {
+  return {
+    spendCents: r.spendCents,
+    impressions: r.impressions,
+    reach: r.reach,
+    frequency: r.frequency,
+    clicks: r.clicks,
+    ctr: r.ctr,
+    cpmCents: r.cpmCents,
+    cpcCents: r.cpcCents,
+    sales: r.sales,
+    cpaCents: r.cpaCents,
+    revenueCents: r.revenueCents,
+    roas: r.roas,
+    videoViews: r.videoViews,
+    hookRate: r.hookRate,
+    holdRate: r.holdRate,
+    targetCpaCents: r.targetCpaCents,
   };
 }
 
@@ -657,6 +824,8 @@ export type CardMetric = {
   targetLevel: "campaign" | "ad_set" | "ad";
   dashboardId: string;
   provider: Provider | null;
+  /** Moeda do dashboard: gasto e faturamento já convertidos para ela. */
+  currency: string;
   spendCents: number;
   revenueCents: number;
   sales: number;
@@ -685,18 +854,24 @@ export function getCardMetrics(ctx: Ctx, cardIds: string[]): Map<string, CardMet
     const period = resolvePeriod("7d", dashboard.timezone, null);
     const matchInsight = (i: { campaignId: string; adSetId: string | null; adId: string | null }) =>
       link.targetType === "campaign" ? i.campaignId === target.id : link.targetType === "ad_set" ? i.adSetId === target.id : i.adId === target.id;
+    // Gasto e venda na moeda do dashboard, pelas cotações já guardadas (o Resumo busca as que faltam).
+    const fx = cachedConverter(store, dashboard.currency);
+    const toDashboard = (cents: number, currency: string, day: string) => fx.cents(cents, currency, day) ?? 0;
     let spend = 0;
-    for (const i of store.adInsightsDaily) if (matchInsight(i) && inRange(i.date, period.range)) spend += i.spendCents;
+    for (const i of store.adInsightsDaily) if (matchInsight(i) && inRange(i.date, period.range)) spend += toDashboard(i.spendCents, i.currency, i.date);
     const storeIds = new Set(store.dashboardStores.filter((l) => l.dashboardId === dashboard.id).map((l) => l.storeId));
     let revenue = 0;
     let sales = 0;
     for (const o of store.orders) {
       if (!storeIds.has(o.storeId) || o.isTest || o.status !== "paid") continue;
       if (!matchInsight({ campaignId: o.campaignId ?? "", adSetId: o.adSetId, adId: o.adId })) continue;
-      if (!inRange(dayKeyIn(o.placedAt, dashboard.timezone), period.range)) continue;
-      revenue += orderBase(o, dashboard);
+      const day = dayKeyIn(o.placedAt, dashboard.timezone);
+      if (!inRange(day, period.range)) continue;
+      revenue += toDashboard(orderBase(o, dashboard), o.currency, day);
       sales++;
     }
+    // Sem cotação para algum valor, o badge fica de fora em vez de mostrar um ROAS errado.
+    if (fx.misses() > 0) continue;
     const roas = ratio(revenue, spend);
     result.set(link.cardId, {
       label: "ROAS",
@@ -706,6 +881,7 @@ export function getCardMetrics(ctx: Ctx, cardIds: string[]): Map<string, CardMet
       targetLevel: link.targetType,
       dashboardId: dashboard.id,
       provider: account?.provider ?? null,
+      currency: dashboard.currency,
       spendCents: spend,
       revenueCents: revenue,
       sales,
@@ -719,5 +895,5 @@ export function listDashboardsFor(ctx: Ctx) {
   const workspaceIds = new Set(store.workspaceMembers.filter((m) => m.userId === ctx.user.id).map((m) => m.workspaceId));
   return store.dashboards
     .filter((d) => workspaceIds.has(d.workspaceId))
-    .map((d) => ({ id: d.id, name: d.name, workspaceId: d.workspaceId, adPlatforms: d.adPlatforms }));
+    .map((d) => ({ id: d.id, name: d.name, workspaceId: d.workspaceId, currency: d.currency, adPlatforms: d.adPlatforms }));
 }

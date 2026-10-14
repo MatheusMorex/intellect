@@ -17,6 +17,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { currencySymbol } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { createAutomation, previewMetric, updateAutomation } from "@/server/actions/automation";
 import type { AutomationEditor, AutomationOptions } from "@/server/data/automation";
@@ -307,6 +308,7 @@ export function AutomationBuilder({ type, editor }: { type: AutomationType; edit
   const [pending, startTransition] = useTransition();
   const [preview, setPreview] = useState<Awaited<ReturnType<typeof previewMetric>> | null>(null);
   const [previewing, startPreview] = useTransition();
+  const metricCurrency = o.dashboards.find((d) => d.id === trigger.dashboardId)?.currency ?? "BRL";
 
   const lists = o.lists.map((l) => [l.id, l.name] as const);
   const labels = o.labels.map((l) => [l.id, l.name || `Etiqueta ${l.color ?? "sem cor"}`] as const);
@@ -472,10 +474,10 @@ export function AutomationBuilder({ type, editor }: { type: AutomationType; edit
                         {preview.rows.map((r) => (
                           <TableRow key={r.id}>
                             <TableCell className="max-w-64 truncate">{r.name}</TableCell>
-                            <TableCell className="text-right tabular-nums">{metricValue("spend", r.values.spend ?? 0)}</TableCell>
-                            <TableCell className="text-right tabular-nums">{metricValue("revenue", r.values.revenue ?? 0)}</TableCell>
-                            <TableCell className="text-right tabular-nums">{r.values.roas == null ? "—" : metricValue("roas", r.values.roas)}</TableCell>
-                            <TableCell className="text-right tabular-nums">{r.values.cpa == null ? "—" : metricValue("cpa", r.values.cpa)}</TableCell>
+                            <TableCell className="text-right tabular-nums">{metricValue("spend", r.values.spend ?? 0, metricCurrency)}</TableCell>
+                            <TableCell className="text-right tabular-nums">{metricValue("revenue", r.values.revenue ?? 0, metricCurrency)}</TableCell>
+                            <TableCell className="text-right tabular-nums">{metricValue("roas", r.values.roas ?? 0)}</TableCell>
+                            <TableCell className="text-right tabular-nums">{metricValue("cpa", r.values.cpa ?? 0, metricCurrency)}</TableCell>
                             <TableCell className="text-right tabular-nums">{r.values.sales}</TableCell>
                             <TableCell>{r.matched ? <span className="font-medium text-success">Sim</span> : <span className="text-muted-foreground">Não</span>}</TableCell>
                           </TableRow>
@@ -597,7 +599,12 @@ function MetricTriggerFields({ trigger, setT, o, lists }: { trigger: Obj; setT: 
               ]}
               className="min-w-36"
             />
-            <NumberField label={c.metric === "roas" ? "Valor" : c.metric === "sales" ? "Quantidade" : "Valor (R$)"} value={c.value} decimals onChange={(v) => setCond(i, { value: v })} />
+            <NumberField
+              label={c.metric === "roas" ? "Valor" : c.metric === "sales" ? "Quantidade" : `Valor (${currencySymbol(o.dashboards.find((d) => d.id === trigger.dashboardId)?.currency ?? "BRL")})`}
+              value={c.value}
+              decimals
+              onChange={(v) => setCond(i, { value: v })}
+            />
             <Button type="button" variant="ghost" size="icon-sm" aria-label={`Remover a condição ${i + 1}`} disabled={conditions.length === 1} onClick={() => setT({ conditions: conditions.filter((_, j) => j !== i) })}>
               <Trash2 aria-hidden="true" />
             </Button>

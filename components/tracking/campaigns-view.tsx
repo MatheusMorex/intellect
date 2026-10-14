@@ -1,17 +1,23 @@
 import { Plug, Search, X } from "lucide-react";
 import Link from "next/link";
 
+import { Banner } from "@/components/ds/banner";
 import { EmptyState } from "@/components/ds/empty-state";
+import { HelpTip } from "@/components/ds/help-tip";
+import { KpiCard } from "@/components/ds/kpi-card";
+import { AdInsightBalloons } from "@/components/tracking/ad-insights";
 import { DashboardRefresh } from "@/components/shell/dashboard-refresh";
 import { PageBody, PageHeader } from "@/components/shell/page-header";
 import { PeriodFilter } from "@/components/shell/period-filter";
 import { CampaignTable } from "@/components/tracking/campaign-table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { decimalOrZero, integer, moneyOrZero, percentOrZero, roasOrZero } from "@/lib/format";
+import { METRIC } from "@/lib/metrics-glossary";
 import { cn } from "@/lib/utils";
 import { requireUser } from "@/server/auth/session";
 import { listWritableLists } from "@/server/data/boards";
-import { getTrafficReport, isStale, type Provider, type ReportLevel, type SearchParams } from "@/server/data/tracking";
+import { getTrafficReport, isStale, type Provider, type ReportLevel, type ReportRow, type SearchParams } from "@/server/data/tracking";
 
 const NAMES: Record<Provider, string> = { meta: "Meta", google: "Google" };
 
@@ -23,6 +29,49 @@ export function levelLabel(level: ReportLevel, provider: Provider) {
     anuncios: "Anúncios",
     palavras: "Palavras-chave",
   }[level];
+}
+
+function nounFor(level: ReportLevel, provider: Provider) {
+  return { contas: "conta", campanhas: "campanha", conjuntos: provider === "google" ? "grupo" : "conjunto", anuncios: "anúncio", palavras: "palavra-chave" }[level];
+}
+
+/** Tabelinhas com os números do que está na tabela (todas as linhas filtradas, no período). */
+function PeriodNumbers({ provider, totals: t, currency }: { provider: Provider; totals: ReportRow; currency: string }) {
+  const m = (cents: number | null) => moneyOrZero(cents, currency);
+  return (
+    <section aria-labelledby="numeros-periodo" className="grid gap-2">
+      <div className="flex items-center gap-1">
+        <h2 id="numeros-periodo" className="text-sm font-semibold text-muted-foreground">
+          Números do período
+        </h2>
+        <HelpTip topic="trafego-numeros" className="size-5" />
+      </div>
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-3">
+        <KpiCard {...METRIC.adSpend} size="sm" value={m(t.spendCents)} />
+        <KpiCard {...METRIC.adSales} size="sm" value={integer(t.sales)} />
+        <KpiCard {...METRIC.adRevenue} size="sm" value={m(t.revenueCents)} />
+        <KpiCard {...METRIC.adRoas} size="sm" value={roasOrZero(t.roas)} />
+        <KpiCard {...METRIC.adCpa} size="sm" value={m(t.cpaCents)} />
+        <KpiCard {...METRIC.cpm} size="sm" value={m(t.cpmCents)} />
+        <KpiCard {...METRIC.impressions} size="sm" value={integer(t.impressions)} />
+        {provider === "meta" ? (
+          <>
+            <KpiCard {...METRIC.reach} size="sm" value={integer(t.reach ?? 0)} />
+            <KpiCard {...METRIC.frequency} size="sm" value={decimalOrZero(t.frequency)} />
+            <KpiCard {...METRIC.videoViews} size="sm" value={integer(t.videoViews)} />
+            <KpiCard {...METRIC.hook} size="sm" value={percentOrZero(t.hookRate)} />
+            <KpiCard {...METRIC.hold} size="sm" value={percentOrZero(t.holdRate)} />
+          </>
+        ) : (
+          <>
+            <KpiCard {...METRIC.clicks} size="sm" value={integer(t.clicks)} />
+            <KpiCard {...METRIC.ctr} size="sm" value={percentOrZero(t.ctr, 2)} />
+            <KpiCard {...METRIC.cpc} size="sm" value={m(t.cpcCents)} />
+          </>
+        )}
+      </div>
+    </section>
+  );
 }
 
 const STATUS_OPTIONS = [
@@ -58,6 +107,7 @@ export async function CampaignsView({ dashboardId, provider, sp }: { dashboardId
     <PageBody>
       <PageHeader
         title={NAMES[provider]}
+        help={provider === "meta" ? "trafego-meta" : "trafego-google"}
         description={report.dashboard.name}
         actions={
           report.connected ? (
@@ -68,7 +118,12 @@ export async function CampaignsView({ dashboardId, provider, sp }: { dashboardId
           ) : undefined
         }
       />
-      {!report.connected ? (
+      {report.fxUnavailable ? (
+        <Banner variant="error" title="Não deu para buscar a cotação do dia">
+          Este dashboard mostra os valores em {report.dashboard.currency}, e parte dos gastos ou das vendas está em outra moeda. Sem a cotação, os números
+          ficariam errados, então eles não aparecem. Confira a internet e recarregue a página em alguns minutos.
+        </Banner>
+      ) : !report.connected ? (
         <div className="rounded-lg border bg-card">
           <EmptyState
             icon={Plug}
@@ -150,6 +205,10 @@ export async function CampaignsView({ dashboardId, provider, sp }: { dashboardId
               </div>
             )}
           </div>
+
+          <PeriodNumbers provider={provider} totals={report.totals} currency={report.dashboard.currency} />
+
+          <AdInsightBalloons key={`leitura-${report.level}-${provider}`} items={report.insights} noun={nounFor(report.level, provider)} />
 
           <CampaignTable
             key={`${report.level}-${provider}`}

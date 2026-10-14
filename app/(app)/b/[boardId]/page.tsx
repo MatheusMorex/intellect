@@ -6,6 +6,7 @@ import { BoardCanvas } from "@/components/board/board-canvas";
 import { BoardHeader } from "@/components/board/board-header";
 import { CardDialog } from "@/components/board/card-dialog";
 import { Banner } from "@/components/ds/banner";
+import { boardBackgroundStyle } from "@/lib/board-backgrounds";
 import { requireUser } from "@/server/auth/session";
 import {
   getBoardArchive,
@@ -53,7 +54,7 @@ export default async function BoardPage({ params, searchParams }: Props) {
   const now = Date.parse(nowIso());
 
   return (
-    <div className="flex h-[calc(100dvh-3.5rem)] flex-col" style={{ background: `var(--ds-label-${view.board.background}-bold)` }}>
+    <div className="flex h-[calc(100dvh-3.5rem)] flex-col" style={boardBackgroundStyle(view.board.background)}>
       <BoardHeader view={view} archive={archive} sharing={sharing} singleKeyShortcuts={shell.preferences.singleKeyShortcuts} />
       {missingCard && (
         <Banner variant="warning" title="Este card não existe mais" className="mx-4 mt-3 w-fit">

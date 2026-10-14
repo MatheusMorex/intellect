@@ -9,6 +9,8 @@ export type Names = {
   labels: Record<string, string>;
   people: Record<string, string>;
   dashboards: Record<string, string>;
+  /** Moeda de cada dashboard (os valores das regras por métrica ficam nela). */
+  currencies: Record<string, string>;
 };
 
 /** Nome, aba do diretório, explicação, botão de criar e título do vazio de cada tipo. */
@@ -37,10 +39,11 @@ export const WINDOW_LABEL = { today: "hoje", yesterday: "ontem", "3d": "últimos
 export const LEVEL_LABEL = { campaign: "campanha", ad_set: "conjunto", ad: "anúncio" } as const;
 const WEEKDAY = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
 
-export function metricValue(metric: keyof typeof METRIC_LABEL, value: number) {
+/** Valor de uma condição. Dinheiro sai na moeda do dashboard da regra. */
+export function metricValue(metric: keyof typeof METRIC_LABEL, value: number, currency = "BRL") {
   if (metric === "roas") return value.toLocaleString("pt-BR", { maximumFractionDigits: 2 });
   if (metric === "sales") return String(Math.round(value));
-  return `R$ ${value.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return value.toLocaleString("pt-BR", { style: "currency", currency, minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- o gatilho vem validado pelo Zod; aqui só lemos
@@ -67,7 +70,11 @@ export function describeTrigger(type: AutomationType, t: any, n: Names): string 
       }
       return "Quando…";
     case "metric": {
-      const conds = (t.conditions ?? []).map((c: { metric: keyof typeof METRIC_LABEL; op: "gt" | "lt"; value: number }) => `${METRIC_LABEL[c.metric]} ${c.op === "gt" ? "acima de" : "abaixo de"} ${metricValue(c.metric, c.value)}`);
+      const currency = n.currencies[t.dashboardId] ?? "BRL";
+      const conds = (t.conditions ?? []).map(
+        (c: { metric: keyof typeof METRIC_LABEL; op: "gt" | "lt"; value: number }) =>
+          `${METRIC_LABEL[c.metric]} ${c.op === "gt" ? "acima de" : "abaixo de"} ${metricValue(c.metric, c.value, currency)}`,
+      );
       const who = `${LEVEL_LABEL[t.level as keyof typeof LEVEL_LABEL] ?? "campanha"}${t.status === "active" ? " ativa" : t.status === "paused" ? " pausada" : ""}${t.provider !== "any" ? ` do ${t.provider === "meta" ? "Meta" : "Google"}` : ""}${t.nameContains ? ` com ${q(t.nameContains)} no nome` : ""}`;
       return `A cada ${t.everyMinutes >= 60 ? `${t.everyMinutes / 60} h` : `${t.everyMinutes} min`}, quando ${who} tiver ${conds.join(" e ") || "…"} (${WINDOW_LABEL[t.window as keyof typeof WINDOW_LABEL] ?? ""}) em ${q(n.dashboards[t.dashboardId])}`;
     }

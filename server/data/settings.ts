@@ -3,6 +3,7 @@
 import { format } from "date-fns";
 
 import { requireDashboard, type Ctx } from "@/server/access";
+import { prepareDashboardFx } from "@/server/fx/rates";
 import { expenseOccurrences, settingOn } from "@/server/metrics/costs";
 import { dayKeyIn, resolvePeriod, todayIn } from "@/server/period";
 import { readStore } from "@/server/store/db";
@@ -110,8 +111,10 @@ export async function getCostSettings(ctx: Ctx, dashboardId: string) {
         id: p.id,
         name: p.name,
         costCents: currentCost?.costCents ?? null,
+        /** Moeda em que o custo foi cadastrado (a do dashboard naquela hora). */
+        costCurrency: currentCost?.currency ?? dashboard.currency,
         validFrom: currentCost?.validFrom ?? null,
-        scheduled: costs.filter((c) => c.validFrom > today).map((c) => ({ costCents: c.costCents, validFrom: c.validFrom })),
+        scheduled: costs.filter((c) => c.validFrom > today).map((c) => ({ costCents: c.costCents, currency: c.currency, validFrom: c.validFrom })),
         sold,
       };
     })
@@ -141,7 +144,10 @@ export const EXPENSE_CATEGORY: Record<ExpenseCategory, string> = {
 
 export async function listExpenses(ctx: Ctx, dashboardId: string, sp: SearchParams) {
   const { dashboard, role } = requireDashboard(ctx, dashboardId);
-  const store = readStore();
+  // Cada despesa aparece na moeda em que foi lançada; os totais, na do dashboard, pela cotação de cada ocorrência.
+  const fx = await prepareDashboardFx(dashboard);
+  const store = fx.store;
+  const convert = (amount: number, currency: string, day: string) => fx.converter.cents(amount, currency, day) ?? 0;
   const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
   const all = store.expenses.filter((e) => e.dashboardId === dashboard.id);
   const earliest = all.reduce<string | null>((min, e) => (!min || e.date < min ? e.date : min), null);
@@ -155,7 +161,7 @@ export async function listExpenses(ctx: Ctx, dashboardId: string, sp: SearchPara
     .filter((e) => !category || e.category === category)
     .map((e) => {
       const occurrences = expenseOccurrences(e, period.range);
-      return { ...e, occurrences, totalInPeriodCents: occurrences.length * e.amountCents };
+      return { ...e, occurrences, totalInPeriodCents: occurrences.reduce((sum, day) => sum + convert(e.amountCents, e.currency, day), 0) };
     })
     .filter((e) => e.occurrences.length > 0)
     .sort((a, b) => (b.occurrences.at(-1) ?? "").localeCompare(a.occurrences.at(-1) ?? ""));
@@ -172,6 +178,7 @@ export async function listExpenses(ctx: Ctx, dashboardId: string, sp: SearchPara
     total: rows.reduce((s, r) => s + r.totalInPeriodCents, 0),
     byCategory,
     filters: { q: one(sp.q) ?? "", category: category ?? "" },
+    fxUnavailable: fx.converter.misses() > 0,
   };
 }
 

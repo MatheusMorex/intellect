@@ -39,6 +39,7 @@ const fee = (over: Partial<AdditionalFeeRow>): AdditionalFeeRow => ({
   name: "taxa",
   kind: "fixed",
   amountCents: 100,
+  currency: "BRL",
   bp: null,
   scope: "all",
   productId: null,

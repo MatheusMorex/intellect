@@ -7,7 +7,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
-import { createSeed, STORE_VERSION } from "./seed";
+import { createSeed, STORE_VERSION, upgradeStore } from "./seed";
 import type { Store } from "./types";
 
 const DIR = path.join(process.cwd(), ".data");
@@ -45,6 +45,11 @@ export function readStore(): Store {
     if (store.version === STORE_VERSION) {
       cache = { mtimeMs: stat.mtimeMs, store };
       return store;
+    }
+    const upgraded = upgradeStore(store);
+    if (upgraded) {
+      writeFile(upgraded);
+      return upgraded;
     }
   }
   const seeded = createSeed(new Date());

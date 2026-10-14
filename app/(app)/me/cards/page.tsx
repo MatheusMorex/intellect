@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ChecklistBadge, DueBadge, MetricBadge } from "@/components/ds/badges";
 import { EmptyState } from "@/components/ds/empty-state";
 import { PageBody, PageHeader } from "@/components/shell/page-header";
+import { boardBackgroundStyle, type BoardBackgroundView } from "@/lib/board-backgrounds";
 import { roas } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { requireUser } from "@/server/auth/session";
@@ -35,7 +36,7 @@ export default async function MyCardsPage({ searchParams }: { searchParams: Prom
   const cards = await getMyCards({ user });
   const now = Date.parse(nowIso());
 
-  const groups = new Map<string, { title: string; swatch?: string; cards: MyCard[] }>();
+  const groups = new Map<string, { title: string; swatch?: BoardBackgroundView; cards: MyCard[] }>();
   for (const c of [...cards].sort((a, b) => (a.dueAt ?? "9999").localeCompare(b.dueAt ?? "9999"))) {
     const key = byDue ? dueGroup(c, now) : c.boardId;
     if (!groups.has(key)) groups.set(key, { title: byDue ? key : c.boardName, swatch: byDue ? undefined : c.boardBackground, cards: [] });
@@ -60,6 +61,7 @@ export default async function MyCardsPage({ searchParams }: { searchParams: Prom
     <PageBody>
       <PageHeader
         title="Meus cards"
+        help="meus-cards"
         description={cards.length ? `${cards.length} ${cards.length === 1 ? "card está" : "cards estão"} com você.` : undefined}
         actions={
           cards.length > 0 && (
@@ -78,7 +80,7 @@ export default async function MyCardsPage({ searchParams }: { searchParams: Prom
         ordered.map((g) => (
           <section key={g.title} aria-label={g.title} className="grid gap-2">
             <h2 className="flex items-center gap-2 text-base font-semibold">
-              {g.swatch && <span aria-hidden="true" className="size-4 rounded-sm" style={{ background: `var(--ds-label-${g.swatch}-bold)` }} />}
+              {g.swatch && <span aria-hidden="true" className="size-4 rounded-sm" style={boardBackgroundStyle(g.swatch)} />}
               {g.title}
               <span className="text-sm font-normal text-muted-foreground">({g.cards.length})</span>
             </h2>

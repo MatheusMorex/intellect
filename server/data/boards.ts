@@ -7,26 +7,34 @@ import { notFound } from "next/navigation";
 
 import { boardRole, requireBoard, requireWorkspace, workspaceRole, type BoardRole, type Ctx } from "@/server/access";
 import { getCardMetrics, listDashboardsFor, type CardMetric } from "@/server/data/tracking";
+import { fileUrl } from "@/server/files";
 import { cardsOfList, listsOfBoard } from "@/server/kanban/core";
 import { mutate, newId, nowIso, readStore } from "@/server/store/db";
-import type { BoardPrefs, BoardRow, CardRow, Store, UserPreferences } from "@/server/store/types";
+import { DEFAULT_APPEARANCE } from "@/server/store/seed";
+import type { BoardBackground, BoardPrefs, BoardRow, CardRow, Store, UserAppearance, UserPreferences } from "@/server/store/types";
+import type { BoardBackgroundView } from "@/lib/board-backgrounds";
 
-export type Person = { id: string; name: string; username: string | null; avatarColor: string };
+/** Pessoa como as telas recebem. avatarUrl nulo: aparecem as iniciais na cor de avatarColor. */
+export type Person = { id: string; name: string; username: string | null; avatarColor: string; avatarUrl: string | null };
 
 function person(store: Store, userId: string | null): Person {
   const u = userId ? store.users.find((x) => x.id === userId) : undefined;
   return u
-    ? { id: u.id, name: u.name, username: u.username, avatarColor: u.avatarColor }
-    : { id: userId ?? "removido", name: "Usuário removido", username: null, avatarColor: "black" };
+    ? { id: u.id, name: u.name, username: u.username, avatarColor: u.avatarColor, avatarUrl: u.avatarFileId ? fileUrl(u.avatarFileId) : null }
+    : { id: userId ?? "removido", name: "Usuário removido", username: null, avatarColor: "black", avatarUrl: null };
 }
 
-export type BoardSummary = { id: string; name: string; background: string; workspaceSlug: string; starred: boolean; closed: boolean };
+export function backgroundView(bg: BoardBackground): BoardBackgroundView {
+  return bg.type === "image" ? { type: "image", url: fileUrl(bg.fileId) } : { type: "color", value: bg.value };
+}
+
+export type BoardSummary = { id: string; name: string; background: BoardBackgroundView; workspaceSlug: string; starred: boolean; closed: boolean };
 
 function summary(store: Store, ctx: Ctx, b: BoardRow): BoardSummary {
   return {
     id: b.id,
     name: b.name,
-    background: b.background.value,
+    background: backgroundView(b.background),
     workspaceSlug: store.workspaces.find((w) => w.id === b.workspaceId)?.slug ?? "",
     starred: store.boardStars.some((s) => s.boardId === b.id && s.userId === ctx.user.id),
     closed: !!b.closedAt,
@@ -47,6 +55,10 @@ export type ShellData = {
   dashboards: { id: string; name: string; adPlatforms: ("meta" | "google")[] }[];
   unreadNotifications: number;
   preferences: UserPreferences;
+  /** Foto de perfil de quem está logado. */
+  avatarUrl: string | null;
+  /** Plano de fundo (com o endereço da imagem), frases ao lado do logo e tela inicial. */
+  appearance: Omit<UserAppearance, "wallpaper"> & { wallpaper: { url: string; dim: number; blur: number } | null };
 };
 
 export async function getShellData(ctx: Ctx): Promise<ShellData> {
@@ -62,6 +74,35 @@ export async function getShellData(ctx: Ctx): Promise<ShellData> {
     dashboards: listDashboardsFor(ctx).map(({ id, name, adPlatforms }) => ({ id, name, adPlatforms })),
     unreadNotifications: store.notifications.filter((n) => n.userId === ctx.user.id && !n.readAt).length,
     preferences: user?.preferences ?? { colorblind: false, reduceMotion: false, singleKeyShortcuts: true, emailNotifications: "periodic" },
+    avatarUrl: user?.avatarFileId ? fileUrl(user.avatarFileId) : null,
+    appearance: appearanceView(user?.appearance ?? DEFAULT_APPEARANCE),
+  };
+}
+
+/**
+ * Tela que abre depois de entrar, escolhida em Configurações (Início, Meus cards
+ * ou Resumo). O login manda direto para ela, sem passar pela raiz.
+ */
+export function homeHref(userId: string): string {
+  const store = readStore();
+  const user = store.users.find((u) => u.id === userId);
+  const memberships = store.workspaceMembers.filter((m) => m.userId === userId);
+  const workspace = memberships[0] ? store.workspaces.find((w) => w.id === memberships[0].workspaceId) : undefined;
+  const page = user?.appearance.homePage ?? "inicio";
+  if (page === "meus-cards") return "/me/cards";
+  if (page === "resumo") {
+    const workspaceIds = new Set(memberships.map((m) => m.workspaceId));
+    const dashboard = store.dashboards.find((d) => workspaceIds.has(d.workspaceId));
+    if (dashboard) return `/d/${dashboard.id}`;
+  }
+  return workspace ? `/w/${workspace.slug}` : "/me";
+}
+
+export function appearanceView(a: UserAppearance): ShellData["appearance"] {
+  return {
+    showTaglines: a.showTaglines,
+    homePage: a.homePage,
+    wallpaper: a.wallpaper ? { url: fileUrl(a.wallpaper.fileId), dim: a.wallpaper.dim, blur: a.wallpaper.blur } : null,
   };
 }
 
@@ -124,7 +165,7 @@ export type BoardView = {
     id: string;
     name: string;
     description: string;
-    background: string;
+    background: BoardBackgroundView;
     visibility: "private" | "workspace";
     prefs: BoardPrefs;
     workspaceId: string;
@@ -196,7 +237,7 @@ export async function getBoardView(ctx: Ctx, boardId: string): Promise<BoardView
       id: board.id,
       name: board.name,
       description: board.description,
-      background: board.background.value,
+      background: backgroundView(board.background),
       visibility: board.visibility,
       prefs: board.prefs,
       workspaceId: workspace.id,
@@ -296,7 +337,7 @@ export async function getCardDetail(ctx: Ctx, cardId: string) {
     .slice(0, 50)
     .map((a) => ({
       id: a.id,
-      actor: a.actorKind === "automation" ? { id: "automacao", name: String(a.data.automationName ?? "Automação"), username: null, avatarColor: "purple" } : person(store, a.actorId),
+      actor: a.actorKind === "automation" ? { id: "automacao", name: String(a.data.automationName ?? "Automação"), username: null, avatarColor: "purple", avatarUrl: null } : person(store, a.actorId),
       kind: a.actorKind,
       text: activityText(a.type, a.data),
       createdAt: a.createdAt,
@@ -535,7 +576,9 @@ export async function getProfile(ctx: Ctx) {
     timezone: user.timezone,
     theme: user.theme,
     avatarColor: user.avatarColor,
+    avatarUrl: user.avatarFileId ? fileUrl(user.avatarFileId) : null,
     preferences: user.preferences,
+    appearance: appearanceView(user.appearance),
     activity: store.activities
       .filter((a) => a.actorId === user.id)
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))

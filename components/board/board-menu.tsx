@@ -1,10 +1,12 @@
 "use client";
 
-import { Archive, ArrowLeft, Info, Lock, Palette, Settings, Tag, Activity, Trash2, RotateCcw } from "lucide-react";
+import { Archive, ArrowLeft, Check, Info, Lock, Palette, Settings, Tag, Activity, Trash2, RotateCcw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
+import { HelpTip } from "@/components/ds/help-tip";
+import { ImageUploadButton } from "@/components/ds/image-upload";
 import { LABEL_HUES, LABEL_HUE_NAME, LabelChip } from "@/components/ds/label-chip";
 import {
   AlertDialog,
@@ -23,6 +25,7 @@ import { Label } from "@/components/ui/label";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { BOARD_COLORS, boardBackgroundStyle } from "@/lib/board-backgrounds";
 import { relative } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { deleteBoard, deleteCard, deleteLabel, setBoardClosed, setCardArchived, setListArchived, updateBoard, upsertLabel } from "@/server/actions/kanban";
@@ -38,7 +41,7 @@ type Page = "inicio" | "sobre" | "fundo" | "etiquetas" | "configuracoes" | "ativ
 
 const PAGES: { id: Exclude<Page, "inicio">; label: string; icon: typeof Info }[] = [
   { id: "sobre", label: "Sobre este quadro", icon: Info },
-  { id: "fundo", label: "Mudar o fundo", icon: Palette },
+  { id: "fundo", label: "Mudar o fundo (papel de parede)", icon: Palette },
   { id: "etiquetas", label: "Etiquetas", icon: Tag },
   { id: "configuracoes", label: "Configurações", icon: Settings },
   { id: "atividade", label: "Atividade", icon: Activity },
@@ -136,26 +139,62 @@ function About({ view }: { view: BoardView }) {
   );
 }
 
+// Fundo do quadro: uma das 25 cores ou uma imagem do computador (vale para todos que veem o quadro).
 function Background({ view }: { view: BoardView }) {
   const { run } = useRun();
+  const bg = view.board.background;
   return (
-    <div role="radiogroup" aria-label="Fundo do quadro" className="grid grid-cols-3 gap-2">
-      {LABEL_HUES.map((hue) => {
-        const active = view.board.background === hue;
-        return (
-          <button
-            key={hue}
-            type="button"
-            role="radio"
-            aria-checked={active}
-            aria-label={LABEL_HUE_NAME[hue]}
+    <div className="grid gap-5">
+      <section aria-labelledby="fundo-imagem" className="grid gap-2">
+        <div className="flex items-center gap-1">
+          <h3 id="fundo-imagem" className="text-sm font-semibold">
+            Imagem do seu computador
+          </h3>
+          <HelpTip topic="quadro-fundo" className="size-5" />
+        </div>
+        {bg.type === "image" && (
+          <div aria-label="Imagem de fundo atual" role="img" className="h-28 rounded-md border" style={boardBackgroundStyle(bg)} />
+        )}
+        <p className="text-sm text-muted-foreground">JPG, PNG ou WebP. A imagem é ajustada para caber no quadro e todos que veem o quadro veem o mesmo fundo.</p>
+        <div>
+          <ImageUploadButton
+            kind="board_background"
+            boardId={view.board.id}
+            label={bg.type === "image" ? "Trocar imagem" : "Importar imagem do computador"}
+            successMessage="Fundo do quadro atualizado"
             disabled={!view.canEdit}
-            onClick={() => run(() => updateBoard({ boardId: view.board.id, background: hue }))}
-            className={cn("h-16 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2", active && "ring-2 ring-ring ring-offset-2 ring-offset-popover")}
-            style={{ background: `var(--ds-label-${hue}-bold)` }}
           />
-        );
-      })}
+        </div>
+      </section>
+      <section aria-labelledby="fundo-cores" className="grid gap-2">
+        <h3 id="fundo-cores" className="text-sm font-semibold">
+          Cores
+        </h3>
+        <div role="radiogroup" aria-labelledby="fundo-cores" className="grid grid-cols-5 gap-2">
+          {BOARD_COLORS.map((c) => {
+            const active = bg.type === "color" && bg.value === c.key;
+            return (
+              <button
+                key={c.key}
+                type="button"
+                role="radio"
+                aria-checked={active}
+                aria-label={c.name}
+                title={c.name}
+                disabled={!view.canEdit}
+                onClick={() => run(() => updateBoard({ boardId: view.board.id, background: c.key }))}
+                className={cn(
+                  "grid h-12 place-items-center rounded-md text-white outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                  active && "ring-2 ring-ring ring-offset-2 ring-offset-popover",
+                )}
+                style={{ background: c.hex }}
+              >
+                {active && <Check aria-hidden="true" className="size-4" />}
+              </button>
+            );
+          })}
+        </div>
+      </section>
     </div>
   );
 }

@@ -2,11 +2,13 @@ import { Package, Pencil, Plus } from "lucide-react";
 import type { Metadata } from "next";
 
 import { EmptyState } from "@/components/ds/empty-state";
+import { HelpTip } from "@/components/ds/help-tip";
 import { PageBody, PageHeader } from "@/components/shell/page-header";
 import { FeeDelete, FeeDialog, ProductCostDialog, TaxForm } from "@/components/tracking/costs-client";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { EMPTY, integer, money } from "@/lib/format";
+import type { HelpTopic } from "@/lib/help";
 import { bpToInput } from "@/lib/parse";
 import { requireUser } from "@/server/auth/session";
 import { getCostSettings } from "@/server/data/settings";
@@ -19,11 +21,13 @@ const day = (key: string) => key.split("-").reverse().join("/");
 function Section({
   title,
   description,
+  help,
   actions,
   children,
 }: {
   title: string;
   description?: string;
+  help: HelpTopic;
   actions?: React.ReactNode;
   children: React.ReactNode;
 }) {
@@ -31,7 +35,10 @@ function Section({
     <section className="grid gap-4 rounded-lg border bg-card p-4 sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-base font-semibold">{title}</h2>
+          <div className="flex items-center gap-1">
+            <h2 className="text-base font-semibold">{title}</h2>
+            <HelpTip topic={help} className="size-5" />
+          </div>
           {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
         </div>
         {actions}
@@ -46,15 +53,15 @@ export default async function FeesPage({ params }: { params: Promise<{ dashboard
   const { dashboardId } = await params;
   const user = await requireUser();
   const data = await getCostSettings({ user }, dashboardId);
-  const m = (c: number | null) => (c == null ? EMPTY : money(c, data.dashboard.currency));
   const productOptions = data.products.map((p) => ({ id: p.id, name: p.name }));
 
   return (
     <PageBody>
-      <PageHeader title="Taxas" description={data.dashboard.name} />
+      <PageHeader title="Taxas" help="taxas" description={data.dashboard.name} />
 
       <Section
         title="Impostos"
+        help="taxas-impostos"
         description="Entram no lucro do Resumo e das campanhas. Mudar o percentual não muda o passado: vale a partir da data escolhida."
       >
         <TaxForm dashboardId={dashboardId} today={data.today} current={data.current} canManage={data.canManage} />
@@ -75,12 +82,14 @@ export default async function FeesPage({ params }: { params: Promise<{ dashboard
 
       <Section
         title="Taxas adicionais"
+        help="taxas-adicionais"
         description="Custos por pedido que não são imposto: embalagem, brinde, frete subsidiado, taxa de antecipação."
         actions={
           data.canManage ? (
             <FeeDialog
               dashboardId={dashboardId}
               today={data.today}
+              currency={data.dashboard.currency}
               products={productOptions}
               trigger={
                 <Button>
@@ -113,7 +122,7 @@ export default async function FeesPage({ params }: { params: Promise<{ dashboard
                   <TableCell className="font-medium">{f.name}</TableCell>
                   <TableCell className="tabular">
                     {f.kind === "fixed"
-                      ? `${m(f.amountCents)} ${f.scope === "product" ? "por unidade" : "por pedido"}`
+                      ? `${f.amountCents == null ? EMPTY : money(f.amountCents, f.currency)} ${f.scope === "product" ? "por unidade" : "por pedido"}`
                       : `${bpToInput(f.bp)}% do valor`}
                   </TableCell>
                   <TableCell>
@@ -130,6 +139,7 @@ export default async function FeesPage({ params }: { params: Promise<{ dashboard
                         <FeeDialog
                           dashboardId={dashboardId}
                           today={data.today}
+                          currency={data.dashboard.currency}
                           products={productOptions}
                           fee={f}
                           trigger={
@@ -149,7 +159,7 @@ export default async function FeesPage({ params }: { params: Promise<{ dashboard
         )}
       </Section>
 
-      <Section title="Custo por produto" description="Quanto custa cada unidade. Os produtos aparecem aqui depois da primeira venda.">
+      <Section title="Custo por produto" help="taxas-produtos" description="Quanto custa cada unidade. Os produtos aparecem aqui depois da primeira venda.">
         {data.products.length === 0 ? (
           <EmptyState
             icon={Package}
@@ -175,16 +185,16 @@ export default async function FeesPage({ params }: { params: Promise<{ dashboard
                   <TableCell className="font-medium">{p.name}</TableCell>
                   <TableCell className="text-right">{integer(p.sold)}</TableCell>
                   <TableCell className="text-right">
-                    {p.costCents == null ? <span className="text-warning">Sem custo</span> : m(p.costCents)}
+                    {p.costCents == null ? <span className="text-warning">Sem custo</span> : money(p.costCents, p.costCurrency)}
                     {p.scheduled.length > 0 && (
                       <span className="block text-xs text-muted-foreground">
-                        {p.scheduled.map((s) => `${m(s.costCents)} a partir de ${day(s.validFrom)}`).join("; ")}
+                        {p.scheduled.map((s) => `${money(s.costCents, s.currency)} a partir de ${day(s.validFrom)}`).join("; ")}
                       </span>
                     )}
                   </TableCell>
                   <TableCell>{p.validFrom ? day(p.validFrom) : EMPTY}</TableCell>
                   <TableCell className="w-12 text-right">
-                    {data.canManage && <ProductCostDialog dashboardId={dashboardId} today={data.today} product={p} />}
+                    {data.canManage && <ProductCostDialog dashboardId={dashboardId} today={data.today} currency={data.dashboard.currency} product={p} />}
                   </TableCell>
                 </TableRow>
               ))}

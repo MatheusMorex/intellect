@@ -1,15 +1,49 @@
-import { AlertCircle, ArrowDown, ArrowUp, Info } from "lucide-react";
+import { AlertCircle, ArrowDown, ArrowUp } from "lucide-react";
 
+import { HelpTip } from "@/components/ds/help-tip";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { EMPTY } from "@/lib/format";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { ZERO_RATIO } from "@/lib/format";
+import { OUTLINE_BOX } from "@/lib/surfaces";
 import { cn } from "@/lib/utils";
 
 // Card de métrica (components.md, "Card de métrica (KPI)").
-// polarity diz se subir é bom (faturamento, lucro, ROAS) ou ruim (gasto, CPA).
+// Sem cor própria: contorno de 2 px e fundo de vidro fosco, para os números se
+// destacarem sobre qualquer plano de fundo. polarity diz se subir é bom
+// (faturamento, lucro, ROAS) ou ruim (gasto, CPA).
+// Explicação em dois lugares: parando o mouse 3 segundos em cima do card, ou no
+// "?" (que funciona também no toque e no teclado). Cada card tem o próprio
+// provider: sem ele, a dica do card vizinho abriria na hora logo depois de
+// outra fechar (skipDelay do provider global) e ficaria aberta enquanto o mouse
+// passa por cima dela, cobrindo os cards de cima.
+
+/** Tempo com o mouse parado em cima do card até a explicação aparecer. */
+export const KPI_EXPLAIN_DELAY_MS = 3000;
 
 type Delta = { text: string; direction: "up" | "down" };
+
+function Explanation({ explain, purpose, formula }: { explain?: string; purpose?: string; formula?: string }) {
+  return (
+    <>
+      {explain && (
+        <p>
+          <span className="font-semibold text-foreground">O que é:</span> {explain}
+        </p>
+      )}
+      {purpose && (
+        <p>
+          <span className="font-semibold text-foreground">Para que serve:</span> {purpose}
+        </p>
+      )}
+      {formula && (
+        <p>
+          <span className="font-semibold text-foreground">Como é calculado:</span> {formula}.
+        </p>
+      )}
+    </>
+  );
+}
 
 export function KpiCard({
   label,
@@ -18,6 +52,8 @@ export function KpiCard({
   delta,
   polarity = "up-good",
   formula,
+  explain,
+  purpose,
   state = "ready",
   size = "md",
   onRetry,
@@ -28,6 +64,10 @@ export function KpiCard({
   delta?: Delta;
   polarity?: "up-good" | "down-good" | "neutral";
   formula?: string;
+  /** O que o número quer dizer, em linguagem simples. */
+  explain?: string;
+  /** Para que a métrica serve na hora de decidir. */
+  purpose?: string;
   state?: "ready" | "loading" | "empty" | "error";
   size?: "md" | "sm";
   onRetry?: () => void;
@@ -35,29 +75,26 @@ export function KpiCard({
   const good = !delta || polarity === "neutral" ? null : (delta.direction === "up") === (polarity === "up-good");
   const deltaColor = good == null ? "text-muted-foreground" : good ? "text-success" : "text-danger";
   const DeltaIcon = delta?.direction === "down" ? ArrowDown : ArrowUp;
+  const shown = state === "empty" ? (value ?? ZERO_RATIO) : value;
   const spoken =
-    state === "ready" && value
-      ? `${label}: ${value}${delta ? `, ${delta.text} ${delta.direction === "up" ? "maior" : "menor"} que no período anterior` : ""}`
+    (state === "ready" || state === "empty") && shown
+      ? `${label}: ${shown}${delta ? `, ${delta.text} ${delta.direction === "up" ? "maior" : "menor"} que no período anterior` : ""}`
       : undefined;
+  const hasExplanation = !!(formula || explain || purpose);
 
-  return (
+  const card = (
     <div
       role="group"
       aria-label={spoken ?? label}
       aria-busy={state === "loading" || undefined}
-      className={cn("@container rounded-lg border bg-card text-card-foreground", size === "md" ? "p-4" : "p-3")}
+      className={cn("@container text-foreground", OUTLINE_BOX, size === "md" ? "p-4" : "p-3")}
     >
       <div className="flex items-center gap-1 text-xs text-muted-foreground">
         {label}
-        {formula && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button type="button" className="rounded-sm" aria-label={`Como ${label} é calculado`}>
-                <Info aria-hidden="true" className="size-3.5" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>{formula}</TooltipContent>
-          </Tooltip>
+        {hasExplanation && (
+          <HelpTip title={label} className="-my-1 size-5">
+            <Explanation explain={explain} purpose={purpose} formula={formula} />
+          </HelpTip>
         )}
       </div>
 
@@ -71,10 +108,8 @@ export function KpiCard({
 
       {state === "empty" && (
         <>
-          <p className={cn("my-1 font-bold tabular", size === "md" ? "text-xl @xs:text-display" : "text-xl")} aria-label="sem dados">
-            {EMPTY}
-          </p>
-          <p className="text-xs text-muted-foreground">Sem vendas no período</p>
+          <p className={cn("my-1 font-bold whitespace-nowrap tabular", size === "md" ? "text-xl @xs:text-display" : "text-xl")}>{shown}</p>
+          <p className="text-xs text-muted-foreground">Sem dados no período</p>
         </>
       )}
 
@@ -111,5 +146,21 @@ export function KpiCard({
         </>
       )}
     </div>
+  );
+
+  if (!hasExplanation) return card;
+  return (
+    <TooltipProvider delayDuration={KPI_EXPLAIN_DELAY_MS} skipDelayDuration={0} disableHoverableContent>
+      <Tooltip>
+        <TooltipTrigger asChild>{card}</TooltipTrigger>
+        <TooltipContent
+          side="top"
+          className="grid max-w-sm gap-1.5 rounded-lg border-2 border-input bg-popover/90 p-3 text-left text-sm leading-relaxed text-pretty text-muted-foreground shadow-pop backdrop-blur-md"
+        >
+          <p className="font-semibold text-foreground">{label}</p>
+          <Explanation explain={explain} purpose={purpose} formula={formula} />
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }

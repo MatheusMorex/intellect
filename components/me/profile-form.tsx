@@ -5,6 +5,7 @@ import { useTheme } from "next-themes";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
+import { HelpTip } from "@/components/ds/help-tip";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,6 +13,8 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import type { HelpTopic } from "@/lib/help";
+import { timezonesWith } from "@/lib/timezones";
 import { updateProfile } from "@/server/actions/people";
 
 type Profile = {
@@ -23,23 +26,14 @@ type Profile = {
   preferences: { colorblind: boolean; reduceMotion: boolean; singleKeyShortcuts: boolean; emailNotifications: "never" | "periodic" | "instant" };
 };
 
-const TIMEZONES = [
-  ["America/Sao_Paulo", "Brasília (São Paulo, Rio, BH, Sul)"],
-  ["America/Manaus", "Amazonas (Manaus)"],
-  ["America/Cuiaba", "Mato Grosso (Cuiabá)"],
-  ["America/Belem", "Pará (Belém)"],
-  ["America/Fortaleza", "Nordeste (Fortaleza, Salvador, Recife)"],
-  ["America/Rio_Branco", "Acre (Rio Branco)"],
-  ["America/Noronha", "Fernando de Noronha"],
-  ["Europe/Lisbon", "Portugal (Lisboa)"],
-  ["UTC", "UTC"],
-] as const;
-
-function Row({ id, title, hint, children }: { id: string; title: string; hint: string; children: React.ReactNode }) {
+function Row({ id, title, hint, help, children }: { id: string; title: string; hint: string; help?: HelpTopic; children: React.ReactNode }) {
   return (
     <div className="flex items-start justify-between gap-6 py-3">
       <div className="grid gap-0.5">
-        <Label htmlFor={id}>{title}</Label>
+        <div className="flex items-center gap-1">
+          <Label htmlFor={id}>{title}</Label>
+          {help && <HelpTip topic={help} className="size-5" />}
+        </div>
         <p id={`${id}-hint`} className="text-sm text-muted-foreground">
           {hint}
         </p>
@@ -50,14 +44,15 @@ function Row({ id, title, hint, children }: { id: string; title: string; hint: s
 }
 
 // S13 Perfil e preferências. Salva tudo junto; o tema também muda na hora neste navegador.
-export function ProfileForm({ profile }: { profile: Profile }) {
+// Em Configurações, o tema fica na aba Aparência (hideTheme), para não aparecer duas vezes.
+export function ProfileForm({ profile, hideTheme = false }: { profile: Profile; hideTheme?: boolean }) {
   const router = useRouter();
   const { setTheme } = useTheme();
   const [form, setForm] = useState(profile);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const pref = <K extends keyof Profile["preferences"]>(k: K, v: Profile["preferences"][K]) => setForm((f) => ({ ...f, preferences: { ...f.preferences, [k]: v } }));
-  const timezones = TIMEZONES.some(([v]) => v === form.timezone) ? TIMEZONES : ([[form.timezone, form.timezone], ...TIMEZONES] as const);
+  const timezones = timezonesWith(form.timezone);
 
   return (
     <form
@@ -71,16 +66,19 @@ export function ProfileForm({ profile }: { profile: Profile }) {
             setError(result.error);
             return;
           }
-          setTheme(form.theme);
+          if (!hideTheme) setTheme(form.theme);
           toast.success("Perfil salvo");
           router.refresh();
         });
       }}
     >
       <section aria-labelledby="perfil" className="grid gap-4 rounded-lg border bg-card p-4 sm:p-6">
-        <h2 id="perfil" className="text-base font-semibold">
-          Perfil
-        </h2>
+        <div className="flex items-center gap-1">
+          <h2 id="perfil" className="text-base font-semibold">
+            Perfil
+          </h2>
+          <HelpTip topic="perfil-dados" className="size-5" />
+        </div>
         <div className="grid items-start gap-4 sm:grid-cols-2">
           <div className="grid gap-1.5">
             <Label htmlFor="p-name">Nome</Label>
@@ -116,36 +114,41 @@ export function ProfileForm({ profile }: { profile: Profile }) {
       </section>
 
       <section aria-labelledby="prefs" className="grid gap-2 rounded-lg border bg-card p-4 sm:p-6">
-        <h2 id="prefs" className="text-base font-semibold">
-          Preferências
-        </h2>
-        <fieldset className="grid gap-2 py-2">
-          <legend className="mb-2 text-sm font-medium">Tema</legend>
-          <RadioGroup value={form.theme} onValueChange={(v) => setForm({ ...form, theme: v as Profile["theme"] })} className="flex flex-wrap gap-4">
-            {(
-              [
-                ["light", "Claro"],
-                ["dark", "Escuro"],
-                ["system", "Igual ao do sistema"],
-              ] as const
-            ).map(([v, t]) => (
-              <Label key={v} className="font-normal">
-                <RadioGroupItem value={v} /> {t}
-              </Label>
-            ))}
-          </RadioGroup>
-        </fieldset>
+        <div className="flex items-center gap-1">
+          <h2 id="prefs" className="text-base font-semibold">
+            Preferências
+          </h2>
+          <HelpTip topic="perfil-preferencias" className="size-5" />
+        </div>
+        {!hideTheme && (
+          <fieldset className="grid gap-2 py-2">
+            <legend className="mb-2 text-sm font-medium">Tema</legend>
+            <RadioGroup value={form.theme} onValueChange={(v) => setForm({ ...form, theme: v as Profile["theme"] })} className="flex flex-wrap gap-4">
+              {(
+                [
+                  ["light", "Claro"],
+                  ["dark", "Escuro"],
+                  ["system", "Igual ao do sistema"],
+                ] as const
+              ).map(([v, t]) => (
+                <Label key={v} className="font-normal">
+                  <RadioGroupItem value={v} /> {t}
+                </Label>
+              ))}
+            </RadioGroup>
+          </fieldset>
+        )}
         <div className="divide-y">
-          <Row id="p-colorblind" title="Modo para daltônicos" hint="Etiquetas ganham padrões além da cor.">
+          <Row id="p-colorblind" title="Modo para daltônicos" hint="Etiquetas ganham padrões além da cor." help="pref-daltonicos">
             <Switch id="p-colorblind" aria-describedby="p-colorblind-hint" checked={form.preferences.colorblind} onCheckedChange={(v) => pref("colorblind", v)} />
           </Row>
-          <Row id="p-motion" title="Reduzir animações" hint="Tira transições e movimentos da tela.">
+          <Row id="p-motion" title="Reduzir animações" hint="Tira transições e movimentos da tela." help="pref-animacoes">
             <Switch id="p-motion" aria-describedby="p-motion-hint" checked={form.preferences.reduceMotion} onCheckedChange={(v) => pref("reduceMotion", v)} />
           </Row>
-          <Row id="p-keys" title="Atalhos de uma tecla" hint="/ para buscar, F para filtrar, Q para Meus cards.">
+          <Row id="p-keys" title="Atalhos de uma tecla" hint="/ para buscar, F para filtrar, Q para Meus cards." help="pref-atalhos">
             <Switch id="p-keys" aria-describedby="p-keys-hint" checked={form.preferences.singleKeyShortcuts} onCheckedChange={(v) => pref("singleKeyShortcuts", v)} />
           </Row>
-          <Row id="p-email" title="E-mails de notificação" hint="Menções, cards atribuídos e prazos.">
+          <Row id="p-email" title="E-mails de notificação" hint="Menções, cards atribuídos e prazos." help="pref-emails">
             <Select value={form.preferences.emailNotifications} onValueChange={(v) => pref("emailNotifications", v as Profile["preferences"]["emailNotifications"])}>
               <SelectTrigger id="p-email" aria-describedby="p-email-hint" className="w-52">
                 <SelectValue />

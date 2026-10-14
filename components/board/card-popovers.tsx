@@ -9,7 +9,7 @@ import { toast } from "sonner";
 
 import { LabelEditor } from "@/components/board/board-menu";
 import { LABEL_HUES, LABEL_HUE_NAME, LabelChip } from "@/components/ds/label-chip";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -46,6 +46,7 @@ function PopoverHeader({ title }: { title: string }) {
 export function PersonAvatar({ person, size = "size-7" }: { person: Person; size?: string }) {
   return (
     <Avatar className={size} title={person.name}>
+      {person.avatarUrl && <AvatarImage src={person.avatarUrl} alt="" className="object-cover" />}
       <AvatarFallback className="text-[11px] font-semibold" style={{ background: `var(--ds-label-${person.avatarColor}-bold)`, color: "var(--ds-label-text-bold)" }}>
         {initials(person.name)}
       </AvatarFallback>

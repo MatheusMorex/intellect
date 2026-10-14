@@ -1,20 +1,28 @@
+import { HelpTip } from "@/components/ds/help-tip";
+import type { HelpTopic } from "@/lib/help";
 import { cn } from "@/lib/utils";
 
 export function PageHeader({
   title,
   description,
   actions,
+  help,
   className,
 }: {
   title: string;
   description?: React.ReactNode;
   actions?: React.ReactNode;
+  /** Explicação da tela no botão "?" ao lado do título (lib/help.ts). */
+  help?: HelpTopic;
   className?: string;
 }) {
   return (
     <div className={cn("flex flex-wrap items-end justify-between gap-x-6 gap-y-3", className)}>
       <div className="min-w-0">
-        <h1 className="text-xl">{title}</h1>
+        <div className="flex items-center gap-1.5">
+          <h1 className="text-xl">{title}</h1>
+          {help && <HelpTip topic={help} />}
+        </div>
         {description && <p className="mt-1 text-muted-foreground">{description}</p>}
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}

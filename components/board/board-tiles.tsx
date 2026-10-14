@@ -19,11 +19,13 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { OUTLINE_BOX } from "@/lib/surfaces";
 import { cn } from "@/lib/utils";
 import { deleteBoard, setBoardClosed, starBoard } from "@/server/actions/kanban";
 import type { BoardSummary } from "@/server/data/boards";
 
 // Bloco de quadro do Início (S03): abre o quadro; a estrela favorita sem sair da página.
+// Sem cor: contorno de 2 px e fundo transparente (a cor ou imagem do quadro aparece dentro dele).
 export function BoardTile({ board }: { board: BoardSummary }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -32,8 +34,10 @@ export function BoardTile({ board }: { board: BoardSummary }) {
     <li className="group relative">
       <Link
         href={`/b/${board.id}`}
-        className="flex h-24 rounded-lg p-3 pr-10 text-sm font-semibold break-words text-white outline-none hover:brightness-95 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-        style={{ background: `var(--ds-label-${board.background}-bold)` }}
+        className={cn(
+          "flex h-24 p-3 pr-10 text-sm font-semibold break-words text-foreground outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+          OUTLINE_BOX,
+        )}
       >
         <span className="line-clamp-3">{board.name}</span>
       </Link>
@@ -49,7 +53,7 @@ export function BoardTile({ board }: { board: BoardSummary }) {
           })
         }
         className={cn(
-          "absolute right-2 bottom-2 grid size-8 place-items-center rounded-md text-white outline-none hover:bg-white/20 focus-visible:ring-2 focus-visible:ring-white",
+          "absolute right-2 bottom-2 grid size-8 place-items-center rounded-md text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
           !starred && "md:opacity-0 md:group-focus-within:opacity-100 md:group-hover:opacity-100",
         )}
       >
@@ -68,7 +72,7 @@ export function CreateBoardTile({ workspaceId, workspaceName }: { workspaceId: s
         trigger={
           <button
             type="button"
-            className="flex h-24 w-full items-center justify-center gap-2 rounded-lg bg-muted text-sm text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+            className="flex h-24 w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-input bg-transparent text-sm text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
           >
             <Plus aria-hidden="true" className="size-4" />
             Criar quadro
@@ -92,7 +96,6 @@ export function ClosedBoardRow({ board }: { board: BoardSummary }) {
     });
   return (
     <li className="flex flex-wrap items-center gap-3 py-2">
-      <span aria-hidden="true" className="size-8 shrink-0 rounded-md" style={{ background: `var(--ds-label-${board.background}-bold)` }} />
       <Link href={`/b/${board.id}`} className="min-w-0 flex-1 truncate text-sm font-medium hover:underline">
         {board.name}
       </Link>

@@ -9,6 +9,8 @@ import { TZDate } from "@date-fns/tz";
 import { addDays, format } from "date-fns";
 import { generateNKeysBetween } from "fractional-indexing";
 
+import { adFormatFromName, simulatedVideoMetrics } from "../ads/simulation";
+
 import type {
   AutomationRow,
   AdAccountRow,
@@ -23,10 +25,14 @@ import type {
   OrderRow,
   PaymentMethod,
   Store,
+  UserAppearance,
   Visit,
 } from "./types";
 
-export const STORE_VERSION = 4;
+export const STORE_VERSION = 6;
+
+/** Aparência padrão de quem entra pela primeira vez. */
+export const DEFAULT_APPEARANCE: UserAppearance = { wallpaper: null, showTaglines: true, homePage: "inicio" };
 export const SEED_TIMEZONE = "America/Sao_Paulo";
 const DAYS = 90;
 
@@ -83,6 +89,8 @@ export function createSeed(now: Date): Store {
     passwordHash: hashPassword(demoPassword),
     bio: "",
     preferences: { colorblind: false, reduceMotion: false, singleKeyShortcuts: true, emailNotifications: "periodic" as const },
+    avatarFileId: null,
+    appearance: { ...DEFAULT_APPEARANCE },
     lastActiveAt: seededAt,
   }));
   const [ana, bruno, carla] = users;
@@ -319,6 +327,7 @@ export function createSeed(now: Date): Store {
           externalId: plan.account.provider === "meta" ? `120${nextExternal()}` : nextExternal().slice(0, 12),
           name: adName,
           status: plan.status,
+          format: plan.account.provider === "meta" ? adFormatFromName(adName) : null,
         };
         ads.push(ad);
         targets.push({ plan, campaign, adSet, ad });
@@ -353,6 +362,8 @@ export function createSeed(now: Date): Store {
         impressions,
         clicks,
         addToCarts: Math.round(clicks * between(0.05, 0.11)),
+        // Fora do sorteio do seed (determinístico pelo id e pelo dia), para não mudar os outros dados.
+        ...simulatedVideoMetrics(target.ad?.id ?? "", dayKey(offset), impressions, target.ad?.format ?? null),
       });
       spendByTargetDay.set(`${targets.indexOf(target)}:${offset}`, spend);
     }
@@ -711,6 +722,7 @@ export function createSeed(now: Date): Store {
       name: "Embalagem e brinde",
       kind: "fixed" as const,
       amountCents: 350,
+      currency: "BRL",
       bp: null,
       scope: "product" as const,
       productId: products[1].row.id,
@@ -991,5 +1003,43 @@ export function createSeed(now: Date): Store {
     boardStamps: {},
     cardLinks,
     activities: [],
+    files: [],
+    fxRates: [],
+    fxCoverage: {},
   };
+}
+
+/**
+ * Atualiza um armazenamento de versão anterior sem apagar nada.
+ * 4 → 5: foto de perfil, aparência (plano de fundo, frase, tela inicial),
+ * moeda das taxas fixas, imagens enviadas e cotações.
+ * 5 → 6: formato dos criativos e visualizações do vídeo (3 s e 75%). O
+ * armazenamento em arquivo só existe no modo de teste, então os números de
+ * vídeo que faltam são simulados como no seed.
+ */
+export function upgradeStore(store: Store): Store | null {
+  const from = store.version as number;
+  if (from !== 4 && from !== 5) return null;
+  if (from === 4) {
+    const dashboardCurrency = new Map(store.dashboards.map((d) => [d.id, d.currency]));
+    for (const u of store.users) {
+      u.avatarFileId ??= null;
+      u.appearance ??= { ...DEFAULT_APPEARANCE };
+    }
+    for (const f of store.additionalFees) f.currency ??= dashboardCurrency.get(f.dashboardId) ?? "BRL";
+    store.files ??= [];
+    store.fxRates ??= [];
+    store.fxCoverage ??= {};
+  }
+  const provider = new Map(store.adAccounts.map((a) => [a.id, a.provider]));
+  for (const ad of store.ads) {
+    if (ad.format === undefined) ad.format = provider.get(ad.adAccountId) === "meta" ? adFormatFromName(ad.name) : null;
+  }
+  const format = new Map(store.ads.map((a) => [a.id, a.format]));
+  for (const i of store.adInsightsDaily) {
+    if (i.videoViews3s !== undefined) continue;
+    Object.assign(i, simulatedVideoMetrics(i.adId ?? "", i.date, i.impressions, i.adId ? (format.get(i.adId) ?? null) : null));
+  }
+  store.version = STORE_VERSION;
+  return store;
 }

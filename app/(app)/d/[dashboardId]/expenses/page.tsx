@@ -3,6 +3,7 @@ import { Pencil, Plus, Receipt, Search } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { Banner } from "@/components/ds/banner";
 import { EmptyState } from "@/components/ds/empty-state";
 import { PageBody, PageHeader } from "@/components/shell/page-header";
 import { PeriodFilter } from "@/components/shell/period-filter";
@@ -56,6 +57,7 @@ export default async function ExpensesPage({
     <PageBody>
       <PageHeader
         title="Despesas"
+        help="despesas"
         description={data.dashboard.name}
         actions={
           <>
@@ -64,6 +66,7 @@ export default async function ExpensesPage({
               <ExpenseDialog
                 dashboardId={dashboardId}
                 today={today}
+                currency={data.dashboard.currency}
                 trigger={
                   <Button>
                     <Plus aria-hidden="true" />
@@ -75,6 +78,13 @@ export default async function ExpensesPage({
           </>
         }
       />
+
+      {data.fxUnavailable && (
+        <Banner variant="error" title="Não deu para buscar a cotação do dia">
+          Há despesas em outra moeda e, sem a cotação, os totais em {data.dashboard.currency} ficariam errados. Os valores de cada despesa abaixo estão
+          na moeda em que foram lançados. Tente de novo em alguns minutos.
+        </Banner>
+      )}
 
       <div className="flex flex-wrap items-center gap-2">
         <form action={`/d/${dashboardId}/expenses`} role="search" className="relative">
@@ -97,7 +107,7 @@ export default async function ExpensesPage({
                 )}
               >
                 {c.label}
-                {total > 0 && <span className="text-xs tabular">{m(total)}</span>}
+                {total > 0 && !data.fxUnavailable && <span className="text-xs tabular">{m(total)}</span>}
               </Link>
             );
           })}
@@ -137,9 +147,9 @@ export default async function ExpensesPage({
                       ? day(e.date)
                       : `Todo dia ${Number(e.date.slice(8, 10))}, desde ${day(e.date)}${e.endDate ? ` até ${day(e.endDate)}` : ""}`}
                   </TableCell>
-                  <TableCell className="text-right">{m(e.amountCents)}</TableCell>
+                  <TableCell className="text-right">{money(e.amountCents, e.currency)}</TableCell>
                   <TableCell className="text-right">
-                    {m(e.totalInPeriodCents)}
+                    {data.fxUnavailable && e.currency !== data.dashboard.currency ? "—" : m(e.totalInPeriodCents)}
                     {e.occurrences.length > 1 && <span className="block text-xs text-muted-foreground">{e.occurrences.length} vezes</span>}
                   </TableCell>
                   <TableCell className="w-24 text-right">
@@ -148,6 +158,7 @@ export default async function ExpensesPage({
                         <ExpenseDialog
                           dashboardId={dashboardId}
                           today={today}
+                          currency={data.dashboard.currency}
                           expense={e}
                           trigger={
                             <Button variant="ghost" size="icon-sm" aria-label={`Editar ${e.description}`}>
@@ -165,7 +176,7 @@ export default async function ExpensesPage({
             <TableFooter>
               <TableRow className="border-t-2 border-input hover:bg-card">
                 <TableCell colSpan={4}>Total no período</TableCell>
-                <TableCell className="text-right">{m(data.total)}</TableCell>
+                <TableCell className="text-right">{data.fxUnavailable ? "—" : m(data.total)}</TableCell>
                 <TableCell />
               </TableRow>
             </TableFooter>

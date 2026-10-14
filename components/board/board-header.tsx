@@ -9,7 +9,8 @@ import { toast } from "sonner";
 import { BoardFilterButton } from "@/components/board/board-filters";
 import { BoardMenu, type BoardArchive } from "@/components/board/board-menu";
 import { ShareDialog, type BoardSharing } from "@/components/board/share-dialog";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { HelpTip } from "@/components/ds/help-tip";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
@@ -108,6 +109,8 @@ export function BoardHeader({
           )}
         </h1>
       )}
+      <HelpTip topic="quadro" className="text-white/80 hover:bg-white/15 hover:text-white" />
+
       <Button
         variant="ghost"
         size="icon-sm"
@@ -169,6 +172,7 @@ export function BoardHeader({
       <div className="flex -space-x-1" aria-label={`Membros: ${people.map((m) => m.name).join(", ")}`}>
         {people.slice(0, 5).map((m) => (
           <Avatar key={m.id} className="size-7 ring-2 ring-black/20" title={`${m.name}${m.role === "admin" ? " (admin)" : m.role === "observer" ? " (observador)" : ""}`}>
+            {m.avatarUrl && <AvatarImage src={m.avatarUrl} alt="" className="object-cover" />}
             <AvatarFallback className="text-[11px] font-semibold" style={{ background: `var(--ds-label-${m.avatarColor}-bold)`, color: "var(--ds-label-text-bold)" }}>
               {initials(m.name)}
             </AvatarFallback>
