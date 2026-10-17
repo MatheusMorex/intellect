@@ -9,6 +9,8 @@ import { z } from "zod";
 import { DASHBOARD_CURRENCIES } from "@/lib/currency";
 import { requireDashboard } from "@/server/access";
 import { requireUser } from "@/server/auth/session";
+import { removeAvatarLive, removeWallpaperLive, updateAppearanceLive } from "@/server/live/settings";
+import { isLive } from "@/server/mode";
 import { dropFile } from "@/server/files";
 import { mutate } from "@/server/store/db";
 
@@ -32,6 +34,12 @@ export async function updateAppearance(input: z.input<typeof appearanceInput>): 
   if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "Valor inválido.");
   const v = parsed.data;
   const user = await requireUser();
+  if (isLive()) {
+    const error = await updateAppearanceLive(user.id, v);
+    if (error) return fail(error);
+    revalidatePath("/", "layout");
+    return ok();
+  }
   mutate((store) => {
     const u = store.users.find((x) => x.id === user.id)!;
     if (v.theme) u.theme = v.theme;
@@ -48,6 +56,11 @@ export async function updateAppearance(input: z.input<typeof appearanceInput>): 
 
 export async function removeWallpaper(): Promise<ActionResult> {
   const user = await requireUser();
+  if (isLive()) {
+    await removeWallpaperLive(user.id);
+    revalidatePath("/", "layout");
+    return ok();
+  }
   mutate((store) => {
     const u = store.users.find((x) => x.id === user.id)!;
     dropFile(store, u.appearance.wallpaper?.fileId);
@@ -59,6 +72,11 @@ export async function removeWallpaper(): Promise<ActionResult> {
 
 export async function removeAvatar(): Promise<ActionResult> {
   const user = await requireUser();
+  if (isLive()) {
+    await removeAvatarLive(user.id);
+    revalidatePath("/", "layout");
+    return ok();
+  }
   mutate((store) => {
     const u = store.users.find((x) => x.id === user.id)!;
     dropFile(store, u.avatarFileId);

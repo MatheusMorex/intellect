@@ -5,6 +5,8 @@
 import { notFound } from "next/navigation";
 
 import type { SessionUser } from "@/server/auth/session";
+import { workspaceAccess, type LiveWorkspace } from "@/server/live/identity";
+import { isLive } from "@/server/mode";
 import { readStore } from "@/server/store/db";
 import type { BoardRow, DashboardRow, WorkspaceRow } from "@/server/store/types";
 
@@ -20,11 +22,19 @@ export function workspaceRole(ctx: Ctx, workspaceId: string): WorkspaceRole | nu
   return member?.role ?? null;
 }
 
-export function requireWorkspace(
+/** Workspace como as telas usam. No modo real vem do Supabase; no simulado, do arquivo. */
+export type WorkspaceView = Pick<WorkspaceRow, "id" | "name" | "slug" | "description" | "allowedEmailDomain"> | LiveWorkspace;
+
+export async function requireWorkspace(
   ctx: Ctx,
   slugOrId: string,
   minRole: WorkspaceRole = "normal",
-): { workspace: WorkspaceRow; role: WorkspaceRole } {
+): Promise<{ workspace: WorkspaceView; role: WorkspaceRole }> {
+  if (isLive()) {
+    const access = await workspaceAccess(ctx.user.id, slugOrId);
+    if (!access || (minRole === "admin" && access.role !== "admin")) notFound();
+    return access;
+  }
   const workspace = readStore().workspaces.find((w) => w.slug === slugOrId || w.id === slugOrId);
   if (!workspace) notFound();
   const role = workspaceRole(ctx, workspace.id);

@@ -25,7 +25,7 @@ const PROBLEM = {
 export default async function InvitePage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
   const user = await getCurrentUser();
-  const invite = getInviteByToken(token, user?.id ?? null);
+  const invite = await getInviteByToken(token, user?.id ?? null);
   const target = invite.status !== "invalid" ? (invite.boardId ? `/b/${invite.boardId}` : `/w/${invite.workspaceSlug}`) : "/";
 
   return (

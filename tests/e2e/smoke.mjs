@@ -360,10 +360,11 @@ await step("Despesas: lançar e excluir", async () => {
   await page.getByLabel("Descrição (obrigatório)").fill("Despesa do teste automático");
   await page.getByLabel("Valor (R$)").fill("99,90");
   await page.getByRole("button", { name: "Salvar despesa" }).click();
-  await page.getByText("Despesa do teste automático").waitFor();
+  await page.getByText("Despesa do teste automático", { exact: true }).waitFor();
   await page.getByRole("button", { name: "Excluir a despesa Despesa do teste automático" }).click();
   await page.getByRole("alertdialog").getByRole("button", { name: "Excluir" }).click();
-  await page.getByText("Despesa do teste automático").waitFor({ state: "detached" });
+  // exact: o título da confirmação também contém o nome enquanto a janela fecha.
+  await page.getByText("Despesa do teste automático", { exact: true }).waitFor({ state: "detached" });
 });
 
 await step("Integrações: teste de integração recebe o pedido simulado", async () => {

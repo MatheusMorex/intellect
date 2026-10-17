@@ -11,6 +11,16 @@ import { z } from "zod";
 
 import { requireBoard, requireWorkspace } from "@/server/access";
 import { requireUser, startSession, getCurrentUser } from "@/server/auth/session";
+import {
+  acceptInviteLive,
+  changeWorkspaceRoleLive,
+  inviteToWorkspaceLive,
+  removeWorkspaceMemberLive,
+  revokeInviteLive,
+  updateProfileLive,
+  updateWorkspaceLive,
+} from "@/server/live/people";
+import { isLive } from "@/server/mode";
 import { appUrl, logActivity, notify, sendEmail, touchBoard } from "@/server/kanban/core";
 import { DEFAULT_APPEARANCE, hashPassword } from "@/server/store/seed";
 import { mutate, newId, nowIso, readStore } from "@/server/store/db";
@@ -142,10 +152,16 @@ export async function removeBoardMember(boardId: string, userId: string): Promis
 
 export async function revokeInvite(inviteId: string): Promise<ActionResult> {
   const user = await requireUser();
+  if (isLive()) {
+    const result = await revokeInviteLive({ user }, inviteId);
+    if (!result.ok) return fail(result.error);
+    revalidatePath("/", "layout");
+    return ok(undefined);
+  }
   const invite = readStore().invites.find((i) => i.id === inviteId);
   if (!invite) return fail("Este convite não existe mais.");
   if (invite.boardId) requireBoard({ user }, invite.boardId, "admin");
-  else requireWorkspace({ user }, invite.workspaceId, "admin");
+  else await requireWorkspace({ user }, invite.workspaceId, "admin");
   mutate((store) => {
     const i = store.invites.find((x) => x.id === inviteId)!;
     i.revokedAt = nowIso();
@@ -167,7 +183,13 @@ export async function inviteToWorkspace(input: z.input<typeof workspaceInvite>):
   if (!parsed.success) return fail(firstIssue(parsed.error));
   const v = parsed.data;
   const user = await requireUser();
-  const { workspace } = requireWorkspace({ user }, v.workspaceId, "admin");
+  if (isLive()) {
+    const result = await inviteToWorkspaceLive({ user }, v);
+    if (!result.ok) return fail(result.error);
+    revalidatePath(`/w/${result.data.slug}/members`);
+    return ok({ link: result.data.link });
+  }
+  const { workspace } = await requireWorkspace({ user }, v.workspaceId, "admin");
   const email = v.email.toLowerCase();
   if (email && workspace.allowedEmailDomain && !email.endsWith(`@${workspace.allowedEmailDomain}`)) {
     return fail(`Este workspace só aceita e-mails @${workspace.allowedEmailDomain}.`);
@@ -197,7 +219,13 @@ export async function inviteToWorkspace(input: z.input<typeof workspaceInvite>):
 
 export async function changeWorkspaceRole(workspaceId: string, userId: string, role: "admin" | "normal"): Promise<ActionResult> {
   const user = await requireUser();
-  const { workspace } = requireWorkspace({ user }, workspaceId, "admin");
+  if (isLive()) {
+    const result = await changeWorkspaceRoleLive({ user }, workspaceId, userId, role);
+    if (!result.ok) return fail(result.error);
+    revalidatePath(`/w/${result.data.slug}/members`);
+    return ok(undefined);
+  }
+  const { workspace } = await requireWorkspace({ user }, workspaceId, "admin");
   const error = mutate((store) => {
     const member = store.workspaceMembers.find((m) => m.workspaceId === workspaceId && m.userId === userId);
     if (!member) return "Essa pessoa não faz parte do workspace.";
@@ -213,7 +241,13 @@ export async function changeWorkspaceRole(workspaceId: string, userId: string, r
 
 export async function removeWorkspaceMember(workspaceId: string, userId: string): Promise<ActionResult> {
   const user = await requireUser();
-  const { workspace } = requireWorkspace({ user }, workspaceId, userId === user.id ? "normal" : "admin");
+  if (isLive()) {
+    const result = await removeWorkspaceMemberLive({ user }, workspaceId, userId);
+    if (!result.ok) return fail(result.error);
+    revalidatePath(`/w/${result.data.slug}/members`);
+    return ok(undefined);
+  }
+  const { workspace } = await requireWorkspace({ user }, workspaceId, userId === user.id ? "normal" : "admin");
   const error = mutate((store) => {
     const member = store.workspaceMembers.find((m) => m.workspaceId === workspaceId && m.userId === userId);
     if (!member) return "Essa pessoa não faz parte do workspace.";
@@ -250,7 +284,13 @@ export async function updateWorkspace(input: z.input<typeof workspaceUpdate>): P
   if (!parsed.success) return fail(firstIssue(parsed.error));
   const v = parsed.data;
   const user = await requireUser();
-  const { workspace } = requireWorkspace({ user }, v.workspaceId, "admin");
+  if (isLive()) {
+    const result = await updateWorkspaceLive({ user }, v);
+    if (!result.ok) return fail(result.error);
+    revalidatePath("/", "layout");
+    return ok(undefined);
+  }
+  const { workspace } = await requireWorkspace({ user }, v.workspaceId, "admin");
   mutate((store) => {
     const w = store.workspaces.find((x) => x.id === workspace.id)!;
     w.name = v.name;
@@ -276,6 +316,21 @@ const strongPassword = z
 
 export async function acceptInvite(_prev: InviteState, form: FormData): Promise<InviteState> {
   const token = String(form.get("token") ?? "");
+  if (isLive()) {
+    const password = String(form.get("password") ?? "");
+    const loggedUserId = (await getCurrentUser())?.id ?? null;
+    const result = await acceptInviteLive(
+      { token, email: String(form.get("email") ?? ""), name: String(form.get("name") ?? ""), password, loggedUserId },
+      ({ name, email }) => {
+        if (!z.email().safeParse(email).success) return { error: "Digite um e-mail válido." };
+        if (!name) return { error: "Digite seu nome." };
+        const pw = strongPassword.safeParse(password);
+        return pw.success ? {} : { error: firstIssue(pw.error) };
+      },
+    );
+    if (result.target) redirect(result.target);
+    return { error: result.error, name: result.name, email: result.email };
+  }
   const invite = readStore().invites.find((i) => i.tokenHash === hash(token));
   if (!invite || invite.revokedAt || new Date(invite.expiresAt).getTime() < Date.now() || (invite.maxUses != null && invite.usedCount >= invite.maxUses)) {
     return { error: "Este convite não vale mais. Peça um novo para quem convidou você." };
@@ -360,6 +415,12 @@ export async function updateProfile(input: z.input<typeof profileInput>): Promis
     return fail("Fuso horário inválido.");
   }
   const user = await requireUser();
+  if (isLive()) {
+    const result = await updateProfileLive(user.id, v);
+    if (!result.ok) return fail(result.error);
+    revalidatePath("/", "layout");
+    return ok(undefined);
+  }
   const error = mutate((store) => {
     if (v.username && store.users.some((u) => u.id !== user.id && u.username?.toLowerCase() === v.username)) return "Este @ já está em uso.";
     const u = store.users.find((x) => x.id === user.id)!;
@@ -378,6 +439,7 @@ export async function updateProfile(input: z.input<typeof profileInput>): Promis
 
 export async function markNotificationsRead(ids: string[] | "all"): Promise<ActionResult> {
   const user = await requireUser();
+  if (isLive()) return ok(undefined);
   mutate((store) => {
     for (const n of store.notifications) {
       if (n.userId === user.id && !n.readAt && (ids === "all" || ids.includes(n.id))) n.readAt = nowIso();

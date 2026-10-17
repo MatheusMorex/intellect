@@ -68,7 +68,7 @@ export async function createBoard(input: z.input<typeof boardInput>): Promise<Ac
   const parsed = boardInput.safeParse(input);
   if (!parsed.success) return fail(firstIssue(parsed.error));
   const { workspaceId, ...v } = parsed.data;
-  requireWorkspace({ user }, workspaceId);
+  await requireWorkspace({ user }, workspaceId);
   const id = mutate((store) => {
     const board: BoardRow = {
       id: newId(),

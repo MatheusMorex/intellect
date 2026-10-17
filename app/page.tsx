@@ -8,5 +8,5 @@ import { homeHref } from "@/server/data/boards";
 export default async function Root() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
-  redirect(homeHref(user.id));
+  redirect(await homeHref(user.id));
 }

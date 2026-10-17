@@ -7,7 +7,8 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
-import { createSeed, STORE_VERSION, upgradeStore } from "./seed";
+import { isLive } from "../mode";
+import { createSeed, emptyStore, STORE_VERSION, upgradeStore } from "./seed";
 import type { Store } from "./types";
 
 const DIR = path.join(process.cwd(), ".data");
@@ -32,7 +33,17 @@ function writeFile(store: Store) {
   cache = { mtimeMs: fs.statSync(FILE).mtimeMs, store };
 }
 
+/** No modo real não há arquivo: o que ainda não foi ligado ao banco aparece vazio (tudo zerado). */
+let liveEmpty: Store | null = null;
+
+export class NotInLiveModeError extends Error {
+  constructor() {
+    super("Esta função ainda está sendo ligada ao banco de dados.");
+  }
+}
+
 export function readStore(): Store {
+  if (isLive()) return (liveEmpty ??= emptyStore());
   let stat: fs.Stats | null = null;
   try {
     stat = fs.statSync(FILE);
@@ -66,6 +77,8 @@ export function afterMutate(hook: (store: Store) => void) {
 
 /** Muda o armazenamento e grava. Tudo dentro de fn acontece de uma vez (como uma transação). */
 export function mutate<T>(fn: (store: Store) => T): T {
+  // Gravar numa loja vazia perderia o dado em silêncio: melhor avisar.
+  if (isLive()) throw new NotInLiveModeError();
   const store = readStore();
   const result = fn(store);
   for (const hook of afterHooks) hook(store);

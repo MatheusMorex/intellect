@@ -54,6 +54,21 @@ export function hashPassword(password: string) {
   return `scrypt$${salt}$${hash}`;
 }
 
+/** Loja sem nenhuma linha. O modo real (AUTH_MODE=live) usa esta no lugar do seed enquanto as telas não leem tudo do banco. */
+export function emptyStore(now = new Date()): Store {
+  return {
+    version: STORE_VERSION,
+    seededAt: now.toISOString(),
+    users: [], workspaces: [], workspaceMembers: [], dashboards: [], adConnections: [], adAccounts: [], dashboardAdAccounts: [],
+    campaigns: [], adSets: [], ads: [], adInsightsDaily: [], keywords: [], keywordInsightsDaily: [], stores: [], dashboardStores: [],
+    webhookDeliveries: [], products: [], orders: [], orderItems: [], orderEvents: [], costSettings: [], productCosts: [],
+    additionalFees: [], expenses: [], integrationTests: [], invites: [], boards: [], boardMembers: [], boardStars: [], boardVisits: [],
+    lists: [], cards: [], cardMembers: [], labels: [], cardLabels: [], checklists: [], checklistItems: [], comments: [],
+    notifications: [], outbox: [], automations: [], automationRuns: [], boardStamps: {}, cardLinks: [], activities: [],
+    files: [], fxRates: [], fxCoverage: {},
+  };
+}
+
 export function createSeed(now: Date): Store {
   const random = rng(20261012);
   const pick = <T>(items: T[]) => items[Math.floor(random() * items.length)];

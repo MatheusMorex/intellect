@@ -23,6 +23,11 @@ export function fileUrl(fileId: string) {
   return `/api/files/${fileId}`;
 }
 
+/** Modo real: a imagem fica no Storage, no caminho "avatars/<pessoa>/<arquivo>" (ver a migração). */
+export function storageFileUrl(path: string) {
+  return `/api/files/${path}`;
+}
+
 /** Tipo real da imagem pelos primeiros bytes (a extensão e o tipo enviados não contam). */
 export function detectImageType(bytes: Uint8Array): FileRow["mime"] | null {
   if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "image/jpeg";

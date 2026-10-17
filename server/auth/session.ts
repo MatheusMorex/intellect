@@ -8,7 +8,10 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { cache } from "react";
 
+import { getLiveProfile, touchLastActive } from "@/server/live/identity";
+import { isLive } from "@/server/mode";
 import { readStore } from "@/server/store/db";
+import { createClient } from "@/utils/supabase/server";
 
 const COOKIE = "itl_session";
 const MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
@@ -46,7 +49,16 @@ function verify(token: string | undefined): string | null {
 }
 
 export function fakeAuthAllowed() {
-  return process.env.AUTH_MODE !== "live" && process.env.NODE_ENV !== "production";
+  return !isLive() && process.env.NODE_ENV !== "production";
+}
+
+/** Modo real: entra com e-mail e senha no Supabase (a sessão fica nos cookies, via utils/supabase). */
+export async function signInLive(email: string, password: string): Promise<string | null> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error || !data.user) return null;
+  void touchLastActive(data.user.id);
+  return data.user.id;
 }
 
 export async function startSession(userId: string) {
@@ -62,10 +74,32 @@ export async function startSession(userId: string) {
 }
 
 export async function endSession() {
+  if (isLive()) {
+    await (await createClient()).auth.signOut();
+    return;
+  }
   (await cookies()).delete(COOKIE);
 }
 
+/** Modo real: quem está logado vem do token do Supabase (conferido pela assinatura) e do perfil no banco. */
+const getLiveUser = cache(async (): Promise<SessionUser | null> => {
+  const { data } = await (await createClient()).auth.getClaims();
+  const userId = data?.claims?.sub;
+  if (!userId) return null;
+  const profile = await getLiveProfile(userId);
+  if (!profile) return null;
+  return {
+    id: profile.id,
+    name: profile.name,
+    email: profile.email,
+    username: profile.username,
+    avatarColor: profile.avatarColor,
+    timezone: profile.timezone,
+  };
+});
+
 export const getCurrentUser = cache(async (): Promise<SessionUser | null> => {
+  if (isLive()) return getLiveUser();
   const userId = verify((await cookies()).get(COOKIE)?.value);
   if (!userId) return null;
   const user = readStore().users.find((u) => u.id === userId);

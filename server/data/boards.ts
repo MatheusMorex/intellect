@@ -7,6 +7,8 @@ import { notFound } from "next/navigation";
 
 import { boardRole, requireBoard, requireWorkspace, workspaceRole, type BoardRole, type Ctx } from "@/server/access";
 import { getCardMetrics, listDashboardsFor, type CardMetric } from "@/server/data/tracking";
+import { homeHrefLive, inviteByTokenLive, profileViewLive, shellDataLive, workspaceMembersLive } from "@/server/live/shell";
+import { isLive } from "@/server/mode";
 import { fileUrl } from "@/server/files";
 import { cardsOfList, listsOfBoard } from "@/server/kanban/core";
 import { mutate, newId, nowIso, readStore } from "@/server/store/db";
@@ -62,6 +64,7 @@ export type ShellData = {
 };
 
 export async function getShellData(ctx: Ctx): Promise<ShellData> {
+  if (isLive()) return shellDataLive(ctx.user.id);
   const store = readStore();
   const membership = store.workspaceMembers.find((m) => m.userId === ctx.user.id);
   const workspace = membership ? store.workspaces.find((w) => w.id === membership.workspaceId) : undefined;
@@ -83,7 +86,8 @@ export async function getShellData(ctx: Ctx): Promise<ShellData> {
  * Tela que abre depois de entrar, escolhida em Configurações (Início, Meus cards
  * ou Resumo). O login manda direto para ela, sem passar pela raiz.
  */
-export function homeHref(userId: string): string {
+export async function homeHref(userId: string): Promise<string> {
+  if (isLive()) return homeHrefLive(userId);
   const store = readStore();
   const user = store.users.find((u) => u.id === userId);
   const memberships = store.workspaceMembers.filter((m) => m.userId === userId);
@@ -107,7 +111,7 @@ export function appearanceView(a: UserAppearance): ShellData["appearance"] {
 }
 
 export async function getWorkspaceHome(ctx: Ctx, slug: string) {
-  const { workspace, role } = requireWorkspace(ctx, slug);
+  const { workspace, role } = await requireWorkspace(ctx, slug);
   const store = readStore();
   const boards = listBoardsFor(ctx, true).filter((b) => b.workspaceSlug === workspace.slug);
   const visits = store.boardVisits
@@ -466,7 +470,8 @@ export async function getBoardSharing(ctx: Ctx, boardId: string) {
 // ---- workspace (S12) --------------------------------------------------------------------------------
 
 export async function getWorkspaceMembers(ctx: Ctx, slug: string) {
-  const { workspace, role } = requireWorkspace(ctx, slug);
+  if (isLive()) return workspaceMembersLive(ctx, slug);
+  const { workspace, role } = await requireWorkspace(ctx, slug);
   const store = readStore();
   const boards = store.boards.filter((b) => b.workspaceId === workspace.id);
   return {
@@ -565,6 +570,7 @@ export async function getNotifications(ctx: Ctx, onlyUnread = false) {
 }
 
 export async function getProfile(ctx: Ctx) {
+  if (isLive()) return profileViewLive(ctx.user.id);
   const store = readStore();
   const user = store.users.find((u) => u.id === ctx.user.id)!;
   return {
@@ -604,7 +610,8 @@ export async function getCardPreview(ctx: Ctx, cardId: string) {
 // ---- aceitar convite (S02) --------------------------------------------------------------------------
 
 /** Lê o convite pelo token do link (o banco só guarda o hash). Público: não exige login. */
-export function getInviteByToken(token: string, userId: string | null) {
+export async function getInviteByToken(token: string, userId: string | null) {
+  if (isLive()) return inviteByTokenLive(token, userId);
   const store = readStore();
   const tokenHash = createHash("sha256").update(token).digest("hex");
   const invite = store.invites.find((i) => i.tokenHash === tokenHash);
