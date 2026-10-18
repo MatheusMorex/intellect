@@ -650,16 +650,17 @@ export function createSeed(now: Date): Store {
     const d = addDays(today, days);
     return iso(new TZDate(d.getFullYear(), d.getMonth(), d.getDate(), hour, 0, 0, tz));
   };
-  const cardPlans: { list: number; name: string; due?: string; done?: boolean; cover?: string; link?: string }[] = [
+  // Início e entrega: viram as barras do Gantt nos Painéis.
+  const cardPlans: { list: number; name: string; start?: string; due?: string; done?: boolean; cover?: string; link?: string }[] = [
     { list: 0, name: "Testar frete grátis acima de R$ 200" },
     { list: 0, name: "Roteiro de vídeo com depoimento de cliente" },
-    { list: 1, name: "Gravar 3 vídeos para o público frio", due: at(2), cover: "orange" },
-    { list: 1, name: "Revisar a página do Kit Completo", due: at(-1) },
+    { list: 1, name: "Gravar 3 vídeos para o público frio", start: at(-3, 9), due: at(2), cover: "orange" },
+    { list: 1, name: "Revisar a página do Kit Completo", start: at(-5, 9), due: at(-1) },
     { list: 1, name: "Criar público semelhante a partir dos compradores de 90 dias" },
-    { list: 2, name: "Escalar o Remarketing 30d", due: at(0, 23), link: "[Vendas] Remarketing 30d" },
+    { list: 2, name: "Escalar o Remarketing 30d", start: at(-2, 9), due: at(0, 23), link: "[Vendas] Remarketing 30d" },
     { list: 2, name: "Ajustar lances da Pesquisa Genérica", link: "Pesquisa · Genérica" },
-    { list: 3, name: "Configurar os parâmetros de URL no Meta", due: at(-4), done: true },
-    { list: 3, name: "Instalar o app da Shopify", due: at(-6), done: true },
+    { list: 3, name: "Configurar os parâmetros de URL no Meta", start: at(-8, 9), due: at(-4), done: true },
+    { list: 3, name: "Instalar o app da Shopify", start: at(-9, 9), due: at(-6), done: true },
   ];
   const cards: CardRow[] = [];
   const cardLinks: Store["cardLinks"] = [];
@@ -677,7 +678,7 @@ export function createSeed(now: Date): Store {
         descriptionText: "",
         version: 1,
         rank: ranks[i],
-        startAt: null,
+        startAt: plan.start ?? null,
         dueAt: plan.due ?? null,
         dueComplete: plan.done ?? false,
         dueReminderMinutes: plan.due ? 1440 : null,
@@ -881,7 +882,7 @@ export function createSeed(now: Date): Store {
     descriptionText: "",
     version: 1,
     rank: launchCardRanks[i],
-    startAt: null,
+    startAt: i === 0 ? at(1, 9) : null,
     dueAt: i === 0 ? at(5) : null,
     dueComplete: false,
     dueReminderMinutes: i === 0 ? 1440 : null,

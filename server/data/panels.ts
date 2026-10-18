@@ -2,8 +2,9 @@
 // endereço da página e devolve o "computador" que monta cada widget.
 // Assinatura pensada para a versão com banco: (ctx, ids, filtros) → dados prontos.
 
-import { requireDashboard, type Ctx } from "@/server/access";
+import { boardRole, requireDashboard, type Ctx } from "@/server/access";
 import { panelComputer, type PanelComputer } from "@/server/charts/build";
+import { visibleBoards } from "@/server/charts/kanban";
 import { parsePanelQuery, type PanelQuery } from "@/server/charts/params";
 import { panelSource } from "@/server/charts/source";
 import { earliestDay, lastSyncedAt, type SearchParams } from "@/server/data/tracking";
@@ -24,7 +25,9 @@ export async function loadPanels(ctx: Ctx, dashboardId: string, sp: SearchParams
   const fx = await prepareDashboardFx(dashboard);
   const store = fx.store;
   const query = parsePanelQuery(sp, dashboard.timezone, earliestDay(store, dashboard), now);
-  const computer = panelComputer(panelSource(store, dashboard, query.filters, fx.converter), query, now);
+  // Funil do kanban e Gantt: só os quadros que esta pessoa pode ver.
+  const boards = visibleBoards(store, dashboard.workspaceId, (board) => boardRole(ctx, board) != null);
+  const computer = panelComputer(panelSource(store, dashboard, query.filters, fx.converter, boards), query, now);
   // Os totais convertem os custos em outra moeda dia a dia: só depois deles dá para saber se faltou cotação.
   computer.totals();
   computer.compareTotals();

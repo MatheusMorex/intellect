@@ -19,7 +19,7 @@ import { buildScope, METHOD_LABEL, SOURCE_LABEL, sourceOf, type Scope, type Trac
 import type { Converter } from "@/server/fx/convert";
 import { expensesInRange, metaAdsTaxCents } from "@/server/metrics/costs";
 import { dayKeyIn, inRange, type DateRange } from "@/server/period";
-import type { AdInsightRow, DashboardRow, DateKey, OrderRow, PaymentMethod, Store } from "@/server/store/types";
+import type { AdInsightRow, BoardRow, DashboardRow, DateKey, OrderRow, PaymentMethod, Store } from "@/server/store/types";
 
 export type PanelSource = {
   store: Store;
@@ -28,15 +28,18 @@ export type PanelSource = {
   filters: TrackingFilters;
   /** Há filtro de conta, produto ou fonte (as despesas ficam de fora). */
   filtered: boolean;
+  /** Quadros abertos do workspace que a pessoa pode ver (funil do kanban e Gantt). */
+  boards: BoardRow[];
 };
 
-export function panelSource(store: Store, dashboard: DashboardRow, filters: TrackingFilters, fx?: Converter): PanelSource {
+export function panelSource(store: Store, dashboard: DashboardRow, filters: TrackingFilters, fx?: Converter, boards: BoardRow[] = []): PanelSource {
   return {
     store,
     dashboard,
     scope: buildScope(store, dashboard, filters, fx),
     filters,
     filtered: filters.accounts.length + filters.products.length + filters.sources.length > 0,
+    boards,
   };
 }
 

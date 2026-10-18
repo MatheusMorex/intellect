@@ -499,6 +499,35 @@ await step("Painéis: treemap com legenda de cor, clique desce de nível e a tab
   await chart.locator("canvas").first().waitFor();
 });
 
+await step("Painéis: funil de vendas e funil do quadro, com as listas na tabela", async () => {
+  await page.goto(`${BASE}/d/${dashboardId}/paineis?periodo=30d`);
+  const sales = page.locator("figure", { hasText: "Funil de vendas" });
+  await sales.scrollIntoViewIfNeeded();
+  await sales.locator("canvas").first().waitFor();
+  const board = page.locator("figure", { hasText: "Funil do quadro" });
+  await board.locator("canvas").first().waitFor();
+  await board.getByRole("link", { name: /Abrir o quadro “Campanhas e criativos”/ }).waitFor();
+  await board.getByRole("button", { name: "Ver como tabela" }).click();
+  // A etapa da maior perda traz "▼ Maior perda" na mesma célula: o nome começa pela lista.
+  for (const list of ["Ideias", "A fazer", "Em andamento", "Feito"]) await board.getByRole("cell", { name: new RegExp(`^${list}`) }).first().waitFor();
+  await board.getByText("▼ Maior perda").waitFor();
+  await board.getByRole("button", { name: "Ver como gráfico" }).click();
+  await board.locator("canvas").first().waitFor();
+});
+
+await step("Painéis: Gantt marca a tarefa atrasada e o clique abre o card", async () => {
+  const chart = page.locator("figure", { hasText: "Cronograma das tarefas" });
+  await chart.scrollIntoViewIfNeeded();
+  await chart.locator("canvas").first().waitFor();
+  await chart.getByText("Cor: responsável").waitFor();
+  await chart.getByRole("button", { name: "Ver como tabela" }).click();
+  const late = chart.getByRole("row", { name: /Revisar a página do Kit Completo/ });
+  await late.getByText("⚠Atrasada").or(late.getByText("⚠ Atrasada")).first().waitFor();
+  await late.getByRole("link", { name: "Revisar a página do Kit Completo" }).click();
+  await page.waitForURL(/\/b\/.+\?card=/);
+  await page.getByRole("dialog").getByRole("heading", { name: /Revisar a página do Kit Completo/ }).waitFor();
+});
+
 await step("Relatórios (endereço antigo) leva para Painéis", async () => {
   await page.goto(`${BASE}/d/${dashboardId}/reports?periodo=7d`);
   await page.waitForURL(/\/paineis\?periodo=7d/);

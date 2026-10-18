@@ -23,7 +23,7 @@ import {
 } from "@/lib/charts/catalog";
 import { msg } from "@/lib/charts/messages";
 
-export const WIDGET_TYPES = ["kpi", "line", "column", "bar", "pie", "donut", "treemap"] as const;
+export const WIDGET_TYPES = ["kpi", "line", "column", "bar", "pie", "donut", "treemap", "funnel", "gantt"] as const;
 export type WidgetType = (typeof WIDGET_TYPES)[number];
 
 const METRIC_IDS = METRICS.map((m) => m.id) as [MetricId, ...MetricId[]];
@@ -132,11 +132,64 @@ const treemapWidget = z.object({
   topN: z.number().int({ error: err.treemapTopN }).min(1, { error: err.treemapTopN }).max(30, { error: err.treemapTopN }).default(12),
 });
 
+/** Etapas padrão do funil de vendas (não existe dado de visita nem de checkout iniciado). */
+export const DEFAULT_SALES_STEPS: readonly MetricId[] = ["impressions", "clicks", "addToCarts", "orders", "paid"];
+
+const rowId = (error: string) => z.string({ error }).trim().min(1, { error }).max(64, { error });
+
+const funnelWidget = z.object({
+  ...common,
+  type: z.literal("funnel"),
+  source: z.discriminatedUnion("kind", [
+    z.object({
+      kind: z.literal("sales"),
+      /** Etapas, de cima para baixo: contagens que se somam (impressões, cliques, pedidos...). */
+      steps: z
+        .array(metric)
+        .min(2, { error: err.funnelSteps })
+        .max(6, { error: err.funnelSteps })
+        .default(() => [...DEFAULT_SALES_STEPS]),
+    }),
+    z.object({
+      kind: z.literal("kanban"),
+      /** Quadro do workspace; null = o primeiro quadro aberto que a pessoa pode ver. */
+      boardId: rowId(err.boardId).nullable().default(null),
+      /** Listas (etapas) na ordem do funil; null = as listas abertas, na ordem do quadro. */
+      listIds: z.array(rowId(err.funnelLists)).min(2, { error: err.funnelLists }).max(12, { error: err.funnelLists }).nullable().default(null),
+    }),
+  ]),
+});
+
+const ganttWidget = z.object({
+  ...common,
+  type: z.literal("gantt"),
+  /** Quadros; null = todos os quadros abertos que a pessoa pode ver no workspace. */
+  boardIds: z.array(rowId(err.boards)).min(1, { error: err.boards }).max(20, { error: err.boards }).nullable().default(null),
+  /** Linhas agrupadas por quadro, responsável ou lista (etapa). */
+  groupBy: z.enum(["board", "member", "list"]).default("list"),
+  /** Cor de cada barra: pelo responsável, pela etiqueta ou pela lista. */
+  colorBy: z.enum(["member", "label", "list"]).default("member"),
+  /** Escala do eixo do tempo: dias, semanas ou meses. */
+  scale: z.enum(["day", "week", "month"]).default("week"),
+  /** Mostra também as tarefas com a entrega marcada como feita. */
+  showDone: z.boolean().default(true),
+});
+
 const unique = (ids: MetricId[]) => new Set(ids).size === ids.length;
 const formats = (ids: MetricId[]) => new Set<MetricFormat>(ids.map((id) => getMetric(id).format));
 const allSummable = (ids: MetricId[]) => ids.every((id) => getMetric(id).kind === "sum");
 
-const WIDGET_SHAPES = z.discriminatedUnion("type", [kpiWidget, lineWidget, columnWidget, barWidget, pieWidget, donutWidget, treemapWidget]);
+const WIDGET_SHAPES = z.discriminatedUnion("type", [
+  kpiWidget,
+  lineWidget,
+  columnWidget,
+  barWidget,
+  pieWidget,
+  donutWidget,
+  treemapWidget,
+  funnelWidget,
+  ganttWidget,
+]);
 
 export const PANEL_WIDGET = WIDGET_SHAPES.superRefine((w, ctx) => {
   const issue = (message: string, path: (string | number)[] = []) => ctx.addIssue({ code: "custom", message, path });
@@ -193,6 +246,19 @@ export const PANEL_WIDGET = WIDGET_SHAPES.superRefine((w, ctx) => {
       }
       return;
     }
+    case "funnel":
+      if (w.source.kind === "sales") {
+        if (!unique(w.source.steps)) issue(err.repeated, ["source", "steps"]);
+        w.source.steps.forEach((step, i) => {
+          const def = getMetric(step);
+          if (def.kind !== "sum" || def.format !== "number") issue(err.funnelStepCount, ["source", "steps", i]);
+        });
+      } else if (w.source.listIds && new Set(w.source.listIds).size !== w.source.listIds.length) {
+        issue(err.levelsRepeated, ["source", "listIds"]);
+      }
+      return;
+    case "gantt":
+      return;
   }
 });
 
@@ -204,6 +270,8 @@ export type ColumnWidget = Extract<PanelWidget, { type: "column" }>;
 export type BarWidget = Extract<PanelWidget, { type: "bar" }>;
 export type PieWidget = Extract<PanelWidget, { type: "pie" | "donut" }>;
 export type TreemapWidget = Extract<PanelWidget, { type: "treemap" }>;
+export type FunnelWidget = Extract<PanelWidget, { type: "funnel" }>;
+export type GanttWidget = Extract<PanelWidget, { type: "gantt" }>;
 
 const joinNames = (names: string[]) => (names.length > 1 ? `${names.slice(0, -1).join(", ")} e ${names.at(-1)}` : names[0]);
 
@@ -215,6 +283,8 @@ export function widgetTitle(w: PanelWidget): string {
   const by = (dims: Dimension[]) => `${joined} por ${joinNames(dims.map((d) => msg.dimension[d].toLowerCase()))}`;
   if (w.type === "bar" || w.type === "pie" || w.type === "donut") return by([w.dimension]);
   if (w.type === "treemap") return by(w.levels);
+  if (w.type === "funnel") return w.source.kind === "sales" ? msg.panel.titles.salesFunnel : msg.panel.titles.kanbanFunnel;
+  if (w.type === "gantt") return msg.panel.titles.gantt;
   return joined;
 }
 
@@ -233,6 +303,10 @@ export function widgetMetrics(w: PanelWidget): MetricId[] {
       return [...w.metrics];
     case "treemap":
       return [w.size, ...(w.color ? [w.color] : [])];
+    case "funnel":
+      return w.source.kind === "sales" ? [...w.source.steps] : [];
+    case "gantt":
+      return [];
   }
 }
 
@@ -340,6 +414,26 @@ const DEFAULT_PANEL_INPUT: PanelWidgetInput[] = [
     levels: ["platform", "campaign", "ad"],
     size: "spend",
     color: "roas",
+  },
+  {
+    id: "funil-vendas",
+    type: "funnel",
+    title: "Funil de vendas",
+    subtitle: "Dos anúncios até a venda paga.",
+    source: { kind: "sales" },
+  },
+  {
+    id: "funil-quadro",
+    type: "funnel",
+    title: "Funil do quadro",
+    subtitle: "Até que lista os cards criados no período chegaram.",
+    source: { kind: "kanban" },
+  },
+  {
+    id: "gantt-tarefas",
+    type: "gantt",
+    title: "Cronograma das tarefas",
+    subtitle: "Os cards com data, de todos os quadros que você pode ver.",
   },
 ];
 

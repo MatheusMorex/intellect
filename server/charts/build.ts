@@ -1,18 +1,33 @@
 // Monta cada widget dos Painéis a partir da configuração (lib/charts/widgets.ts):
-// cartões de KPI e gráficos de linhas, colunas, barras, pizza, rosca e treemap,
-// no formato próprio de lib/charts/spec.ts. Todo número sai do serviço de cálculo (compute.ts) a
+// cartões de KPI e gráficos de linhas, colunas, barras, pizza, rosca, treemap,
+// funil e Gantt, no formato próprio de lib/charts/spec.ts. Todo número sai do serviço de cálculo (compute.ts) a
 // partir das peças somadas (source.ts).
 //
 // As contas que vários widgets usam (a série do período, a da comparação, os
 // totais, as linhas de cada dimensão) são feitas uma vez só por tela.
 
-import { getMetric, metricComponents, type Dimension, type MetricDef, type MetricDirection, type MetricFormat, type MetricId } from "@/lib/charts/catalog";
+import { TZDate } from "@date-fns/tz";
+
+import {
+  COMPONENT_ORIGIN,
+  getMetric,
+  metricComponents,
+  type Dimension,
+  type MetricDef,
+  type MetricDirection,
+  type MetricFormat,
+  type MetricId,
+} from "@/lib/charts/catalog";
 import type { Change } from "@/lib/charts/format";
 import { msg } from "@/lib/charts/messages";
 import type {
   ChartCategory,
   ChartSeries,
   ChartSpec,
+  FunnelSpec,
+  FunnelStep,
+  GanttSpec,
+  GanttTask,
   PieSpec,
   ReferenceLine,
   SpecCompare,
@@ -20,7 +35,7 @@ import type {
   TreemapNode,
   TreemapSpec,
 } from "@/lib/charts/spec";
-import type { BarWidget, ColumnWidget, KpiWidget, LineWidget, PieWidget, TreemapWidget } from "@/lib/charts/widgets";
+import type { BarWidget, ColumnWidget, FunnelWidget, GanttWidget, KpiWidget, LineWidget, PieWidget, TreemapWidget } from "@/lib/charts/widgets";
 import type { MetricInfo } from "@/lib/metrics-glossary";
 import {
   compareValues,
@@ -35,6 +50,7 @@ import {
   type Components,
   type Row,
 } from "@/server/charts/compute";
+import { boardLists, ganttCards, kanbanFunnelCounts, type GanttCard } from "@/server/charts/kanban";
 import type { PanelQuery } from "@/server/charts/params";
 import {
   componentsByBucket,
@@ -534,5 +550,221 @@ export function buildTreemap(pc: PanelComputer, w: TreemapWidget): TreemapSpec {
     notes,
     empty,
     emptyReason: empty ? "no-data" : null,
+  };
+}
+
+// ---- funil -------------------------------------------------------------------------------------
+
+/** Percentuais entre as etapas e a etapa da maior perda (a menor fração da anterior, abaixo de 100%). */
+function funnelSteps(raw: Omit<FunnelStep, "fromPrevious" | "fromTop" | "biggestLoss">[]): FunnelStep[] {
+  const top = raw[0]?.value ?? 0;
+  const steps = raw.map((step, i) => {
+    const previous = i > 0 ? raw[i - 1].value : 0;
+    return {
+      ...step,
+      fromPrevious: i > 0 && previous > 0 ? step.value / previous : null,
+      fromTop: top > 0 ? step.value / top : null,
+      biggestLoss: false,
+    };
+  });
+  let worst = -1;
+  steps.forEach((step, i) => {
+    if (step.fromPrevious == null || step.fromPrevious >= 1) return;
+    if (worst < 0 || step.fromPrevious < steps[worst].fromPrevious!) worst = i;
+  });
+  if (worst >= 0) steps[worst].biggestLoss = true;
+  return steps;
+}
+
+/**
+ * Funil de vendas (métricas que se somam, no período inteiro, as mesmas dos
+ * cartões) ou do kanban (as listas de um quadro, server/charts/kanban.ts).
+ */
+export function buildFunnel(pc: PanelComputer, w: FunnelWidget): FunnelSpec {
+  const { source, query } = pc;
+  const base = { kind: "funnel" as const, currency: source.dashboard.currency, compareName: compareName(query) };
+  const empty = (reason: FunnelSpec["emptyReason"], notes: string[] = []): FunnelSpec => ({
+    ...base,
+    source: w.source.kind,
+    steps: [],
+    board: null,
+    notes,
+    empty: true,
+    emptyReason: reason,
+  });
+
+  let raw: Omit<FunnelStep, "fromPrevious" | "fromTop" | "biggestLoss">[];
+  let board: FunnelSpec["board"] = null;
+  const notes: string[] = [];
+
+  if (w.source.kind === "sales") {
+    const defs = w.source.steps.map((id) => getMetric(id));
+    const totals = pc.totals();
+    const before = pc.compareTotals();
+    raw = defs.map((def) => {
+      const value = metricValue(def, totals);
+      return { key: def.id, label: def.info.label, value: value ?? 0, compare: before ? compareOne(def, value, metricValue(def, before)) : null };
+    });
+    const origins = new Set(defs.flatMap((d) => metricComponents(d).map((c) => COMPONENT_ORIGIN[c])));
+    if (origins.has("ads") && origins.has("orders") && source.filters.sources.length === 0) notes.push(msg.panel.funnel.mixedSources);
+  } else {
+    const { boardId, listIds } = w.source;
+    const chosen = boardId ? source.boards.find((b) => b.id === boardId) : source.boards[0];
+    if (!chosen) return empty("no-board");
+    const lists = boardLists(source.store, chosen.id);
+    const stages = listIds ? listIds.map((id) => lists.find((l) => l.id === id)).filter((l) => l != null) : lists;
+    board = { name: chosen.name, href: `/b/${chosen.id}` };
+    notes.push(msg.panel.funnel.kanban(chosen.name));
+    if (stages.length < 2) return { ...empty("no-data", notes), board };
+    const ids = stages.map((l) => l.id);
+    const counts = kanbanFunnelCounts(source.store, chosen.id, ids, query.period.range, source.dashboard.timezone);
+    const before = query.compareRange ? kanbanFunnelCounts(source.store, chosen.id, ids, query.compareRange, source.dashboard.timezone) : null;
+    raw = stages.map((list, i) => ({
+      key: list.id,
+      label: list.name,
+      value: counts[i],
+      compare: before ? { value: before[i], change: compareValues(counts[i], before[i], "up") } : null,
+    }));
+  }
+
+  const steps = funnelSteps(raw);
+  if (steps.some((s) => s.fromPrevious != null && s.fromPrevious > 1)) notes.push(msg.panel.funnel.grew);
+  const isEmpty = steps.every((s) => s.value === 0);
+  return { ...base, source: w.source.kind, steps, board, notes, empty: isEmpty, emptyReason: isEmpty ? "no-data" : null };
+}
+
+// ---- Gantt -------------------------------------------------------------------------------------
+
+/** Até quantas tarefas o Gantt mostra (as de entrega mais próxima de agora). */
+export const MAX_GANTT_TASKS = 60;
+const DAY = 86_400_000;
+
+/** Começo do dia no fuso do dashboard, em milissegundos. */
+function dayStart(day: string, timezone: string): number {
+  const [y, m, d] = day.split("-").map(Number);
+  return new TZDate(y, m - 1, d, 0, 0, 0, timezone).getTime();
+}
+
+/**
+ * Gantt: os cards com data de entrega dos quadros que a pessoa pode ver. Com
+ * início, viram barra; só com entrega, viram marco (losango). Entram as
+ * tarefas que terminam a partir do começo do período escolhido, inclusive as
+ * que vêm pela frente (os atalhos de período olham para trás, e um cronograma
+ * sem o futuro não serve). Percentual concluído pelo checklist; entrega
+ * marcada como feita conta 100%. Sem dependências entre tarefas.
+ */
+export function buildGantt(pc: PanelComputer, w: GanttWidget): GanttSpec {
+  const { source, query } = pc;
+  const timezone = source.dashboard.timezone;
+  const now = pc.options.now?.getTime() ?? Date.now();
+  const from = dayStart(query.period.range.from, timezone);
+  const legendTitle = msg.panel.gantt.colorBy[w.colorBy];
+  const base = { kind: "gantt" as const, legendTitle, now, scale: w.scale, timezone };
+
+  const boards = w.boardIds ? source.boards.filter((b) => w.boardIds!.includes(b.id)) : source.boards;
+  if (boards.length === 0) {
+    const reason = w.boardIds ? "no-board" : "no-tasks";
+    return { ...base, groups: [], legend: [], from, to: now + DAY, notes: [], empty: true, emptyReason: reason };
+  }
+
+  const all = ganttCards(source.store, boards).filter((g) => {
+    const end = new Date(g.card.dueAt!).getTime();
+    return end >= from && (w.showDone || !g.card.dueComplete);
+  });
+  // As mais próximas de agora, se passar do limite.
+  const shown = [...all]
+    .sort((a, b) => Math.abs(new Date(a.card.dueAt!).getTime() - now) - Math.abs(new Date(b.card.dueAt!).getTime() - now))
+    .slice(0, MAX_GANTT_TASKS);
+
+  // Cores: cada responsável, etiqueta ou lista com uma cor, na ordem em que aparecem; sem nada, cinza.
+  const boardOrder = new Map(boards.map((b, i) => [b.id, i]));
+  const listRank = (g: GanttCard) => `${String(boardOrder.get(g.board.id)).padStart(3, "0")}|${g.list.rank}`;
+  const multipleBoards = new Set(shown.map((g) => g.board.id)).size > 1;
+  const listLabel = (g: GanttCard) => (multipleBoards ? `${g.board.name} › ${g.list.name}` : g.list.name);
+  const colorKey = (g: GanttCard): { key: string; label: string; order: string } | null => {
+    if (w.colorBy === "member") return g.members[0] ? { key: g.members[0].id, label: g.members[0].name, order: g.members[0].name } : null;
+    if (w.colorBy === "label") {
+      const label = g.labels.find((l) => l.name.trim()) ?? g.labels[0];
+      return label ? { key: label.id, label: label.name.trim() || msg.panel.gantt.noLabel, order: label.name } : null;
+    }
+    return { key: g.list.id, label: listLabel(g), order: listRank(g) };
+  };
+  const keys = new Map<string, { label: string; order: string }>();
+  for (const g of shown) {
+    const k = colorKey(g);
+    if (k) keys.set(k.key, { label: k.label, order: k.order });
+  }
+  const palette = new Map(
+    [...keys.entries()]
+      .sort((a, b) => a[1].order.localeCompare(b[1].order, "pt-BR"))
+      .map(([key], i) => [key, i % 8]),
+  );
+  const noneLabel = w.colorBy === "member" ? msg.panel.gantt.noMember : msg.panel.gantt.noLabel;
+
+  const toTask = (g: GanttCard): GanttTask => {
+    const end = new Date(g.card.dueAt!).getTime();
+    const startMs = g.card.startAt ? new Date(g.card.startAt).getTime() : null;
+    const done = g.card.dueComplete;
+    const progress = done ? 1 : g.checklist && g.checklist.total > 0 ? g.checklist.done / g.checklist.total : 0;
+    const k = colorKey(g);
+    const extra = g.members.length > 1 ? ` +${g.members.length - 1}` : "";
+    return {
+      key: g.card.id,
+      label: g.card.name,
+      href: `/b/${g.board.id}?card=${g.card.id}`,
+      // Início depois da entrega é erro de digitação: vira marco na entrega.
+      start: startMs != null && startMs <= end ? startMs : null,
+      end,
+      progress,
+      checklist: g.checklist,
+      done,
+      overdue: !done && end < now,
+      color: k ? (palette.get(k.key) ?? null) : null,
+      people: g.members.length ? `${g.members[0].name}${extra}` : msg.panel.gantt.noMember,
+      board: g.board.name,
+      list: g.list.name,
+    };
+  };
+
+  // Grupos: por quadro, responsável (o primeiro, em ordem alfabética) ou lista; dentro, pela data de início.
+  const groupOf = (g: GanttCard): { key: string; label: string; order: string } => {
+    if (w.groupBy === "board") return { key: g.board.id, label: g.board.name, order: String(boardOrder.get(g.board.id)).padStart(3, "0") };
+    if (w.groupBy === "member") {
+      const m = g.members[0];
+      return m ? { key: m.id, label: m.name, order: `0|${m.name}` } : { key: "__sem__", label: msg.panel.gantt.noMember, order: "1" };
+    }
+    return { key: g.list.id, label: listLabel(g), order: listRank(g) };
+  };
+  const groups = new Map<string, { key: string; label: string; order: string; tasks: GanttTask[] }>();
+  for (const g of shown) {
+    const group = groupOf(g);
+    let entry = groups.get(group.key);
+    if (!entry) groups.set(group.key, (entry = { ...group, tasks: [] }));
+    entry.tasks.push(toTask(g));
+  }
+  const ordered = [...groups.values()]
+    .sort((a, b) => a.order.localeCompare(b.order, "pt-BR"))
+    .map(({ key, label, tasks }) => ({
+      key,
+      label,
+      tasks: tasks.sort((a, b) => (a.start ?? a.end) - (b.start ?? b.end) || a.end - b.end || a.label.localeCompare(b.label, "pt-BR")),
+    }));
+
+  const legend: GanttSpec["legend"] = [...palette.entries()].map(([key, color]) => ({ color, label: keys.get(key)!.label }));
+  if (shown.some((g) => colorKey(g) == null)) legend.push({ color: null, label: noneLabel });
+
+  const lastEnd = Math.max(now, ...shown.map((g) => new Date(g.card.dueAt!).getTime()));
+  const notes = [msg.panel.gantt.window];
+  if (all.length > shown.length) notes.push(msg.panel.gantt.limited(shown.length, all.length));
+  const empty = shown.length === 0;
+  return {
+    ...base,
+    groups: ordered,
+    legend,
+    from,
+    to: lastEnd + DAY,
+    notes,
+    empty,
+    emptyReason: empty ? "no-tasks" : null,
   };
 }

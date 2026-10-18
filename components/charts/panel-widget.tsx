@@ -10,7 +10,7 @@ import { msg } from "@/lib/charts/messages";
 import { widgetMetrics, widgetTitle, type PanelWidget } from "@/lib/charts/widgets";
 import { OUTLINE_BOX } from "@/lib/surfaces";
 import { cn } from "@/lib/utils";
-import { buildBarChart, buildKpi, buildPieChart, buildTimeChart, buildTreemap } from "@/server/charts/build";
+import { buildBarChart, buildFunnel, buildGantt, buildKpi, buildPieChart, buildTimeChart, buildTreemap } from "@/server/charts/build";
 import { getPanels } from "@/server/data/panels-request";
 
 // Um widget dos Painéis. Cada um carrega no próprio Suspense (um gráfico lento
@@ -26,7 +26,11 @@ async function WidgetContent({ dashboardId, queryKey, widget }: { dashboardId: s
         ? buildPieChart(computer, widget)
         : widget.type === "treemap"
           ? buildTreemap(computer, widget)
-          : buildTimeChart(computer, widget);
+          : widget.type === "funnel"
+            ? buildFunnel(computer, widget)
+            : widget.type === "gantt"
+              ? buildGantt(computer, widget)
+              : buildTimeChart(computer, widget);
   return (
     <ChartFrame
       spec={spec}

@@ -149,5 +149,71 @@ export type TreemapSpec = {
   emptyReason: "no-data" | null;
 };
 
+// ---- processo: funil e Gantt ----------------------------------------------------------------------
+
+export type FunnelStep = {
+  key: string;
+  label: string;
+  value: number;
+  /** Fração da etapa anterior (null na primeira, ou com a anterior zerada). */
+  fromPrevious: number | null;
+  /** Fração do topo (null com o topo zerado). */
+  fromTop: number | null;
+  compare: SpecCompare | null;
+  /** A etapa que mais perdeu em relação à anterior (em proporção). */
+  biggestLoss: boolean;
+};
+
+export type FunnelSpec = {
+  kind: "funnel";
+  source: "sales" | "kanban";
+  steps: FunnelStep[];
+  /** O quadro do funil do kanban e o link para ele (null no funil de vendas). */
+  board: { name: string; href: string } | null;
+  currency: string;
+  compareName: string | null;
+  notes: string[];
+  empty: boolean;
+  /** no-board: o quadro não existe ou a pessoa não pode ver. */
+  emptyReason: "no-data" | "no-board" | null;
+};
+
+export type GanttTask = {
+  key: string;
+  label: string;
+  /** Abre o card ao clicar (/b/<quadro>?card=<card>). */
+  href: string;
+  /** Início e entrega em milissegundos (UTC). Sem início, é um marco na entrega. */
+  start: number | null;
+  end: number;
+  /** Fração concluída: os itens do checklist, ou tudo quando a entrega foi marcada como feita. */
+  progress: number;
+  checklist: { done: number; total: number } | null;
+  done: boolean;
+  overdue: boolean;
+  /** Posição da cor na paleta (0 a 7); null = sem responsável, sem etiqueta... (cinza). */
+  color: number | null;
+  people: string;
+  board: string;
+  list: string;
+};
+
+export type GanttSpec = {
+  kind: "gantt";
+  groups: { key: string; label: string; tasks: GanttTask[] }[];
+  /** A legenda das cores (o que cada cor é). */
+  legend: { color: number | null; label: string }[];
+  legendTitle: string;
+  /** Janela do eixo do tempo e o momento de agora (linha "Hoje"), em milissegundos. */
+  from: number;
+  to: number;
+  now: number;
+  scale: "day" | "week" | "month";
+  timezone: string;
+  notes: string[];
+  empty: boolean;
+  emptyReason: "no-tasks" | "no-board" | null;
+};
+
 /** Qualquer gráfico dos Painéis. */
-export type PanelChartSpec = ChartSpec | PieSpec | TreemapSpec;
+export type PanelChartSpec = ChartSpec | PieSpec | TreemapSpec | FunnelSpec | GanttSpec;

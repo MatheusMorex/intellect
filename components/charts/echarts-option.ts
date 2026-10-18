@@ -4,12 +4,36 @@
 //
 // Função pura, sem navegador: os testes rodam com `npm test`.
 
-import type { BarSeriesOption, EChartsOption, LineSeriesOption, PieSeriesOption, TreemapSeriesOption } from "echarts";
+import type {
+  BarSeriesOption,
+  CustomSeriesOption,
+  CustomSeriesRenderItem,
+  EChartsOption,
+  FunnelSeriesOption,
+  LineSeriesOption,
+  PieSeriesOption,
+  TreemapSeriesOption,
+} from "echarts";
 
 import type { MetricFormat } from "@/lib/charts/catalog";
 import { formatChange, formatMetricValue, type Change } from "@/lib/charts/format";
 import { msg } from "@/lib/charts/messages";
-import type { ChartCategory, ChartSeries, ChartSpec, PanelChartSpec, PieSlice, PieSpec, ReferenceLine, SpecCompare, TreemapNode, TreemapSpec } from "@/lib/charts/spec";
+import type {
+  ChartCategory,
+  ChartSeries,
+  ChartSpec,
+  FunnelSpec,
+  FunnelStep,
+  GanttSpec,
+  GanttTask,
+  PanelChartSpec,
+  PieSlice,
+  PieSpec,
+  ReferenceLine,
+  SpecCompare,
+  TreemapNode,
+  TreemapSpec,
+} from "@/lib/charts/spec";
 
 import { colorScale, scalePosition } from "./color-scale";
 import type { ChartTheme } from "./use-chart-theme";
@@ -59,6 +83,8 @@ type Options = { reducedMotion: boolean };
 export function toEChartsOption(spec: PanelChartSpec, theme: ChartTheme, options: Options): EChartsOption {
   if (spec.kind === "pie") return pieOption(spec, theme, options);
   if (spec.kind === "treemap") return treemapOption(spec, theme, options);
+  if (spec.kind === "funnel") return funnelOption(spec, theme, options);
+  if (spec.kind === "gantt") return ganttOption(spec, theme, options);
   return axisOption(spec, theme, options);
 }
 
@@ -628,5 +654,304 @@ export function treemapTooltipHtml(spec: TreemapSpec, theme: ChartTheme, node: T
   }
   const next = spec.levels[node.path.length];
   if (node.children.length && next) parts.push(`<div style="color:${theme.muted};font-size:11px;margin-top:6px">${escapeHtml(msg.panel.treemap.open(next))}</div>`);
+  return parts.join("");
+}
+
+// ---- funil --------------------------------------------------------------------------------------
+
+const stepColor = (index: number, theme: ChartTheme) => theme.palette[index % theme.palette.length] || theme.text;
+
+/** O texto ao lado de cada etapa: a quantidade e quanto ela é da anterior (a primeira é o topo). */
+export function funnelStepText(spec: FunnelSpec, step: FunnelStep, index: number): string {
+  const count = formatMetricValue(step.value, "number", { currency: spec.currency });
+  if (index === 0) return `${count} · ${msg.panel.funnel.top}`;
+  if (step.fromPrevious == null) return count;
+  return `${count} · ${msg.panel.funnel.fromPrevious(formatMetricValue(step.fromPrevious, "percent", { currency: spec.currency }))}`;
+}
+
+function funnelOption(spec: FunnelSpec, theme: ChartTheme, { reducedMotion }: Options): EChartsOption {
+  const series: FunnelSeriesOption = {
+    type: "funnel",
+    id: "funil",
+    // Na ordem das etapas, não pelo tamanho.
+    sort: "none",
+    // A largura de cada etapa vai de 0 até o topo (o padrão do ECharts é de 0 a 100).
+    min: 0,
+    max: Math.max(1, ...spec.steps.map((s) => s.value)),
+    // Etapa pequena (vendas perto de impressões) ainda aparece; o número está no rótulo.
+    minSize: "14%",
+    maxSize: "100%",
+    left: 0,
+    top: 8,
+    bottom: 8,
+    width: "50%",
+    gap: 3,
+    label: {
+      show: true,
+      position: "right",
+      color: theme.text,
+      fontSize: 11,
+      lineHeight: 15,
+      formatter: (p) => {
+        const step = spec.steps[p.dataIndex];
+        if (!step) return "";
+        // A maior perda também vai escrita: a informação não depende só da cor.
+        const loss = step.biggestLoss ? `\n{loss|▼ ${msg.panel.funnel.biggestLoss}}` : "";
+        return `{name|${step.label}}\n${funnelStepText(spec, step, p.dataIndex)}${loss}`;
+      },
+      rich: {
+        name: { fontWeight: 600, color: theme.text, fontSize: 12, lineHeight: 16 },
+        loss: { fontWeight: 600, color: theme.bad, fontSize: 11, lineHeight: 15 },
+      },
+    },
+    labelLine: { show: true, length: 10, lineStyle: { color: theme.border } },
+    // Todos os rótulos numa coluna logo à direita do funil (que ocupa a metade esquerda): o da
+    // etapa larga não fica por cima dela. A linha liga cada etapa ao seu rótulo.
+    labelLayout: { x: "53%", align: "left" },
+    emphasis: { label: { fontSize: 12 } },
+    data: spec.steps.map((step, i) => ({
+      name: step.label,
+      value: step.value,
+      itemStyle: {
+        color: stepColor(i, theme),
+        borderColor: step.biggestLoss ? theme.bad : theme.surface,
+        borderWidth: step.biggestLoss ? 3 : 1,
+      },
+    })),
+  };
+  return {
+    backgroundColor: "transparent",
+    animation: !reducedMotion,
+    animationDuration: 300,
+    textStyle: { fontFamily: theme.font },
+    aria: ariaOf(theme),
+    // No celular: funil mais estreito e rótulo menor, para caber ao lado.
+    media: [{ query: { maxWidth: 480 }, option: { series: [{ width: "40%", labelLayout: { x: "43%", align: "left" }, label: { fontSize: 10 } }] } }],
+    tooltip: {
+      trigger: "item",
+      ...tooltipBox(theme),
+      formatter: (params) => {
+        const p = Array.isArray(params) ? params[0] : params;
+        return p?.dataIndex == null ? "" : funnelTooltipHtml(spec, theme, p.dataIndex);
+      },
+    },
+    series: [series],
+  };
+}
+
+/** Dica da etapa: a quantidade, quanto é da anterior e do topo e, com comparação, o valor de antes. */
+export function funnelTooltipHtml(spec: FunnelSpec, theme: ChartTheme, index: number): string {
+  const step = spec.steps[index];
+  if (!step) return "";
+  const pct = (value: number) => formatMetricValue(value, "percent", { currency: spec.currency });
+  const parts = [
+    `<div style="font-weight:600;margin-bottom:4px">` +
+      `<span style="display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px;background:${stepColor(index, theme)}"></span>${escapeHtml(step.label)}</div>`,
+    `<div style="font-weight:600;font-variant-numeric:tabular-nums">${escapeHtml(formatMetricValue(step.value, "number", { currency: spec.currency }))}</div>`,
+  ];
+  const ratios = [
+    step.fromPrevious != null ? msg.panel.funnel.fromPrevious(pct(step.fromPrevious)) : null,
+    index > 0 && step.fromTop != null ? msg.panel.funnel.fromTop(pct(step.fromTop)) : null,
+  ].filter(Boolean);
+  if (ratios.length) parts.push(`<div style="color:${theme.muted};font-size:11px">${escapeHtml(ratios.join(" · "))}</div>`);
+  if (step.biggestLoss) parts.push(`<div style="color:${theme.bad};font-size:11px;font-weight:600">▼ ${escapeHtml(msg.panel.funnel.biggestLoss)}</div>`);
+  if (step.compare) parts.push(compareLineHtml(spec, step.compare, "number", theme));
+  return parts.join("");
+}
+
+// ---- Gantt --------------------------------------------------------------------------------------
+
+const DAY = 86_400_000;
+/** Quanto do tempo aparece de uma vez em cada escala (o resto, arrastando ou pelo controle embaixo). */
+export const GANTT_SPAN: Record<GanttSpec["scale"], number> = { day: 21 * DAY, week: 12 * 7 * DAY, month: 365 * DAY };
+/** Altura de cada linha do Gantt, em pixels. */
+export const GANTT_ROW = 28;
+
+export type GanttRow = { kind: "group"; label: string } | { kind: "task"; task: GanttTask };
+
+/** As linhas de cima para baixo: o nome do grupo e as tarefas dele. */
+export function ganttRows(spec: GanttSpec): GanttRow[] {
+  return spec.groups.flatMap((g): GanttRow[] => [{ kind: "group", label: g.label }, ...g.tasks.map((task): GanttRow => ({ kind: "task", task }))]);
+}
+
+export const ganttColor = (task: GanttTask, theme: ChartTheme) =>
+  task.color == null ? theme.muted : theme.palette[task.color % theme.palette.length] || theme.text;
+
+/** Marca na frente do nome: atrasada e concluída não dependem só da cor. */
+export const ganttMark = (task: GanttTask) => (task.overdue ? "⚠ " : task.done ? "✓ " : "");
+
+/** Data no fuso do dashboard, no formato da escala ("19/10", "19 de out.", "out. de 2026"). */
+export function ganttDate(ms: number, timezone: string, style: "axis-day" | "axis-week" | "axis-month" | "long"): string {
+  const options: Intl.DateTimeFormatOptions =
+    style === "axis-day"
+      ? { day: "2-digit", month: "2-digit" }
+      : style === "axis-week"
+        ? { day: "numeric", month: "short" }
+        : style === "axis-month"
+          ? { month: "short", year: "numeric" }
+          : { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" };
+  return new Intl.DateTimeFormat(msg.locale, { ...options, timeZone: timezone }).format(new Date(ms));
+}
+
+function ganttOption(spec: GanttSpec, theme: ChartTheme, { reducedMotion }: Options): EChartsOption {
+  const rows = ganttRows(spec);
+  const tasks = rows.flatMap((row, index) => (row.kind === "task" ? [{ index, task: row.task }] : []));
+  const span = GANTT_SPAN[spec.scale];
+  const zoom = spec.to - spec.from > span;
+  // Começa mostrando um pouco antes de hoje e o que vem depois.
+  const startValue = Math.max(spec.from, Math.min(spec.now - span * 0.3, spec.to - span));
+  const axisStyle = spec.scale === "day" ? "axis-day" : spec.scale === "week" ? "axis-week" : "axis-month";
+
+  const renderItem: CustomSeriesRenderItem = (params, api) => {
+    const task = tasks[params.dataIndex]?.task;
+    if (!task) return null;
+    const row = Number(api.value(0));
+    const end = api.coord([Number(api.value(2)), row]);
+    const height = (api.size?.([0, 1]) as number[])[1] * 0.56;
+    const color = ganttColor(task, theme);
+    const outline = task.overdue ? theme.bad : color;
+    if (task.start == null) {
+      // Marco: só a data de entrega, um losango.
+      const r = height * 0.6;
+      return {
+        type: "polygon",
+        shape: { points: [[end[0], end[1] - r], [end[0] + r, end[1]], [end[0], end[1] + r], [end[0] - r, end[1]]] },
+        style: { fill: color, stroke: task.overdue ? theme.bad : theme.surface, lineWidth: task.overdue ? 2 : 1, opacity: task.done ? 0.55 : 1 },
+      };
+    }
+    const start = api.coord([task.start, row]);
+    const width = Math.max(end[0] - start[0], 3);
+    const y = end[1] - height / 2;
+    return {
+      type: "group",
+      children: [
+        // O trilho (o prazo inteiro), mais claro; por cima, a parte concluída.
+        { type: "rect", shape: { x: start[0], y, width, height, r: 3 }, style: { fill: color, opacity: task.done ? 0.3 : 0.28 } },
+        { type: "rect", shape: { x: start[0], y, width: width * task.progress, height, r: 3 }, style: { fill: color, opacity: task.done ? 0.55 : 1 } },
+        { type: "rect", shape: { x: start[0], y, width, height, r: 3 }, style: { fill: "none", stroke: outline, lineWidth: task.overdue ? 2 : 1 } },
+      ],
+    };
+  };
+
+  const series: CustomSeriesOption = {
+    type: "custom",
+    id: "gantt",
+    renderItem,
+    clip: true,
+    cursor: "pointer",
+    encode: { x: [1, 2], y: 0 },
+    data: tasks.map(({ index, task }) => ({ value: [index, task.start ?? task.end, task.end], href: task.href })),
+    markLine: {
+      silent: true,
+      symbol: "none",
+      lineStyle: { color: theme.text, type: "dashed", width: 1, opacity: 0.7 },
+      label: {
+        formatter: msg.panel.gantt.today,
+        // Embaixo da linha: em cima ela cobriria as datas do eixo.
+        position: "end",
+        color: theme.text,
+        fontSize: 11,
+        backgroundColor: theme.surface,
+        padding: [1, 4],
+        borderRadius: 3,
+      },
+      data: [{ xAxis: spec.now }],
+    },
+  };
+
+  return {
+    backgroundColor: "transparent",
+    animation: !reducedMotion,
+    animationDuration: 300,
+    textStyle: { fontFamily: theme.font },
+    grid: { left: 8, right: 16, top: 28, bottom: zoom ? 44 : 8 },
+    // No celular: nomes das tarefas mais curtos, para sobrar espaço para as barras.
+    media: [{ query: { maxWidth: 480 }, option: { yAxis: { axisLabel: { width: 96 } } } }],
+    xAxis: {
+      type: "time",
+      position: "top",
+      min: spec.from,
+      max: spec.to,
+      minInterval: spec.scale === "day" ? DAY : spec.scale === "week" ? 7 * DAY : 28 * DAY,
+      axisLabel: { color: theme.muted, hideOverlap: true, formatter: (value: number) => ganttDate(value, spec.timezone, axisStyle) },
+      axisLine: { lineStyle: { color: theme.border } },
+      splitLine: { show: true, lineStyle: { color: theme.border, type: "dashed" } },
+    },
+    yAxis: {
+      type: "category",
+      inverse: true,
+      data: rows.map((row) =>
+        row.kind === "group"
+          ? { value: row.label, textStyle: { color: theme.text, fontWeight: "bold" } }
+          : { value: `${ganttMark(row.task)}${row.task.label}`, textStyle: { color: row.task.overdue ? theme.bad : theme.muted } },
+      ),
+      axisLabel: { width: 230, overflow: "truncate", fontSize: 11 },
+      axisTick: { show: false },
+      axisLine: { lineStyle: { color: theme.border } },
+      splitLine: { show: false },
+    },
+    dataZoom: zoom
+      ? [
+          // filterMode "none": a barra que começa fora da janela continua aparecendo (cortada na borda).
+          {
+            type: "inside",
+            xAxisIndex: 0,
+            filterMode: "none",
+            startValue,
+            endValue: startValue + span,
+            zoomOnMouseWheel: "shift",
+            moveOnMouseWheel: false,
+            moveOnMouseMove: true,
+          },
+          {
+            type: "slider",
+            xAxisIndex: 0,
+            filterMode: "none",
+            startValue,
+            endValue: startValue + span,
+            height: 18,
+            bottom: 8,
+            borderColor: theme.border,
+            textStyle: { color: theme.muted },
+            labelFormatter: (value: number) => ganttDate(value, spec.timezone, "axis-week"),
+            fillerColor: "rgba(127,127,127,0.15)",
+            showDataShadow: false,
+          },
+        ]
+      : undefined,
+    tooltip: {
+      trigger: "item",
+      ...tooltipBox(theme),
+      formatter: (params) => {
+        const p = Array.isArray(params) ? params[0] : params;
+        const task = p?.dataIndex == null ? undefined : tasks[p.dataIndex]?.task;
+        return task ? ganttTooltipHtml(spec, theme, task) : "";
+      },
+    },
+    series: [series],
+  };
+}
+
+/** Situação da tarefa, por extenso. */
+export const ganttStatus = (task: GanttTask) => (task.done ? msg.panel.gantt.done : task.overdue ? msg.panel.gantt.overdue : msg.panel.gantt.onTime);
+
+/** Dica da tarefa: o nome, onde está, quem faz, quando, quanto já foi feito e a situação. */
+export function ganttTooltipHtml(spec: GanttSpec, theme: ChartTheme, task: GanttTask): string {
+  const when =
+    task.start == null
+      ? `${msg.panel.gantt.milestone}: ${ganttDate(task.end, spec.timezone, "long")}`
+      : `${ganttDate(task.start, spec.timezone, "long")} → ${ganttDate(task.end, spec.timezone, "long")}`;
+  const statusColor = task.overdue ? theme.bad : task.done ? theme.good : theme.muted;
+  const parts = [
+    `<div style="font-weight:600;margin-bottom:2px">${escapeHtml(task.label)}</div>`,
+    `<div style="color:${theme.muted};font-size:11px;margin-bottom:4px">${escapeHtml(`${task.board} › ${task.list}`)}</div>`,
+    `<div><span style="display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px;background:${ganttColor(task, theme)}"></span>${escapeHtml(task.people)}</div>`,
+    `<div style="font-variant-numeric:tabular-nums">${escapeHtml(when)}</div>`,
+    `<div>${escapeHtml(msg.panel.gantt.progress(formatMetricValue(task.progress, "percent", { currency: "BRL", decimals: 0 })))}` +
+      (task.checklist ? ` <span style="color:${theme.muted}">(${escapeHtml(msg.panel.gantt.checklist(task.checklist.done, task.checklist.total))})</span>` : "") +
+      `</div>`,
+    `<div style="color:${statusColor};font-weight:600">${escapeHtml(`${ganttMark(task)}${ganttStatus(task)}`)}</div>`,
+    `<div style="color:${theme.muted};font-size:11px;margin-top:4px">${escapeHtml(msg.panel.gantt.open)}</div>`,
+  ];
   return parts.join("");
 }

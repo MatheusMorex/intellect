@@ -141,6 +141,7 @@ export const HELP = {
     body: [
       "Gráficos da operação ao longo do tempo: cartões com os números principais, linhas, colunas e rankings por campanha, conta, produto e origem.",
       "A pizza e a rosca mostram quanto cada parte é do total (a rosca traz o total no centro). No treemap, o tamanho de cada retângulo é o gasto e a cor é o ROAS; clique num retângulo com ▶ para ver o que tem dentro e use o caminho embaixo dele para voltar.",
+      "O funil mostra quantos passam de uma etapa para a outra e destaca a maior perda: o de vendas vai das impressões à venda paga; o do quadro conta até que lista os cards criados no período chegaram. O cronograma (Gantt) mostra os cards com data; clique numa barra para abrir o card.",
       "“Agrupar por” decide se cada ponto é uma hora, um dia, uma semana, uma quinzena, um mês ou um ano. No automático, o INtellect escolhe pelo tamanho do período. Por hora dá para ver até 31 dias.",
       "“Comparar com” mostra a variação contra o período anterior, o mesmo período do ano anterior ou datas que você escolher. Verde é melhora e vermelho é piora, conforme a métrica: CPA caindo é verde.",
       "O trecho tracejado e a faixa “Parcial” marcam o período que ainda não terminou (hoje, este mês), para ninguém comparar um mês pela metade com um mês fechado.",

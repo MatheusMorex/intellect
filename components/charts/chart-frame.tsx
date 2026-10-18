@@ -2,6 +2,7 @@
 
 import { BarChart3, Info } from "lucide-react";
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { useState } from "react";
 
 import { EmptyState } from "@/components/ds/empty-state";
@@ -11,12 +12,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatChange, formatMetricValue } from "@/lib/charts/format";
 import { msg } from "@/lib/charts/messages";
-import type { ChartSpec, PanelChartSpec, PieSpec, SpecCompare, TreemapNode, TreemapSpec } from "@/lib/charts/spec";
+import type { ChartSpec, FunnelSpec, GanttSpec, PanelChartSpec, PieSpec, SpecCompare, TreemapNode, TreemapSpec } from "@/lib/charts/spec";
 import type { WidgetType } from "@/lib/charts/widgets";
 import { OUTLINE_BOX } from "@/lib/surfaces";
 import { cn } from "@/lib/utils";
 
 import { colorScale } from "./color-scale";
+import { GANTT_ROW, GANTT_SPAN, ganttDate, ganttMark, ganttRows, ganttStatus } from "./echarts-option";
 import { useChartTheme } from "./use-chart-theme";
 
 // Moldura de um gráfico dos Painéis: título, "?" com a dica de quando usar
@@ -35,6 +37,12 @@ export type ChartHelp = { type: WidgetType; metrics: { label: string; formula: s
 export function chartHeight(spec: PanelChartSpec) {
   if (spec.kind === "pie") return 300;
   if (spec.kind === "treemap") return 380;
+  if (spec.kind === "funnel") return Math.max(240, spec.steps.length * 60 + 16);
+  if (spec.kind === "gantt") {
+    const rows = spec.groups.reduce((n, g) => n + 1 + g.tasks.length, 0);
+    const zoom = spec.to - spec.from > GANTT_SPAN[spec.scale];
+    return Math.max(160, rows * GANTT_ROW + 36 + (zoom ? 36 : 0));
+  }
   if (spec.axis === "time") return 300;
   const perItem = 14 + spec.series.length * 16;
   return Math.max(160, spec.categories.length * perItem + 48);
@@ -178,10 +186,132 @@ function TreemapTable({ spec }: { spec: TreemapSpec }) {
   );
 }
 
+function FunnelTable({ spec }: { spec: FunnelSpec }) {
+  const count = (value: number | null) => formatMetricValue(value, "number", { currency: spec.currency });
+  const pct = (value: number | null) => (value == null ? "" : formatMetricValue(value, "percent", { currency: spec.currency }));
+  const withCompare = spec.compareName != null && spec.steps.some((s) => s.compare);
+  return (
+    <div className="max-h-96 overflow-auto rounded-md">
+      <Table className="tabular">
+        <TableHeader>
+          <TableRow className="hover:bg-transparent">
+            <TableHead>{msg.panel.funnel.tableStep}</TableHead>
+            <TableHead className="text-right">{msg.panel.funnel.tableCount}</TableHead>
+            <TableHead className="text-right">{msg.panel.funnel.tablePrevious}</TableHead>
+            <TableHead className="text-right">{msg.panel.funnel.tableTop}</TableHead>
+            {withCompare && <TableHead className="text-right">{spec.compareName}</TableHead>}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {spec.steps.map((step) => (
+            <TableRow key={step.key} className={step.biggestLoss ? "font-semibold" : undefined}>
+              <TableCell>
+                {step.label}
+                {step.biggestLoss && <span className="ml-2 text-xs text-danger">▼ {msg.panel.funnel.biggestLoss}</span>}
+              </TableCell>
+              <TableCell className="text-right">{count(step.value)}</TableCell>
+              <TableCell className="text-right">{pct(step.fromPrevious)}</TableCell>
+              <TableCell className="text-right">{pct(step.fromTop)}</TableCell>
+              {withCompare && (
+                <CompareCell compare={step.compare} format="number" currency={spec.currency} />
+              )}
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+      {withCompare && <p className="px-2 pt-2 text-xs text-muted-foreground">{msg.panel.table.compareNote(spec.compareName!)}</p>}
+    </div>
+  );
+}
+
+function GanttTable({ spec }: { spec: GanttSpec }) {
+  const date = (ms: number | null) => (ms == null ? "" : ganttDate(ms, spec.timezone, "long"));
+  const pct = (value: number) => formatMetricValue(value, "percent", { currency: "BRL", decimals: 0 });
+  return (
+    <div className="max-h-96 overflow-auto rounded-md">
+      <Table className="tabular">
+        <TableHeader>
+          <TableRow className="hover:bg-transparent">
+            <TableHead>{msg.panel.gantt.tableTask}</TableHead>
+            <TableHead>{msg.panel.gantt.people}</TableHead>
+            <TableHead>{msg.panel.gantt.tableStart}</TableHead>
+            <TableHead>{msg.panel.gantt.tableDue}</TableHead>
+            <TableHead className="text-right">%</TableHead>
+            <TableHead>{msg.panel.gantt.tableStatus}</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {ganttRows(spec).map((row, i) =>
+            row.kind === "group" ? (
+              <TableRow key={`g-${i}`} className="hover:bg-transparent">
+                <TableCell colSpan={6} className="font-semibold">
+                  {row.label}
+                </TableCell>
+              </TableRow>
+            ) : (
+              <TableRow key={row.task.key}>
+                <TableCell className="max-w-72 truncate pl-5" title={row.task.label}>
+                  <Link href={row.task.href} className="hover:underline">
+                    {row.task.label}
+                  </Link>
+                </TableCell>
+                <TableCell className="whitespace-nowrap">{row.task.people}</TableCell>
+                <TableCell className="whitespace-nowrap">{date(row.task.start)}</TableCell>
+                <TableCell className="whitespace-nowrap">{date(row.task.end)}</TableCell>
+                <TableCell className="text-right">{pct(row.task.progress)}</TableCell>
+                <TableCell className={cn("whitespace-nowrap", row.task.overdue && "font-semibold text-danger")}>
+                  {ganttMark(row.task)}
+                  {ganttStatus(row.task)}
+                </TableCell>
+              </TableRow>
+            ),
+          )}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
 function ChartTable({ spec }: { spec: PanelChartSpec }) {
   if (spec.kind === "pie") return <PieTable spec={spec} />;
   if (spec.kind === "treemap") return <TreemapTable spec={spec} />;
+  if (spec.kind === "funnel") return <FunnelTable spec={spec} />;
+  if (spec.kind === "gantt") return <GanttTable spec={spec} />;
   return <AxisTable spec={spec} />;
+}
+
+/** Legenda do Gantt: o que cada cor é, e as marcas de barra, marco, atraso e concluída. */
+function GanttLegend({ spec }: { spec: GanttSpec }) {
+  const theme = useChartTheme();
+  if (!theme) return null;
+  const color = (index: number | null) => (index == null ? theme.muted : theme.palette[index % theme.palette.length] || theme.text);
+  return (
+    <div className="grid gap-1 text-xs text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <span>{spec.legendTitle}</span>
+        {spec.legend.map((item) => (
+          <span key={`${item.color}-${item.label}`} className="flex items-center gap-1.5">
+            <span aria-hidden="true" className="size-2 rounded-sm" style={{ background: color(item.color) }} />
+            {item.label}
+          </span>
+        ))}
+      </div>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <span>▬ {msg.panel.gantt.tableStart} → {msg.panel.gantt.tableDue.toLowerCase()}</span>
+        <span>◆ {msg.panel.gantt.milestone}</span>
+        <span>⚠ {msg.panel.gantt.overdue}</span>
+        <span>✓ {msg.panel.gantt.done}</span>
+      </div>
+    </div>
+  );
+}
+
+/** Título e texto do estado vazio, pelo motivo. */
+function emptyText(spec: PanelChartSpec) {
+  if (spec.emptyReason === "daily-only") return msg.panel.emptyDailyOnly;
+  if (spec.emptyReason === "no-board") return msg.panel.emptyNoBoard;
+  if (spec.emptyReason === "no-tasks") return msg.panel.emptyNoTasks;
+  return msg.panel.empty;
 }
 
 /** Legenda da cor do treemap: a escala, do menor ao maior valor do gráfico. */
@@ -246,12 +376,7 @@ export function ChartFrame({ spec, title, subtitle, help }: { spec: PanelChartSp
       </figcaption>
 
       {spec.empty ? (
-        <EmptyState
-          icon={BarChart3}
-          title={spec.emptyReason === "daily-only" ? msg.panel.emptyDailyOnly.title : msg.panel.empty.title}
-          description={spec.emptyReason === "daily-only" ? msg.panel.emptyDailyOnly.description : msg.panel.empty.description}
-          className="py-8"
-        />
+        <EmptyState icon={BarChart3} title={emptyText(spec).title} description={emptyText(spec).description} className="py-8" />
       ) : asTable ? (
         <ChartTable spec={spec} />
       ) : (
@@ -262,6 +387,12 @@ export function ChartFrame({ spec, title, subtitle, help }: { spec: PanelChartSp
       )}
 
       {spec.kind === "treemap" && !spec.empty && !asTable && <ColorLegend spec={spec} />}
+      {spec.kind === "gantt" && !spec.empty && !asTable && <GanttLegend spec={spec} />}
+      {spec.kind === "funnel" && spec.board && (
+        <Link href={spec.board.href} className="w-fit text-xs font-medium text-primary hover:underline">
+          {msg.panel.funnel.openBoard} “{spec.board.name}”
+        </Link>
+      )}
 
       {spec.notes.length > 0 && (
         <ul className="grid gap-1 text-xs text-muted-foreground">

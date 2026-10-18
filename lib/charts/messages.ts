@@ -137,6 +137,15 @@ export const chartsPtBR = {
       label: "Gráfico de rosca",
       whenToUse: "Igual à pizza, com o total no centro. Bom para mostrar a divisão e o valor inteiro de uma vez só.",
     },
+    funnel: {
+      label: "Gráfico de funil",
+      whenToUse:
+        "Ver quantos passam de uma etapa para a outra (impressões → cliques → vendas, ou as listas de um quadro) e onde está a maior perda.",
+    },
+    gantt: {
+      label: "Gantt (cronograma)",
+      whenToUse: "Ver as tarefas no tempo: quando cada card começa e termina, o que está atrasado e quanto do checklist já foi feito.",
+    },
     treemap: {
       label: "Treemap (mapa de árvore)",
       whenToUse:
@@ -146,6 +155,8 @@ export const chartsPtBR = {
 
   panel: {
     title: "Painéis",
+    /** Títulos automáticos dos gráficos que não saem de métricas. */
+    titles: { salesFunnel: "Funil de vendas", kanbanFunnel: "Funil do quadro", gantt: "Cronograma das tarefas" },
     sections: { kpis: "Números principais", charts: "Gráficos" },
     filters: { account: "Conta de anúncio", source: "Fonte de tráfego", product: "Produto" },
     granularityAdjusted: "Agrupamento ajustado",
@@ -180,6 +191,14 @@ export const chartsPtBR = {
       title: "Ainda não há dados neste período",
       description: "Escolha outro período, tire algum filtro ou confira as integrações do dashboard.",
     },
+    emptyNoBoard: {
+      title: "Quadro não encontrado",
+      description: "Este gráfico usa um quadro que não existe mais ou que você não pode ver. Peça acesso a quem administra o quadro.",
+    },
+    emptyNoTasks: {
+      title: "Nenhuma tarefa com data",
+      description: "O Gantt mostra os cards com data de entrega (e de início, para virar barra). Coloque datas nos cards dos quadros.",
+    },
     emptyDailyOnly: {
       title: "Este gráfico não existe por hora",
       description: "O gasto com anúncios, os impostos e as despesas chegam por dia. Escolha agrupar por dia para ver este gráfico.",
@@ -205,6 +224,43 @@ export const chartsPtBR = {
       total: "Total",
       share: (percent: string) => `${percent} do total`,
       tableShare: "% do total",
+    },
+    funnel: {
+      top: "topo",
+      fromPrevious: (percent: string) => `${percent} da anterior`,
+      fromTop: (percent: string) => `${percent} do topo`,
+      biggestLoss: "Maior perda",
+      tableStep: "Etapa",
+      tableCount: "Quantidade",
+      tablePrevious: "% da anterior",
+      tableTop: "% do topo",
+      mixedSources:
+        "Impressões, cliques e adições ao carrinho vêm dos anúncios; pedidos e vendas contam todas as vendas da loja. Para ver um canal só, filtre a fonte (Meta ou Google).",
+      kanban: (board: string) =>
+        `Quadro “${board}”: conta os cards criados no período e até que lista cada um chegou (pela lista atual e pelas movimentações). Cards arquivados também contam.`,
+      grew: "Uma etapa ficou maior que a anterior: as etapas vêm de fontes diferentes ou os cards pularam etapas para trás.",
+      openBoard: "Abrir o quadro",
+    },
+    gantt: {
+      today: "Hoje",
+      overdue: "Atrasada",
+      done: "Concluída",
+      onTime: "No prazo",
+      milestone: "Só com entrega (marco)",
+      noMember: "Sem responsável",
+      noLabel: "Sem etiqueta",
+      people: "Responsáveis",
+      when: "Quando",
+      progress: (percent: string) => `${percent} concluído`,
+      checklist: (done: number, total: number) => `Checklist: ${done} de ${total}`,
+      open: "Clique para abrir o card",
+      colorBy: { member: "Cor: responsável", label: "Cor: etiqueta", list: "Cor: lista" },
+      window: "Mostra as tarefas que terminam a partir do início do período escolhido, inclusive as que vêm pela frente.",
+      limited: (shown: number, total: number) => `Mostrando ${shown} de ${total} tarefas: as de entrega mais próxima.`,
+      tableTask: "Tarefa",
+      tableStart: "Início",
+      tableDue: "Entrega",
+      tableStatus: "Situação",
     },
     treemap: {
       /** Primeiro item do caminho embaixo do treemap (clicar nele volta para o começo). */
@@ -266,6 +322,11 @@ export const chartsPtBR = {
     levelsRepeated: "O mesmo nível aparece duas vezes.",
     treemapProduct: "Produto não se mistura com outros níveis: os pedidos se dividem por item. Use produto sozinho.",
     treemapTopN: "Escolha mostrar de 1 a 30 itens em cada nível.",
+    funnelSteps: "O funil tem de 2 a 6 etapas.",
+    funnelStepCount: "As etapas do funil são contagens que se somam (impressões, cliques, adições ao carrinho, pedidos, vendas).",
+    funnelLists: "Escolha de 2 a 12 listas do quadro.",
+    boardId: "Escolha um quadro.",
+    boards: "Escolha de 1 a 20 quadros.",
   },
 
   /** Métricas que não estão no glossário. */
