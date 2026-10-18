@@ -16,7 +16,7 @@ describe("configuração dos widgets (o que a Fase 5 vai salvar)", () => {
     for (const w of DEFAULT_PANEL) assert.deepEqual(errors(w), [], w.id);
     assert.deepEqual(
       [...new Set(DEFAULT_PANEL.map((w) => w.type))].sort(),
-      ["bar", "column", "kpi", "line"],
+      ["bar", "column", "donut", "kpi", "line", "pie", "treemap"],
     );
   });
 

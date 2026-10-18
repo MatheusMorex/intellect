@@ -295,6 +295,14 @@ export function metricComponents(def: MetricDef): ComponentId[] {
   return [...new Set(parts)];
 }
 
+/**
+ * A métrica pode ficar negativa? Só as que tiram alguma peça (o lucro). Essas
+ * não viram fatia de pizza nem tamanho de treemap: não existe fatia negativa.
+ */
+export function metricCanBeNegative(def: MetricDef): boolean {
+  return def.kind === "sum" && (def.value.minus?.length ?? 0) > 0;
+}
+
 // ---- dimensões ---------------------------------------------------------------------------------
 
 /** Por onde uma métrica pode ser aberta (além do tempo). País não existe nos pedidos ainda. */
@@ -302,6 +310,8 @@ export const DIMENSIONS = [
   "platform",
   "adAccount",
   "campaign",
+  "adSet",
+  "ad",
   "product",
   "paymentMethod",
   "utmSource",
@@ -318,6 +328,8 @@ const DIMENSION_ORIGINS: Record<Dimension, readonly ComponentOrigin[]> = {
   platform: ADS_AND_ORDERS,
   adAccount: ADS_AND_ORDERS,
   campaign: ADS_AND_ORDERS,
+  adSet: ADS_AND_ORDERS,
+  ad: ADS_AND_ORDERS,
   product: ORDERS_ONLY,
   paymentMethod: ORDERS_ONLY,
   utmSource: ORDERS_ONLY,

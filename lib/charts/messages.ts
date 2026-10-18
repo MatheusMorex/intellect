@@ -92,6 +92,8 @@ export const chartsPtBR = {
     platform: "Plataforma",
     adAccount: "Conta de anúncio",
     campaign: "Campanha",
+    adSet: "Conjunto de anúncios",
+    ad: "Anúncio",
     product: "Produto",
     paymentMethod: "Forma de pagamento",
     utmSource: "Origem (utm_source)",
@@ -104,6 +106,8 @@ export const chartsPtBR = {
   withoutValue: {
     adAccount: "Sem conta de anúncio",
     campaign: "Sem campanha",
+    adSet: "Sem conjunto de anúncios",
+    ad: "Sem anúncio",
     utm: "Sem UTM",
   },
 
@@ -124,6 +128,19 @@ export const chartsPtBR = {
     bar: {
       label: "Gráfico de barras",
       whenToUse: "Rankings e comparações entre itens com nomes longos, como campanhas e produtos.",
+    },
+    pie: {
+      label: "Gráfico de pizza",
+      whenToUse: "Ver quanto cada parte representa do total, com poucas partes (até 8). Só para métricas que se somam, como faturamento, gasto e vendas.",
+    },
+    donut: {
+      label: "Gráfico de rosca",
+      whenToUse: "Igual à pizza, com o total no centro. Bom para mostrar a divisão e o valor inteiro de uma vez só.",
+    },
+    treemap: {
+      label: "Treemap (mapa de árvore)",
+      whenToUse:
+        "Ver do que um total é feito em até 3 níveis (plataforma → campanha → anúncio). O tamanho de cada retângulo é uma métrica que se soma; a cor pode mostrar uma segunda métrica, como o ROAS.",
     },
   } satisfies Record<WidgetType, { label: string; whenToUse: string }>,
 
@@ -180,6 +197,23 @@ export const chartsPtBR = {
       expensesByItem: "As despesas não se dividem por item: ficam de fora do lucro de cada linha.",
       percent: "Cada coluna soma 100%: a altura mostra a participação de cada parte no total daquele período.",
       stackedCompare: "Nas colunas empilhadas, a comparação aparece na dica de cada coluna.",
+      proportionNegative: (count: number) =>
+        count === 1 ? "1 item com valor negativo ficou de fora: não existe fatia negativa." : `${count} itens com valor negativo ficaram de fora: não existe fatia negativa.`,
+      treemapDrill: "Clique num retângulo com ▶ para ver o que tem dentro; use o caminho embaixo do gráfico para voltar.",
+    },
+    pie: {
+      total: "Total",
+      share: (percent: string) => `${percent} do total`,
+      tableShare: "% do total",
+    },
+    treemap: {
+      /** Primeiro item do caminho embaixo do treemap (clicar nele volta para o começo). */
+      root: "Tudo",
+      open: (level: string) => `Clique para ver por ${level.toLowerCase()}`,
+      color: (metric: string) => `Cor: ${metric}`,
+      /** O meio da escala de cor: o valor do gráfico inteiro. */
+      middle: (value: string) => `meio: ${value}, o do gráfico inteiro`,
+      noColor: "Cinza: sem dado",
     },
     average: {
       /** Linha de média de uma métrica somável: o total dividido pelo número de dias, semanas... */
@@ -224,6 +258,14 @@ export const chartsPtBR = {
     goalDashboardMoney: "A meta de faturamento do dashboard só vale para métricas em dinheiro.",
     goalAxis: "A linha de meta precisa ficar num eixo que tenha alguma métrica.",
     topN: "Escolha mostrar de 1 a 50 itens.",
+    slices: "Escolha de 2 a 8 fatias (contando “Outros”).",
+    proportionRate: "Pizza, rosca e o tamanho do treemap só aceitam métricas que se somam (faturamento, gasto, vendas...). Taxas como ROAS e CPA não se dividem em partes de um total.",
+    proportionNegative: (metric: string) => `“${metric}” pode ficar negativo, e não existe fatia nem retângulo negativo. Use um gráfico de barras.`,
+    levelsMin: "Escolha pelo menos um nível.",
+    levelsMax: "O treemap vai até 3 níveis.",
+    levelsRepeated: "O mesmo nível aparece duas vezes.",
+    treemapProduct: "Produto não se mistura com outros níveis: os pedidos se dividem por item. Use produto sozinho.",
+    treemapTopN: "Escolha mostrar de 1 a 30 itens em cada nível.",
   },
 
   /** Métricas que não estão no glossário. */

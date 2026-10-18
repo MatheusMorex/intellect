@@ -32,6 +32,7 @@ const cat = (key: string, partial: ChartCategory["partial"] = null): ChartCatego
 
 function spec(over: Partial<ChartSpec> = {}): ChartSpec {
   return {
+    kind: "axis",
     axis: "time",
     categories: [cat("01"), cat("02"), cat("03"), cat("04", "ongoing")],
     series: [

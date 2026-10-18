@@ -465,6 +465,40 @@ await step("Painéis: ver como tabela, com 'Outros' no ranking", async () => {
   await chart.locator("canvas").waitFor();
 });
 
+await step("Painéis: rosca e pizza desenhadas, com o total na tabela", async () => {
+  for (const title of ["Faturamento líquido por plataforma", "Vendas por forma de pagamento"]) {
+    await page.locator("figure", { hasText: title }).locator("canvas").first().waitFor();
+  }
+  const donut = page.locator("figure", { hasText: "Faturamento líquido por plataforma" });
+  await donut.getByRole("button", { name: "Ver como tabela" }).click();
+  await donut.getByRole("columnheader", { name: "% do total" }).waitFor();
+  await donut.getByRole("row", { name: /^Total .*100,0%/ }).waitFor();
+  await donut.getByRole("button", { name: "Ver como gráfico" }).click();
+  await donut.locator("canvas").first().waitFor();
+});
+
+await step("Painéis: treemap com legenda de cor, clique desce de nível e a tabela tem os 3 níveis", async () => {
+  const chart = page.locator("figure", { hasText: "Gasto por plataforma, campanha e anúncio" });
+  const canvas = chart.locator("canvas").first();
+  await canvas.waitFor();
+  await chart.getByText("Cor: ROAS").waitFor();
+  // O treemap fica no fim da página: rola até ele antes de usar o mouse.
+  await chart.scrollIntoViewIfNeeded();
+  // O maior retângulo fica no canto de cima, à esquerda: a dica convida a abrir.
+  const box = await canvas.boundingBox();
+  await page.mouse.move(box.x + 40, box.y + 40);
+  await chart.getByText(/^Clique para ver por campanha$/).waitFor({ timeout: 10_000 });
+  await page.mouse.click(box.x + 40, box.y + 40);
+  // Dentro da plataforma, a dica mostra o caminho "Plataforma › Campanha".
+  await page.mouse.move(box.x + 60, box.y + 60);
+  await chart.getByText(/^(Meta|Google) › /).first().waitFor({ timeout: 10_000 });
+  await chart.getByRole("button", { name: "Ver como tabela" }).click();
+  await chart.getByRole("columnheader", { name: "Plataforma › Campanha › Anúncio" }).waitFor();
+  assert.ok((await chart.getByRole("row").count()) >= 4, "a tabela deveria ter plataforma, campanha e anúncio");
+  await chart.getByRole("button", { name: "Ver como gráfico" }).click();
+  await chart.locator("canvas").first().waitFor();
+});
+
 await step("Relatórios (endereço antigo) leva para Painéis", async () => {
   await page.goto(`${BASE}/d/${dashboardId}/reports?periodo=7d`);
   await page.waitForURL(/\/paineis\?periodo=7d/);

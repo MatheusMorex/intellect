@@ -4,13 +4,14 @@
 //
 // Função pura, sem navegador: os testes rodam com `npm test`.
 
-import type { BarSeriesOption, EChartsOption, LineSeriesOption } from "echarts";
+import type { BarSeriesOption, EChartsOption, LineSeriesOption, PieSeriesOption, TreemapSeriesOption } from "echarts";
 
 import type { MetricFormat } from "@/lib/charts/catalog";
 import { formatChange, formatMetricValue, type Change } from "@/lib/charts/format";
 import { msg } from "@/lib/charts/messages";
-import type { ChartCategory, ChartSeries, ChartSpec, ReferenceLine } from "@/lib/charts/spec";
+import type { ChartCategory, ChartSeries, ChartSpec, PanelChartSpec, PieSlice, PieSpec, ReferenceLine, SpecCompare, TreemapNode, TreemapSpec } from "@/lib/charts/spec";
 
+import { colorScale, scalePosition } from "./color-scale";
 import type { ChartTheme } from "./use-chart-theme";
 
 /** Formas dos pontos no modo para daltônicos: a série não depende só da cor. */
@@ -54,7 +55,30 @@ export function splitPartial(values: (number | null)[], categories: ChartCategor
 
 type Options = { reducedMotion: boolean };
 
-export function toEChartsOption(spec: ChartSpec, theme: ChartTheme, { reducedMotion }: Options): EChartsOption {
+/** Configuração do ECharts para qualquer gráfico dos Painéis. */
+export function toEChartsOption(spec: PanelChartSpec, theme: ChartTheme, options: Options): EChartsOption {
+  if (spec.kind === "pie") return pieOption(spec, theme, options);
+  if (spec.kind === "treemap") return treemapOption(spec, theme, options);
+  return axisOption(spec, theme, options);
+}
+
+/** Caixa da dica, igual em todos os gráficos. */
+function tooltipBox(theme: ChartTheme) {
+  return {
+    confine: true,
+    backgroundColor: theme.surface,
+    borderColor: theme.border,
+    borderWidth: 1,
+    padding: [8, 10],
+    textStyle: { color: theme.text, fontSize: 12 },
+    extraCssText: "border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.25); max-width: 360px; white-space: normal;",
+  };
+}
+
+/** Padrões no modo para daltônicos: a parte não depende só da cor. */
+const ariaOf = (theme: ChartTheme) => ({ enabled: theme.colorblind, label: { enabled: false }, decal: { show: theme.colorblind } });
+
+function axisOption(spec: ChartSpec, theme: ChartTheme, { reducedMotion }: Options): EChartsOption {
   const horizontal = spec.axis === "category";
   const color = (index: number) => theme.palette[index % theme.palette.length] || theme.text;
   const fmt = (value: number | null | undefined, format: MetricFormat, decimals?: number) =>
@@ -266,7 +290,7 @@ export function toEChartsOption(spec: ChartSpec, theme: ChartTheme, { reducedMot
     animation: !reducedMotion,
     animationDuration: 300,
     textStyle: { fontFamily: theme.font },
-    aria: { enabled: theme.colorblind, label: { enabled: false }, decal: { show: theme.colorblind } },
+    aria: ariaOf(theme),
     // Nas barras, espaço à direita para o valor na ponta da maior barra.
     grid: { left: 8, right: horizontal && showLabels ? 76 : 12, top: legend ? 40 : 16, bottom: zoom ? 48 : 8 },
     legend: legend
@@ -285,13 +309,7 @@ export function toEChartsOption(spec: ChartSpec, theme: ChartTheme, { reducedMot
     tooltip: {
       trigger: "axis",
       axisPointer: { type: horizontal || spec.series.some((s) => s.kind === "column") ? "shadow" : "line" },
-      confine: true,
-      backgroundColor: theme.surface,
-      borderColor: theme.border,
-      borderWidth: 1,
-      padding: [8, 10],
-      textStyle: { color: theme.text, fontSize: 12 },
-      extraCssText: "border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.25); max-width: 360px; white-space: normal;",
+      ...tooltipBox(theme),
       formatter: (params) => {
         const list = Array.isArray(params) ? params : [params];
         const index = list[0]?.dataIndex;
@@ -362,5 +380,253 @@ export function tooltipHtml(spec: ChartSpec, theme: ChartTheme, index: number, v
       );
     }
   }
+  return parts.join("");
+}
+
+// ---- pizza e rosca ------------------------------------------------------------------------------
+
+const sliceColor = (slice: PieSlice, theme: ChartTheme) =>
+  slice.color == null ? theme.muted : theme.palette[slice.color % theme.palette.length] || theme.text;
+
+function pieOption(spec: PieSpec, theme: ChartTheme, { reducedMotion }: Options): EChartsOption {
+  const compact = (value: number) => formatMetricValue(value, spec.metric.format, { currency: spec.currency, style: "compact" });
+  const share = (value: number) => formatMetricValue(value, "percent", { currency: spec.currency });
+  const labelOf = (slice: PieSlice) =>
+    spec.labels === "value" ? compact(slice.value) : spec.labels === "percent" ? share(slice.share) : `${compact(slice.value)} · ${share(slice.share)}`;
+
+  const series: PieSeriesOption = {
+    type: "pie",
+    id: spec.metric.id,
+    name: spec.metric.name,
+    // O centro da pizza é o centro do gráfico: o total da rosca (title) fica certinho no meio.
+    radius: spec.donut ? ["46%", "68%"] : [0, "68%"],
+    center: ["50%", "50%"],
+    avoidLabelOverlap: true,
+    itemStyle: { borderColor: theme.surface, borderWidth: 2, borderRadius: spec.donut ? 4 : 0 },
+    label: {
+      show: true,
+      color: theme.text,
+      fontSize: 11,
+      lineHeight: 14,
+      width: 120,
+      overflow: "truncate",
+      // O nome no rótulo: a fatia não depende só da cor.
+      formatter: (p) => {
+        const slice = spec.slices[p.dataIndex];
+        return slice ? `${slice.label}\n${labelOf(slice)}` : "";
+      },
+    },
+    labelLine: { length: 8, length2: 6, lineStyle: { color: theme.border } },
+    emphasis: { scaleSize: 4 },
+    data: spec.slices.map((slice) => ({ name: slice.label, value: slice.value, itemStyle: { color: sliceColor(slice, theme) } })),
+  };
+
+  return {
+    backgroundColor: "transparent",
+    animation: !reducedMotion,
+    animationDuration: 300,
+    textStyle: { fontFamily: theme.font },
+    aria: ariaOf(theme),
+    // No celular: pizza menor, rótulo só com o nome e o percentual (cabe na tela) e sem a
+    // legenda embaixo (o nome já está no rótulo). O valor fica na dica e na tabela.
+    media: [
+      {
+        query: { maxWidth: 480 },
+        option: {
+          legend: { show: false },
+          title: spec.donut ? { textStyle: { fontSize: 15 } } : undefined,
+          series: [
+            {
+              radius: spec.donut ? ["36%", "54%"] : [0, "54%"],
+              label: {
+                width: 88,
+                formatter: (p: { dataIndex: number }) => {
+                  const slice = spec.slices[p.dataIndex];
+                  return slice ? `${slice.label}\n${share(slice.share)}` : "";
+                },
+              },
+              labelLine: { length: 6, length2: 4 },
+            },
+          ],
+        },
+      },
+    ],
+    title: spec.donut
+      ? {
+          text: compact(spec.total),
+          subtext: msg.panel.pie.total,
+          left: "center",
+          top: "middle",
+          itemGap: 2,
+          textStyle: { color: theme.text, fontSize: 18, fontWeight: 700, fontFamily: theme.font },
+          subtextStyle: { color: theme.muted, fontSize: 11, fontFamily: theme.font },
+        }
+      : undefined,
+    legend: {
+      type: "scroll",
+      bottom: 0,
+      left: "center",
+      data: spec.slices.map((s) => s.label),
+      icon: "roundRect",
+      itemWidth: 12,
+      itemHeight: 8,
+      textStyle: { color: theme.muted },
+      pageTextStyle: { color: theme.muted },
+    },
+    tooltip: {
+      trigger: "item",
+      ...tooltipBox(theme),
+      formatter: (params) => {
+        const p = Array.isArray(params) ? params[0] : params;
+        return p?.dataIndex == null ? "" : pieTooltipHtml(spec, theme, p.dataIndex);
+      },
+    },
+    series: [series],
+  };
+}
+
+function compareLineHtml(spec: { compareName: string | null; currency: string }, compare: SpecCompare, format: MetricFormat, theme: ChartTheme) {
+  if (!spec.compareName) return "";
+  const value = formatMetricValue(compare.value, format, { currency: spec.currency });
+  const variation = compare.change.kind === "none" ? "" : ` · ${changeHtml(compare.change, theme)}`;
+  return `<div style="color:${theme.muted};font-size:11px;margin-top:2px">${escapeHtml(spec.compareName)}: ${escapeHtml(value)}${variation}</div>`;
+}
+
+/** Dica da fatia: o nome, o valor, quanto é do total e, com comparação, o valor de antes e a variação. */
+export function pieTooltipHtml(spec: PieSpec, theme: ChartTheme, index: number): string {
+  const slice = spec.slices[index];
+  if (!slice) return "";
+  const value = formatMetricValue(slice.value, spec.metric.format, { currency: spec.currency });
+  const share = formatMetricValue(slice.share, "percent", { currency: spec.currency });
+  return (
+    `<div style="font-weight:600;margin-bottom:4px">` +
+    `<span style="display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px;background:${sliceColor(slice, theme)}"></span>${escapeHtml(slice.label)}</div>` +
+    `<div style="display:flex;justify-content:space-between;gap:16px"><span>${escapeHtml(spec.metric.name)}</span>` +
+    `<span style="font-weight:600;font-variant-numeric:tabular-nums">${escapeHtml(value)}</span></div>` +
+    `<div style="color:${theme.muted};font-size:11px">${escapeHtml(msg.panel.pie.share(share))}</div>` +
+    (slice.compare ? compareLineHtml(spec, slice.compare, spec.metric.format, theme) : "")
+  );
+}
+
+// ---- treemap ------------------------------------------------------------------------------------
+
+/** Cor de cada retângulo: pela métrica da cor (escala), ou pela posição entre os irmãos (paleta). */
+export function treemapColors(spec: TreemapSpec, theme: ChartTheme): Map<string, string> {
+  const colors = new Map<string, string>();
+  const scale = spec.color ? colorScale(theme, spec.color.direction) : null;
+  const walk = (nodes: TreemapNode[]) =>
+    nodes.forEach((node, i) => {
+      if (spec.color && scale) {
+        colors.set(node.key, node.color == null ? theme.muted : scale(scalePosition(node.color, spec.color.min, spec.color.mid, spec.color.max)));
+      }
+      else colors.set(node.key, node.others ? theme.muted : theme.palette[i % theme.palette.length] || theme.text);
+      walk(node.children);
+    });
+  walk(spec.nodes);
+  return colors;
+}
+
+type TreemapData = NonNullable<TreemapSeriesOption["data"]>[number];
+
+function treemapOption(spec: TreemapSpec, theme: ChartTheme, { reducedMotion }: Options): EChartsOption {
+  const colors = treemapColors(spec, theme);
+  const byKey = new Map<string, TreemapNode>();
+  const compact = (value: number) => formatMetricValue(value, spec.size.format, { currency: spec.currency, style: "compact" });
+  // O valor da cor escrito no retângulo: a cor nunca é a única informação.
+  const colorText = (node: TreemapNode) => (spec.color ? ` · ${formatMetricValue(node.color, spec.color.format, { currency: spec.currency })}` : "");
+  const toData = (nodes: TreemapNode[]): TreemapData[] =>
+    nodes.map((node) => {
+      byKey.set(node.key, node);
+      return {
+        id: node.key,
+        name: node.label,
+        value: node.size,
+        itemStyle: { color: colors.get(node.key) },
+        children: node.children.length ? toData(node.children) : undefined,
+      };
+    });
+  const data = toData(spec.nodes);
+
+  const series: TreemapSeriesOption = {
+    type: "treemap",
+    id: spec.size.id,
+    // Primeiro item do caminho embaixo do gráfico: clicar nele volta para o começo.
+    name: msg.panel.treemap.root,
+    data,
+    // Um nível por vez: clicar num retângulo com ▶ mostra o que tem dentro (os do último nível não fazem nada).
+    leafDepth: 1,
+    nodeClick: "link",
+    drillDownIcon: "▶",
+    roam: false,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 30,
+    // Com a animação desligada, o ECharts 6 não redesenha o treemap depois de abrir um nível
+    // (fica em branco). Com "reduzir movimento", a animação dura 1 ms: ninguém vê, e funciona.
+    animation: true,
+    animationDuration: reducedMotion ? 1 : 300,
+    animationDurationUpdate: reducedMotion ? 1 : 400,
+    breadcrumb: {
+      show: true,
+      left: 0,
+      bottom: 0,
+      height: 22,
+      itemStyle: { color: theme.surface, borderColor: theme.border, borderWidth: 1, textStyle: { color: theme.text } },
+      emphasis: { itemStyle: { color: theme.border, textStyle: { color: theme.text } } },
+    },
+    label: {
+      show: true,
+      fontSize: 12,
+      lineHeight: 15,
+      color: "#ffffff",
+      textBorderColor: "rgba(0,0,0,0.55)",
+      textBorderWidth: 2,
+      overflow: "truncate",
+      formatter: (p) => {
+        const node = byKey.get(String((p.data as { id?: string } | undefined)?.id));
+        return node ? `${p.name}\n${compact(node.size)}${colorText(node)}` : String(p.name);
+      },
+    },
+    upperLabel: { show: false },
+    // O fundo de quem tem filhos é pintado com borderColor (aparece nos vãos): sem destaque ao passar
+    // o mouse, senão os vãos ficam claros em volta de tudo. A dica já mostra qual é o retângulo.
+    itemStyle: { borderColor: theme.surface, borderWidth: 2, gapWidth: 2 },
+    emphasis: { disabled: true },
+  };
+
+  return {
+    backgroundColor: "transparent",
+    animation: true,
+    textStyle: { fontFamily: theme.font },
+    aria: ariaOf(theme),
+    tooltip: {
+      trigger: "item",
+      ...tooltipBox(theme),
+      formatter: (params) => {
+        const p = Array.isArray(params) ? params[0] : params;
+        const node = byKey.get(String((p?.data as { id?: string } | undefined)?.id));
+        return node ? treemapTooltipHtml(spec, theme, node) : "";
+      },
+    },
+    series: [series],
+  };
+}
+
+/** Dica do retângulo: o caminho, o tamanho (e quanto é do total), a métrica da cor e a comparação. */
+export function treemapTooltipHtml(spec: TreemapSpec, theme: ChartTheme, node: TreemapNode): string {
+  const fmt = (value: number | null, format: MetricFormat) => formatMetricValue(value, format, { currency: spec.currency });
+  const row = (name: string, value: string) =>
+    `<div style="display:flex;justify-content:space-between;gap:16px"><span>${escapeHtml(name)}</span>` +
+    `<span style="font-weight:600;font-variant-numeric:tabular-nums">${escapeHtml(value)}</span></div>`;
+  const parts = [`<div style="font-weight:600;margin-bottom:4px">${escapeHtml(node.path.join(" › "))}</div>`, row(spec.size.name, fmt(node.size, spec.size.format))];
+  parts.push(`<div style="color:${theme.muted};font-size:11px">${escapeHtml(msg.panel.pie.share(fmt(node.share, "percent")))}</div>`);
+  if (node.compare) parts.push(compareLineHtml(spec, node.compare.size, spec.size.format, theme));
+  if (spec.color) {
+    parts.push(`<div style="margin-top:6px"></div>`, row(spec.color.name, fmt(node.color, spec.color.format)));
+    if (node.compare?.color) parts.push(compareLineHtml(spec, node.compare.color, spec.color.format, theme));
+  }
+  const next = spec.levels[node.path.length];
+  if (node.children.length && next) parts.push(`<div style="color:${theme.muted};font-size:11px;margin-top:6px">${escapeHtml(msg.panel.treemap.open(next))}</div>`);
   return parts.join("");
 }

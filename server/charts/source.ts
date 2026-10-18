@@ -191,8 +191,19 @@ function keyers(src: PanelSource, dimension: Exclude<Dimension, "product">) {
   const { store, scope } = src;
   const accountName = new Map(store.adAccounts.map((a) => [a.id, `${a.provider === "meta" ? "Meta" : "Google"} · ${a.name}`]));
   const campaignName = new Map(store.campaigns.map((c) => [c.id, c.name]));
+  const adSetName = new Map(store.adSets.map((s) => [s.id, s.name]));
+  const adName = new Map(store.ads.map((a) => [a.id, a.name]));
+  // Anúncios com o mesmo nome na mesma campanha (um em cada conjunto): o nome do conjunto vai junto.
+  const sameName = new Map<string, number>();
+  for (const a of store.ads) sameName.set(`${a.campaignId}|${a.name}`, (sameName.get(`${a.campaignId}|${a.name}`) ?? 0) + 1);
+  for (const a of store.ads) {
+    if ((sameName.get(`${a.campaignId}|${a.name}`) ?? 0) > 1) adName.set(a.id, `${a.name} (${adSetName.get(a.adSetId) ?? a.adSetId})`);
+  }
   const none = (label: string): Key => ({ key: NONE_KEY, label });
   const utm = (value: string | null): Key => (value?.trim() ? { key: value.trim(), label: value.trim() } : none(msg.withoutValue.utm));
+  // Pedido sem conjunto ou anúncio, e gasto do Performance Max (que chega por campanha), ficam juntos em "Sem ...".
+  const named = (id: string | null, names: Map<string, string>, without: string): Key =>
+    id ? { key: id, label: names.get(id) ?? id } : none(without);
 
   type Keyers = { order: (o: OrderRow) => Key; insight: ((i: AdInsightRow) => Key) | null };
   const byDimension: Record<Exclude<Dimension, "product">, () => Keyers> = {
@@ -214,6 +225,14 @@ function keyers(src: PanelSource, dimension: Exclude<Dimension, "product">) {
       order: (o) => (o.campaignId ? { key: o.campaignId, label: campaignName.get(o.campaignId) ?? o.campaignId } : none(msg.withoutValue.campaign)),
       insight: (i) => ({ key: i.campaignId, label: campaignName.get(i.campaignId) ?? i.campaignId }),
     }),
+    adSet: () => ({
+      order: (o) => named(o.adSetId, adSetName, msg.withoutValue.adSet),
+      insight: (i) => named(i.adSetId, adSetName, msg.withoutValue.adSet),
+    }),
+    ad: () => ({
+      order: (o) => named(o.adId, adName, msg.withoutValue.ad),
+      insight: (i) => named(i.adId, adName, msg.withoutValue.ad),
+    }),
     paymentMethod: () => ({
       order: (o) => ({ key: methodOf(o.paymentMethod), label: METHOD_LABEL[methodOf(o.paymentMethod)] }),
       insight: null,
@@ -233,19 +252,37 @@ function keyers(src: PanelSource, dimension: Exclude<Dimension, "product">) {
  */
 export function componentsByDimension(src: PanelSource, range: DateRange, dimension: Dimension): Row[] {
   if (dimension === "product") return productRows(src, range);
-  const { order, insight } = keyers(src, dimension);
-  const groups = new Map<string, { label: string; acc: Acc }>();
-  const groupOf = (k: Key) => {
-    let g = groups.get(k.key);
-    if (!g) groups.set(k.key, (g = { label: k.label, acc: newAcc() }));
+  return componentsByPath(src, range, [dimension]).map((r) => ({ key: r.path[0].key, label: r.path[0].label, components: r.components }));
+}
+
+/** Uma linha por combinação de níveis (Meta → Campanha X → Anúncio Y), com o caminho até ela. */
+export type PathRow = Row & { path: Key[] };
+
+/** Separa as chaves do caminho na chave da linha (não aparece em nenhum id). */
+export const PATH_SEPARATOR = "\u001f";
+
+/**
+ * As peças de cada combinação de níveis no período (o treemap). As mesmas
+ * regras das linhas de uma dimensão só: o imposto do Meta é repartido entre as
+ * linhas do último nível, então a soma de cada nível fecha com o de cima e com
+ * o total. Gasto só entra se todos os níveis existirem nos anúncios (por UTM,
+ * não: lib/charts/widgets.ts recusa antes).
+ */
+export function componentsByPath(src: PanelSource, range: DateRange, dimensions: Exclude<Dimension, "product">[]): PathRow[] {
+  const levels = dimensions.map((d) => keyers(src, d));
+  const groups = new Map<string, { path: Key[]; acc: Acc }>();
+  const groupOf = (path: Key[]) => {
+    const key = path.map((k) => k.key).join(PATH_SEPARATOR);
+    let g = groups.get(key);
+    if (!g) groups.set(key, (g = { path, acc: newAcc() }));
     return g.acc;
   };
   for (const o of src.store.orders) {
-    if (src.scope.orderMatches(o) && inRange(orderDay(o, src), range)) addOrder(groupOf(order(o)), o, src);
+    if (src.scope.orderMatches(o) && inRange(orderDay(o, src), range)) addOrder(groupOf(levels.map((l) => l.order(o))), o, src);
   }
-  if (insight) {
+  if (levels.every((l) => l.insight)) {
     for (const i of src.store.adInsightsDaily) {
-      if (src.scope.spendAccounts.has(i.adAccountId) && inRange(i.date, range)) addInsight(groupOf(insight(i)), i, src);
+      if (src.scope.spendAccounts.has(i.adAccountId) && inRange(i.date, range)) addInsight(groupOf(levels.map((l) => l.insight!(i))), i, src);
     }
   }
   const list = [...groups];
@@ -253,7 +290,7 @@ export function componentsByDimension(src: PanelSource, range: DateRange, dimens
     list.map(([, g]) => g.acc.metaSpendByDay),
     src.scope.costCtx.settings,
   );
-  return list.map(([key, g], i) => ({ key, label: g.label, components: finish(g.acc, src, 0, metaTax[i]) }));
+  return list.map(([key, g], i) => ({ key, label: g.path.at(-1)!.label, path: g.path, components: finish(g.acc, src, 0, metaTax[i]) }));
 }
 
 /** Peças que existem por produto (lib/charts/catalog.ts, DIMENSION_METRICS): o resto fica "sem dado". */

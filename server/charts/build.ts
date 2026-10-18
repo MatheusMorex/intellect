@@ -1,6 +1,6 @@
 // Monta cada widget dos Painéis a partir da configuração (lib/charts/widgets.ts):
-// cartões de KPI e gráficos de linhas, colunas e barras, no formato próprio de
-// lib/charts/spec.ts. Todo número sai do serviço de cálculo (compute.ts) a
+// cartões de KPI e gráficos de linhas, colunas, barras, pizza, rosca e treemap,
+// no formato próprio de lib/charts/spec.ts. Todo número sai do serviço de cálculo (compute.ts) a
 // partir das peças somadas (source.ts).
 //
 // As contas que vários widgets usam (a série do período, a da comparação, os
@@ -9,8 +9,18 @@
 import { getMetric, metricComponents, type Dimension, type MetricDef, type MetricDirection, type MetricFormat, type MetricId } from "@/lib/charts/catalog";
 import type { Change } from "@/lib/charts/format";
 import { msg } from "@/lib/charts/messages";
-import type { ChartCategory, ChartSeries, ChartSpec, ReferenceLine } from "@/lib/charts/spec";
-import type { BarWidget, ColumnWidget, KpiWidget, LineWidget } from "@/lib/charts/widgets";
+import type {
+  ChartCategory,
+  ChartSeries,
+  ChartSpec,
+  PieSpec,
+  ReferenceLine,
+  SpecCompare,
+  SpecMetric,
+  TreemapNode,
+  TreemapSpec,
+} from "@/lib/charts/spec";
+import type { BarWidget, ColumnWidget, KpiWidget, LineWidget, PieWidget, TreemapWidget } from "@/lib/charts/widgets";
 import type { MetricInfo } from "@/lib/metrics-glossary";
 import {
   compareValues,
@@ -26,8 +36,18 @@ import {
   type Row,
 } from "@/server/charts/compute";
 import type { PanelQuery } from "@/server/charts/params";
-import { componentsByBucket, componentsByDimension, componentsInRange, DAILY_ONLY, type PanelSource } from "@/server/charts/source";
+import {
+  componentsByBucket,
+  componentsByDimension,
+  componentsByPath,
+  componentsInRange,
+  DAILY_ONLY,
+  PATH_SEPARATOR,
+  type PanelSource,
+  type PathRow,
+} from "@/server/charts/source";
 import { listBuckets, type Bucket, type BucketOptions } from "@/server/charts/time-buckets";
+import type { DateRange } from "@/server/period";
 
 // ---- contas compartilhadas da tela -------------------------------------------------------------
 
@@ -59,7 +79,18 @@ export function panelComputer(source: PanelSource, query: PanelQuery, now: Date)
     dimension: (d: Dimension): Row[] => remember(`dimension:${d}`, () => componentsByDimension(source, query.period.range, d)),
     compareDimension: (d: Dimension): Row[] | null =>
       compareRange ? remember(`compare-dimension:${d}`, () => componentsByDimension(source, compareRange, d)) : null,
+    paths: (levels: Dimension[]): PathRow[] => remember(`paths:${levels.join(">")}`, () => pathRows(source, query.period.range, levels)),
+    comparePaths: (levels: Dimension[]): PathRow[] | null =>
+      compareRange ? remember(`compare-paths:${levels.join(">")}`, () => pathRows(source, compareRange, levels)) : null,
   };
+}
+
+/** Linhas com o caminho de níveis. Produto (que no treemap só vai sozinho) vem das linhas por produto. */
+function pathRows(source: PanelSource, range: DateRange, levels: Dimension[]): PathRow[] {
+  if (levels.includes("product")) {
+    return componentsByDimension(source, range, "product").map((r) => ({ ...r, path: [{ key: r.key, label: r.label }] }));
+  }
+  return componentsByPath(source, range, levels as Exclude<Dimension, "product">[]);
 }
 
 export type PanelComputer = ReturnType<typeof panelComputer>;
@@ -268,6 +299,7 @@ export function buildTimeChart(pc: PanelComputer, w: LineWidget | ColumnWidget):
   if (reason === "daily-only") notes.length = 0;
 
   return {
+    kind: "axis",
     axis: "time",
     categories: categoriesOf(buckets, compareBuckets),
     series,
@@ -324,6 +356,7 @@ export function buildBarChart(pc: PanelComputer, w: BarWidget): ChartSpec {
   });
 
   return {
+    kind: "axis",
     axis: "category",
     categories: ranked.map((r) => ({ key: r.key, label: r.label, longLabel: r.label, partial: null, compareLabel: null })),
     series,
@@ -341,5 +374,165 @@ export function buildBarChart(pc: PanelComputer, w: BarWidget): ChartSpec {
     notes: notesFor(pc, defs, w.dimension),
     empty: isEmpty(series),
     emptyReason: isEmpty(series) ? "no-data" : null,
+  };
+}
+
+// ---- pizza e rosca -----------------------------------------------------------------------------
+
+const specMetric = (def: MetricDef): SpecMetric => ({ id: def.id, name: def.info.label, format: def.format, direction: def.direction });
+
+const compareOne = (def: MetricDef, now: number | null, before: number | null): SpecCompare => ({
+  value: before,
+  change: compareValues(now, before, def.direction),
+});
+
+/**
+ * Pizza e rosca: cada item da dimensão é uma fatia do total. Até `slices`
+ * fatias, contando "Outros": com mais itens, os menores se juntam em "Outros".
+ * Entram as vendas sem campanha ou sem UTM, para a soma das fatias ser o total.
+ */
+export function buildPieChart(pc: PanelComputer, w: PieWidget): PieSpec {
+  const def = getMetric(w.metric);
+  const scored = pc.dimension(w.dimension).map((row) => ({ row, value: metricValue(def, row.components) }));
+  // A configuração já recusa métricas que ficam negativas; isto só protege o desenho.
+  const negatives = scored.filter((s) => s.value != null && s.value < 0).length;
+  const rows = scored.filter((s) => s.value != null && s.value > 0).map((s) => s.row);
+  const ranked = rows.length > w.slices ? topN(rows, def, w.slices - 1) : topN(rows, def, Math.max(1, rows.length));
+  const values = ranked.map((r) => metricValue(def, r.components) ?? 0);
+  const total = values.reduce((a, b) => a + b, 0);
+
+  const compareRows = pc.compareDimension(w.dimension);
+  const shownKeys = new Set(ranked.map((r) => r.key));
+  const beforeOf = (row: Row, list: Row[]): number | null => {
+    if (row.key === OTHERS_KEY) return metricValue(def, sumComponents(list.filter((r) => !shownKeys.has(r.key)).map((r) => r.components)));
+    return metricValue(def, list.find((r) => r.key === row.key)?.components ?? zeroComponents());
+  };
+
+  let color = 0;
+  const notes = notesFor(pc, [def], w.dimension);
+  if (negatives > 0) notes.push(msg.panel.notes.proportionNegative(negatives));
+  return {
+    kind: "pie",
+    donut: w.type === "donut",
+    metric: specMetric(def),
+    slices: ranked.map((r, i) => ({
+      key: r.key,
+      label: r.label,
+      value: values[i],
+      share: total > 0 ? values[i] / total : 0,
+      color: r.key === OTHERS_KEY ? null : color++,
+      compare: compareRows ? compareOne(def, values[i], beforeOf(r, compareRows)) : null,
+    })),
+    total,
+    compareTotal: compareRows ? compareOne(def, total, metricValue(def, sumComponents(compareRows.map((r) => r.components)))) : null,
+    labels: w.labels,
+    currency: pc.source.dashboard.currency,
+    compareName: compareName(pc.query),
+    notes,
+    empty: total === 0,
+    emptyReason: total === 0 ? "no-data" : null,
+  };
+}
+
+// ---- treemap -----------------------------------------------------------------------------------
+
+type TreemapGroup = Row & { rows: PathRow[]; compareRows: PathRow[] | null };
+
+/** Junta as linhas pelo item do nível `depth` (as campanhas da Meta, os anúncios de uma campanha). */
+function groupByLevel(rows: PathRow[], compareRows: PathRow[] | null, depth: number): TreemapGroup[] {
+  const groups = new Map<string, TreemapGroup>();
+  for (const r of rows) {
+    const step = r.path[depth];
+    let g = groups.get(step.key);
+    if (!g) groups.set(step.key, (g = { key: step.key, label: step.label, rows: [], compareRows: compareRows ? [] : null, components: zeroComponents() }));
+    g.rows.push(r);
+  }
+  for (const r of compareRows ?? []) groups.get(r.path[depth].key)?.compareRows?.push(r);
+  for (const g of groups.values()) g.components = sumComponents(g.rows.map((r) => r.components));
+  return [...groups.values()];
+}
+
+/**
+ * Treemap: cada nível agrupa as linhas pelo item daquele nível (Meta → as
+ * campanhas da Meta → os anúncios de cada campanha). O tamanho de cada
+ * retângulo é a métrica somada das linhas de dentro; a cor, a segunda métrica
+ * refeita das peças somadas (o ROAS da campanha é o faturamento dela ÷ o gasto
+ * dela, nunca a média dos ROAS dos anúncios). Em cada nível ficam os `topN`
+ * maiores; o resto vira "Outros". Item com tamanho zero não ocupa espaço.
+ */
+export function buildTreemap(pc: PanelComputer, w: TreemapWidget): TreemapSpec {
+  const sizeDef = getMetric(w.size);
+  const colorDef = w.color ? getMetric(w.color) : null;
+  const leaves = pc.paths(w.levels);
+  const compareLeaves = pc.comparePaths(w.levels);
+
+  const compareOf = (now: Components, before: Components | null): TreemapNode["compare"] => {
+    if (!before) return null;
+    return {
+      size: compareOne(sizeDef, metricValue(sizeDef, now), metricValue(sizeDef, before)),
+      color: colorDef ? compareOne(colorDef, metricValue(colorDef, now), metricValue(colorDef, before)) : null,
+    };
+  };
+
+  const build = (rows: PathRow[], compareRows: PathRow[] | null, depth: number, keys: string[], labels: string[]): TreemapNode[] => {
+    const groups = groupByLevel(rows, compareRows, depth).filter((g) => (metricValue(sizeDef, g.components) ?? 0) > 0);
+    const byKey = new Map(groups.map((g) => [g.key, g]));
+    const ranked = topN(groups, sizeDef, w.topN);
+    const shown = new Set(ranked.map((r) => r.key));
+    return ranked.map((r) => {
+      const group = byKey.get(r.key);
+      const path = [...keys, r.key];
+      const names = [...labels, r.label];
+      // "Outros" junta o resto deste nível; na comparação, os itens de antes que não estão entre os mostrados.
+      const before = compareRows
+        ? sumComponents((group ? group.compareRows! : compareRows.filter((c) => !shown.has(c.path[depth].key))).map((c) => c.components))
+        : null;
+      return {
+        key: path.join(PATH_SEPARATOR),
+        label: r.label,
+        others: r.key === OTHERS_KEY,
+        path: names,
+        size: metricValue(sizeDef, r.components) ?? 0,
+        share: 0,
+        color: colorDef ? metricValue(colorDef, r.components) : null,
+        compare: compareOf(r.components, before),
+        children: group && depth + 1 < w.levels.length ? build(group.rows, group.compareRows, depth + 1, path, names) : [],
+      };
+    });
+  };
+
+  const nodes = build(leaves, compareLeaves, 0, [], []);
+  const total = nodes.reduce((sum, n) => sum + n.size, 0);
+  const colors: number[] = [];
+  const walk = (list: TreemapNode[]) => {
+    for (const n of list) {
+      n.share = total > 0 ? n.size / total : 0;
+      if (n.color != null) colors.push(n.color);
+      walk(n.children);
+    }
+  };
+  walk(nodes);
+
+  // O meio da escala de cor: a métrica de tudo o que aparece no gráfico, refeita das peças somadas.
+  const topGroups = groupByLevel(leaves, null, 0).filter((g) => (metricValue(sizeDef, g.components) ?? 0) > 0);
+  const min = colors.length ? Math.min(...colors) : 0;
+  const max = colors.length ? Math.max(...colors) : 0;
+  const mid = colorDef ? (metricValue(colorDef, sumComponents(topGroups.map((g) => g.components))) ?? (min + max) / 2) : 0;
+
+  const notes = notesFor(pc, colorDef ? [sizeDef, colorDef] : [sizeDef], w.levels[0]);
+  if (w.levels.length > 1 && nodes.length > 0) notes.push(msg.panel.notes.treemapDrill);
+  const empty = nodes.length === 0;
+  return {
+    kind: "treemap",
+    levels: w.levels.map((d) => msg.dimension[d]),
+    size: specMetric(sizeDef),
+    color: colorDef ? { ...specMetric(colorDef), min, mid, max } : null,
+    nodes,
+    total,
+    currency: pc.source.dashboard.currency,
+    compareName: compareName(pc.query),
+    notes,
+    empty,
+    emptyReason: empty ? "no-data" : null,
   };
 }

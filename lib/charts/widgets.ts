@@ -2,7 +2,8 @@
 // Fase 5 vai salvar no banco: tudo o que chegar do editor passa por
 // PANEL_WIDGET antes de virar gráfico, e o que não fizer sentido (taxa
 // empilhada, ROAS por produto, duas unidades no mesmo eixo) é recusado com
-// uma mensagem em português.
+// uma mensagem em português. Pizza, rosca e treemap só aceitam métricas que se
+// somam e não ficam negativas: são partes de um total.
 //
 // Valores de meta, alerta e linha de referência ficam na unidade da métrica:
 // dinheiro em centavos, percentual em fração (0,3 = 30%), multiplicador como
@@ -10,16 +11,26 @@
 
 import { z } from "zod";
 
-import { DIMENSIONS, getMetric, METRICS, metricSupportsDimension, type MetricFormat, type MetricId } from "@/lib/charts/catalog";
+import {
+  DIMENSIONS,
+  getMetric,
+  metricCanBeNegative,
+  METRICS,
+  metricSupportsDimension,
+  type Dimension,
+  type MetricFormat,
+  type MetricId,
+} from "@/lib/charts/catalog";
 import { msg } from "@/lib/charts/messages";
 
-export const WIDGET_TYPES = ["kpi", "line", "column", "bar"] as const;
+export const WIDGET_TYPES = ["kpi", "line", "column", "bar", "pie", "donut", "treemap"] as const;
 export type WidgetType = (typeof WIDGET_TYPES)[number];
 
 const METRIC_IDS = METRICS.map((m) => m.id) as [MetricId, ...MetricId[]];
 const err = msg.widgetError;
 
 const metric = z.enum(METRIC_IDS, { error: err.metric });
+const dimension = z.enum(DIMENSIONS, { error: err.dimension });
 const axis = z.enum(["left", "right"]);
 const text = (max: number) => z.string().trim().max(max, { error: err.textTooLong(max) });
 
@@ -84,7 +95,7 @@ const columnWidget = z.object({
 const barWidget = z.object({
   ...common,
   type: z.literal("bar"),
-  dimension: z.enum(DIMENSIONS, { error: err.dimension }),
+  dimension,
   metrics: z.array(metric).min(1, { error: err.seriesMin }).max(3, { error: err.seriesMax(3) }),
   mode: z.enum(["grouped", "stacked"]).default("grouped"),
   /** Ordem pela primeira métrica. */
@@ -95,12 +106,49 @@ const barWidget = z.object({
   labels: z.boolean().default(true),
 });
 
+/** Pizza e rosca: as mesmas opções; a rosca mostra o total no centro. */
+const proportion = {
+  ...common,
+  dimension,
+  metric,
+  /** Quantas fatias aparecem, contando "Outros" (padrão 6): com mais itens, os menores viram "Outros". */
+  slices: z.number().int({ error: err.slices }).min(2, { error: err.slices }).max(8, { error: err.slices }).default(6),
+  /** Rótulo de cada fatia: o valor, o percentual do total ou os dois. */
+  labels: z.enum(["value", "percent", "both"]).default("both"),
+};
+const pieWidget = z.object({ ...proportion, type: z.literal("pie") });
+const donutWidget = z.object({ ...proportion, type: z.literal("donut") });
+
+const treemapWidget = z.object({
+  ...common,
+  type: z.literal("treemap"),
+  /** Níveis, do mais amplo ao mais detalhado (até 3): Plataforma → Campanha → Anúncio. */
+  levels: z.array(dimension).min(1, { error: err.levelsMin }).max(3, { error: err.levelsMax }),
+  /** Tamanho de cada retângulo: uma métrica que se soma (gasto, faturamento, vendas...). */
+  size: metric,
+  /** Cor: uma segunda métrica, opcional (ROAS, por exemplo), com escala e legenda. */
+  color: metric.nullable().default(null),
+  /** Quantos itens em cada nível; o resto vira "Outros". */
+  topN: z.number().int({ error: err.treemapTopN }).min(1, { error: err.treemapTopN }).max(30, { error: err.treemapTopN }).default(12),
+});
+
 const unique = (ids: MetricId[]) => new Set(ids).size === ids.length;
 const formats = (ids: MetricId[]) => new Set<MetricFormat>(ids.map((id) => getMetric(id).format));
 const allSummable = (ids: MetricId[]) => ids.every((id) => getMetric(id).kind === "sum");
 
-export const PANEL_WIDGET = z.discriminatedUnion("type", [kpiWidget, lineWidget, columnWidget, barWidget]).superRefine((w, ctx) => {
+const WIDGET_SHAPES = z.discriminatedUnion("type", [kpiWidget, lineWidget, columnWidget, barWidget, pieWidget, donutWidget, treemapWidget]);
+
+export const PANEL_WIDGET = WIDGET_SHAPES.superRefine((w, ctx) => {
   const issue = (message: string, path: (string | number)[] = []) => ctx.addIssue({ code: "custom", message, path });
+  /** Parte de um total: somável e nunca negativa. */
+  const asPart = (id: MetricId, path: string) => {
+    const def = getMetric(id);
+    if (def.kind !== "sum") issue(err.proportionRate, [path]);
+    else if (metricCanBeNegative(def)) issue(err.proportionNegative(def.info.label), [path]);
+  };
+  const byDimension = (id: MetricId, d: Dimension, path: (string | number)[]) => {
+    if (!metricSupportsDimension(getMetric(id), d)) issue(err.dimensionMetric(getMetric(id).info.label, msg.dimension[d]), path);
+  };
   switch (w.type) {
     case "kpi":
       if (w.goal?.source === "dashboard" && getMetric(w.metric).format !== "money") issue(err.goalDashboardMoney, ["goal"]);
@@ -126,11 +174,23 @@ export const PANEL_WIDGET = z.discriminatedUnion("type", [kpiWidget, lineWidget,
       if (!unique(w.metrics)) issue(err.repeated, ["metrics"]);
       if (formats(w.metrics).size > 1) issue(err.mixedUnits, ["metrics"]);
       if (w.mode === "stacked" && !allSummable(w.metrics)) issue(err.stackRates, ["mode"]);
-      w.metrics.forEach((id, i) => {
-        if (!metricSupportsDimension(getMetric(id), w.dimension)) {
-          issue(err.dimensionMetric(getMetric(id).info.label, msg.dimension[w.dimension]), ["metrics", i]);
-        }
-      });
+      w.metrics.forEach((id, i) => byDimension(id, w.dimension, ["metrics", i]));
+      return;
+    }
+    case "pie":
+    case "donut":
+      asPart(w.metric, "metric");
+      byDimension(w.metric, w.dimension, ["metric"]);
+      return;
+    case "treemap": {
+      asPart(w.size, "size");
+      if (w.color === w.size) issue(err.repeated, ["color"]);
+      if (new Set(w.levels).size !== w.levels.length) issue(err.levelsRepeated, ["levels"]);
+      if (w.levels.includes("product") && w.levels.length > 1) issue(err.treemapProduct, ["levels"]);
+      for (const d of new Set(w.levels)) {
+        byDimension(w.size, d, ["size"]);
+        if (w.color) byDimension(w.color, d, ["color"]);
+      }
       return;
     }
   }
@@ -142,32 +202,41 @@ export type KpiWidget = Extract<PanelWidget, { type: "kpi" }>;
 export type LineWidget = Extract<PanelWidget, { type: "line" }>;
 export type ColumnWidget = Extract<PanelWidget, { type: "column" }>;
 export type BarWidget = Extract<PanelWidget, { type: "bar" }>;
+export type PieWidget = Extract<PanelWidget, { type: "pie" | "donut" }>;
+export type TreemapWidget = Extract<PanelWidget, { type: "treemap" }>;
 
-/** Título do widget: o escolhido ou os nomes das métricas ("Faturamento líquido e ROAS"). */
+const joinNames = (names: string[]) => (names.length > 1 ? `${names.slice(0, -1).join(", ")} e ${names.at(-1)}` : names[0]);
+
+/** Título do widget: o escolhido ou os nomes das métricas ("Faturamento líquido e ROAS", "Gasto com anúncios por plataforma"). */
 export function widgetTitle(w: PanelWidget): string {
   if (w.title) return w.title;
-  const ids: MetricId[] =
-    w.type === "kpi"
-      ? [w.metric]
-      : w.type === "line"
-        ? w.series.map((s) => s.metric)
-        : w.type === "column"
-          ? [...w.series.map((s) => s.metric), ...(w.line ? [w.line.metric] : [])]
-          : w.metrics;
-  const names = ids.map((id) => getMetric(id).info.label);
-  const joined = names.length > 1 ? `${names.slice(0, -1).join(", ")} e ${names.at(-1)}` : names[0];
-  return w.type === "bar" ? `${joined} por ${msg.dimension[w.dimension].toLowerCase()}` : joined;
+  // No treemap, o título fala do tamanho; a cor tem a legenda dela.
+  const joined = joinNames((w.type === "treemap" ? [w.size] : widgetMetrics(w)).map((id) => getMetric(id).info.label));
+  const by = (dims: Dimension[]) => `${joined} por ${joinNames(dims.map((d) => msg.dimension[d].toLowerCase()))}`;
+  if (w.type === "bar" || w.type === "pie" || w.type === "donut") return by([w.dimension]);
+  if (w.type === "treemap") return by(w.levels);
+  return joined;
 }
 
 /** Métricas que o widget usa, na ordem em que aparecem. */
 export function widgetMetrics(w: PanelWidget): MetricId[] {
-  if (w.type === "kpi") return [w.metric];
-  if (w.type === "line") return w.series.map((s) => s.metric);
-  if (w.type === "column") return [...w.series.map((s) => s.metric), ...(w.line ? [w.line.metric] : [])];
-  return [...w.metrics];
+  switch (w.type) {
+    case "kpi":
+    case "pie":
+    case "donut":
+      return [w.metric];
+    case "line":
+      return w.series.map((s) => s.metric);
+    case "column":
+      return [...w.series.map((s) => s.metric), ...(w.line ? [w.line.metric] : [])];
+    case "bar":
+      return [...w.metrics];
+    case "treemap":
+      return [w.size, ...(w.color ? [w.color] : [])];
+  }
 }
 
-// ---- painel padrão da Fase 2 ------------------------------------------------------------------
+// ---- painel padrão (Fases 2 e 3) ------------------------------------------------------------------
 // Fixo por enquanto: na Fase 5 cada dashboard terá os próprios painéis, editáveis.
 
 const DEFAULT_PANEL_INPUT: PanelWidgetInput[] = [
@@ -247,6 +316,30 @@ const DEFAULT_PANEL_INPUT: PanelWidgetInput[] = [
     dimension: "utmSource",
     metrics: ["gross"],
     topN: 6,
+  },
+  {
+    id: "rosca-plataforma",
+    type: "donut",
+    title: "Faturamento líquido por plataforma",
+    subtitle: "De onde veio o faturamento: cada fonte de tráfego e as vendas sem rastreio.",
+    dimension: "platform",
+    metric: "net",
+  },
+  {
+    id: "pizza-pagamento",
+    type: "pie",
+    title: "Vendas por forma de pagamento",
+    dimension: "paymentMethod",
+    metric: "paid",
+  },
+  {
+    id: "treemap-gasto",
+    type: "treemap",
+    title: "Gasto por plataforma, campanha e anúncio",
+    subtitle: "O tamanho é o gasto; a cor é o ROAS de cada parte.",
+    levels: ["platform", "campaign", "ad"],
+    size: "spend",
+    color: "roas",
   },
 ];
 

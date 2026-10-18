@@ -122,7 +122,10 @@ export default async function PanelsPage({
 
       <section aria-label={msg.panel.sections.charts} className="grid grid-cols-1 gap-3 xl:grid-cols-2">
         {charts.map((w) => (
-          <PanelWidgetSlot key={w.id} dashboardId={dashboard.id} queryKey={queryKey} widget={w} />
+          // O treemap precisa de largura para os retângulos: ocupa a linha inteira.
+          <div key={w.id} className={w.type === "treemap" ? "grid min-w-0 xl:col-span-2" : "grid min-w-0"}>
+            <PanelWidgetSlot dashboardId={dashboard.id} queryKey={queryKey} widget={w} />
+          </div>
         ))}
       </section>
 

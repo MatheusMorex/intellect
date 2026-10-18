@@ -52,7 +52,9 @@ export type ReferenceLine = {
   color: number | null;
 };
 
+/** Gráficos com eixos: linhas, colunas e barras. */
 export type ChartSpec = {
+  kind: "axis";
   /** time: eixo de tempo (linhas e colunas); category: itens de uma dimensão (barras). */
   axis: "time" | "category";
   categories: ChartCategory[];
@@ -78,3 +80,74 @@ export type ChartSpec = {
   /** Por quê: no-data (nada no período) ou daily-only (as métricas só existem por dia e o gráfico está por hora). */
   emptyReason: "no-data" | "daily-only" | null;
 };
+
+// ---- proporção: pizza, rosca e treemap -----------------------------------------------------------
+
+export type SpecMetric = { id: string; name: string; format: MetricFormat; direction: MetricDirection };
+
+/** O mesmo item no período de comparação e a variação contra ele. */
+export type SpecCompare = { value: number | null; change: Change };
+
+export type PieSlice = {
+  key: string;
+  label: string;
+  value: number;
+  /** Fração do total (0,25 = 25%): a mesma no rótulo, na dica e na tabela. */
+  share: number;
+  /** Posição da cor na paleta (0 a 7); null = "Outros", em cinza. */
+  color: number | null;
+  compare: SpecCompare | null;
+};
+
+export type PieSpec = {
+  kind: "pie";
+  /** Rosca: o total aparece no centro. */
+  donut: boolean;
+  metric: SpecMetric;
+  slices: PieSlice[];
+  /** Soma das fatias: o total da métrica no período. */
+  total: number;
+  compareTotal: SpecCompare | null;
+  labels: "value" | "percent" | "both";
+  currency: string;
+  compareName: string | null;
+  notes: string[];
+  empty: boolean;
+  emptyReason: "no-data" | null;
+};
+
+export type TreemapNode = {
+  /** Único no gráfico inteiro: as chaves do caminho até aqui. */
+  key: string;
+  label: string;
+  /** "Outros": o resto do nível, junto (em cinza). */
+  others: boolean;
+  /** Os nomes do caminho até aqui, do primeiro nível a este ("Meta", "Campanha X"). */
+  path: string[];
+  size: number;
+  /** Fração do total do gráfico. */
+  share: number;
+  /** Valor da métrica da cor (null = sem dado ou sem métrica de cor). */
+  color: number | null;
+  compare: { size: SpecCompare; color: SpecCompare | null } | null;
+  children: TreemapNode[];
+};
+
+export type TreemapSpec = {
+  kind: "treemap";
+  /** Nome de cada nível ("Plataforma", "Campanha", "Anúncio"). */
+  levels: string[];
+  size: SpecMetric;
+  /** Métrica da cor, a faixa de valores dela e o valor do gráfico inteiro (o meio da escala). */
+  color: (SpecMetric & { min: number; mid: number; max: number }) | null;
+  nodes: TreemapNode[];
+  total: number;
+  currency: string;
+  compareName: string | null;
+  notes: string[];
+  empty: boolean;
+  emptyReason: "no-data" | null;
+};
+
+/** Qualquer gráfico dos Painéis. */
+export type PanelChartSpec = ChartSpec | PieSpec | TreemapSpec;

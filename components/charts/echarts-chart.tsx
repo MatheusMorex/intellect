@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart, LineChart } from "echarts/charts";
+import { BarChart, LineChart, PieChart, TreemapChart } from "echarts/charts";
 import {
   AriaComponent,
   DataZoomComponent,
@@ -8,13 +8,14 @@ import {
   LegendComponent,
   MarkAreaComponent,
   MarkLineComponent,
+  TitleComponent,
   TooltipComponent,
 } from "echarts/components";
 import * as echarts from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
 import { useEffect, useRef } from "react";
 
-import type { ChartSpec } from "@/lib/charts/spec";
+import type { PanelChartSpec } from "@/lib/charts/spec";
 import { useReducedMotion } from "@/lib/use-reduced-motion";
 
 import { toEChartsOption } from "./echarts-option";
@@ -27,7 +28,10 @@ import { useChartTheme } from "./use-chart-theme";
 echarts.use([
   LineChart,
   BarChart,
+  PieChart,
+  TreemapChart,
   GridComponent,
+  TitleComponent,
   TooltipComponent,
   LegendComponent,
   DataZoomComponent,
@@ -37,7 +41,7 @@ echarts.use([
   CanvasRenderer,
 ]);
 
-export default function EChartsChart({ spec, height }: { spec: ChartSpec; height: number }) {
+export default function EChartsChart({ spec, height }: { spec: PanelChartSpec; height: number }) {
   const ref = useRef<HTMLDivElement>(null);
   const chart = useRef<echarts.ECharts | null>(null);
   const theme = useChartTheme();
