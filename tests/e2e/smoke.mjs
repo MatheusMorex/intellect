@@ -398,6 +398,82 @@ await step("Vendas: abrir o detalhe de um pedido", async () => {
   await page.getByText("Jornada até a compra").waitFor();
 });
 
+// ---- Painéis (S28) ------------------------------------------------------------------------------
+
+/** O número em destaque de um cartão ("R$ 1.234,56"). */
+async function kpiValue(label) {
+  const card = page.getByRole("group", { name: new RegExp(`^${label}: `) }).first();
+  await card.waitFor();
+  return (await card.locator("p.font-bold").first().innerText()).trim();
+}
+
+await step("Painéis: abre pelo menu, com cartões e gráficos", async () => {
+  await page.goto(`${BASE}/d/${dashboardId}?periodo=30d`);
+  await page.getByRole("navigation", { name: "Principal" }).getByRole("link", { name: "Painéis" }).click();
+  await page.waitForURL(/\/paineis/);
+  await page.getByRole("heading", { name: "Painéis" }).waitFor();
+  await page.getByRole("group", { name: /^ROAS: / }).waitFor();
+  await page.getByText("Faturamento líquido e ROAS", { exact: true }).waitFor();
+  await page.getByText("Top 10 campanhas por faturamento líquido", { exact: true }).waitFor();
+  // O ECharts desenha num canvas dentro de cada gráfico.
+  await page.locator("figure canvas").first().waitFor();
+  assert.ok((await page.locator("figure canvas").count()) >= 6, "deveria ter pelo menos 6 gráficos desenhados");
+});
+
+await step("Painéis: mesmo número do Resumo no mesmo período", async () => {
+  await page.goto(`${BASE}/d/${dashboardId}?periodo=30d`);
+  const resumo = { net: await kpiValue("Faturamento líquido"), roas: await kpiValue("ROAS"), cpa: await kpiValue("CPA") };
+  await page.goto(`${BASE}/d/${dashboardId}/paineis?periodo=30d`);
+  const paineis = { net: await kpiValue("Faturamento líquido"), roas: await kpiValue("ROAS"), cpa: await kpiValue("CPA") };
+  // No Resumo o ROAS é "2,35"; nos Painéis, "2,35x".
+  assert.deepEqual({ ...paineis, roas: paineis.roas.replace(/x$/, "") }, resumo);
+});
+
+await step("Painéis: dica do gráfico com o período por extenso e a comparação", async () => {
+  const chart = page.locator("figure", { hasText: "Faturamento líquido e ROAS" });
+  const canvas = chart.locator("canvas").first();
+  await canvas.waitFor();
+  const box = await canvas.boundingBox();
+  await page.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.6);
+  await chart.getByText(/período anterior, /).first().waitFor({ timeout: 10_000 });
+});
+
+await step("Painéis: agrupar por semana e comparar com o ano anterior", async () => {
+  await page.getByRole("combobox", { name: "Agrupar por" }).click();
+  await page.getByRole("option", { name: "Semana" }).click();
+  await page.waitForURL(/agrupar=semana/);
+  await page.getByRole("combobox", { name: "Comparar com" }).click();
+  await page.getByRole("option", { name: "Mesmo período do ano anterior" }).click();
+  await page.waitForURL(/comparar=ano/);
+  await page.getByText(/^Comparando com .* de 2025\.$/).waitFor();
+  await page.getByText(/vs\. mesmo período do ano anterior/).first().waitFor();
+});
+
+await step("Painéis: por hora num período longo vira por dia, com o aviso", async () => {
+  await page.goto(`${BASE}/d/${dashboardId}/paineis?periodo=ano&agrupar=hora`);
+  await page.getByText("Agrupamento ajustado").waitFor();
+  await page.getByText("Por hora dá para ver até 31 dias.", { exact: false }).waitFor();
+});
+
+await step("Painéis: ver como tabela, com 'Outros' no ranking", async () => {
+  await page.goto(`${BASE}/d/${dashboardId}/paineis?periodo=30d`);
+  const chart = page.locator("figure", { hasText: "Top 10 campanhas por faturamento líquido" });
+  await chart.getByRole("button", { name: "Ver como tabela" }).click();
+  await chart.getByRole("table").waitFor();
+  assert.ok((await chart.getByRole("row").count()) >= 3, "a tabela deveria ter linhas");
+  await chart.getByRole("button", { name: "Ver como gráfico" }).click();
+  await chart.locator("canvas").waitFor();
+});
+
+await step("Relatórios (endereço antigo) leva para Painéis", async () => {
+  await page.goto(`${BASE}/d/${dashboardId}/reports?periodo=7d`);
+  await page.waitForURL(/\/paineis\?periodo=7d/);
+  await page.getByRole("heading", { name: "Painéis" }).waitFor();
+  // Só segue com a tela pronta (gráficos desenhados): abrir um menu antes de a página terminar
+  // de carregar no navegador faz o React reclamar dos atributos que o menu põe no resto da tela.
+  await page.locator("figure canvas").first().waitFor();
+});
+
 await step("sair", async () => {
   await page.getByRole("button", { name: /Menu de Ana Lima/ }).click();
   await page.getByRole("menuitem", { name: "Sair" }).click();

@@ -48,3 +48,34 @@ export type CompareMode = (typeof COMPARE_MODES)[number];
 
 /** Número completo (R$ 1.234,56) ou abreviado (R$ 1,2 mil). */
 export type NumberStyle = "full" | "compact";
+
+// ---- endereço da página (?agrupar=dia&comparar=anterior) --------------------------------------
+// As escolhas da tela ficam no endereço, em português: um link abre a mesma visão.
+
+export const GRANULARITY_PARAM: Record<Granularity, string> = {
+  hour: "hora",
+  day: "dia",
+  week: "semana",
+  fortnight: "quinzena",
+  month: "mes",
+  year: "ano",
+};
+
+export const COMPARE_PARAM: Record<CompareMode, string> = {
+  off: "nao",
+  previous: "anterior",
+  year: "ano",
+  custom: "datas",
+};
+
+/** Sem nada no endereço, os Painéis comparam com o período anterior (como o Resumo). */
+export const DEFAULT_COMPARE: CompareMode = "previous";
+
+function fromParam<T extends string>(map: Record<T, string>, value: string | null | undefined): T | null {
+  if (!value) return null;
+  const found = (Object.keys(map) as T[]).find((k) => map[k] === value);
+  return found ?? null;
+}
+
+export const granularityFromParam = (value: string | null | undefined) => fromParam(GRANULARITY_PARAM, value);
+export const compareFromParam = (value: string | null | undefined) => fromParam(COMPARE_PARAM, value);

@@ -136,6 +136,16 @@ export const HELP = {
       "Os percentuais de imposto, as taxas e o custo de cada produto são cadastrados em Taxas. As contas fixas, em Despesas.",
     ],
   },
+  paineis: {
+    title: "Painéis",
+    body: [
+      "Gráficos da operação ao longo do tempo: cartões com os números principais, linhas, colunas e rankings por campanha, conta, produto e origem.",
+      "“Agrupar por” decide se cada ponto é uma hora, um dia, uma semana, uma quinzena, um mês ou um ano. No automático, o INtellect escolhe pelo tamanho do período. Por hora dá para ver até 31 dias.",
+      "“Comparar com” mostra a variação contra o período anterior, o mesmo período do ano anterior ou datas que você escolher. Verde é melhora e vermelho é piora, conforme a métrica: CPA caindo é verde.",
+      "O trecho tracejado e a faixa “Parcial” marcam o período que ainda não terminou (hoje, este mês), para ninguém comparar um mês pela metade com um mês fechado.",
+      "Os filtros e escolhas desta tela valem só para você e ficam no endereço da página: dá para mandar o link para alguém ver a mesma coisa.",
+    ],
+  },
   "trafego-meta": {
     title: "Meta",
     body: [
@@ -302,7 +312,7 @@ export const HELP = {
   "config-moeda": {
     title: "Moeda",
     body: [
-      "Em que moeda o dashboard mostra os valores: real, euro, libra esterlina ou franco suíço.",
+      "Em que moeda o dashboard mostra os valores: real, euro, libra esterlina, franco suíço ou dólar americano.",
       "Se a loja vende numa moeda e a conta de anúncio cobra em outra (dólar, por exemplo), o INtellect converte tudo para a moeda escolhida pela cotação de referência do Banco Central Europeu do dia de cada valor. No fim de semana e no feriado, vale a cotação do último dia útil.",
       "Despesas, taxas e custos já lançados continuam na moeda em que foram cadastrados e são convertidos do mesmo jeito.",
     ],
@@ -310,6 +320,13 @@ export const HELP = {
   "config-fuso": {
     title: "Fuso horário do dashboard",
     body: ["Decide o que é “hoje” e “ontem” nos números: uma venda às 23h30 entra no dia certo do seu fuso. Use o fuso de onde a operação acontece."],
+  },
+  "config-semana": {
+    title: "Início da semana",
+    body: [
+      "Em que dia a semana começa quando os gráficos dos Painéis agrupam os números por semana.",
+      "Segunda a domingo é o padrão internacional (ISO 8601). Domingo a sábado é como muitos calendários do Brasil e dos Estados Unidos mostram a semana.",
+    ],
   },
   "config-faturamento": {
     title: "Faturamento usado nas contas",

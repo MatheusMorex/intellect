@@ -16,13 +16,16 @@ import { cn } from "@/lib/utils";
 // Seletor de período (components.md): atalhos à esquerda e calendário de
 // intervalo para o personalizado. O período vai para a URL (?periodo=7d ou
 // ?periodo=personalizado&de=…&ate=…), então um link abre a mesma visão.
+// Os Painéis passam os atalhos deles em `presets` (Esta quinzena, Este trimestre...).
 export function PeriodFilter({
   period,
   timezoneLabel = "Horário de Brasília",
+  presets: basePresets = PERIOD_PRESETS,
   extraPresets = [],
 }: {
   period: { id: PeriodId | string; label: string; description: string; range: { from: string; to: string }; today: string };
   timezoneLabel?: string;
+  presets?: readonly { id: string; label: string }[];
   extraPresets?: readonly { id: string; label: string }[];
 }) {
   const { id: value, label, description, range, today } = period;
@@ -43,7 +46,7 @@ export function PeriodFilter({
     startTransition(() => router.replace(`${pathname}?${query.toString()}`, { scroll: false }));
   }
 
-  const presets = [...PERIOD_PRESETS, ...extraPresets];
+  const presets = [...basePresets, ...extraPresets];
 
   return (
     <Popover

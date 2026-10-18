@@ -2,6 +2,8 @@
 // replica/schema.sql (em camelCase). Quando o banco de verdade entrar
 // (/replica-backend), só server/store e server/data mudam; as telas não.
 
+import type { WeekStart } from "../../lib/charts/options.ts";
+
 export type Id = string;
 export type IsoDateTime = string; // timestamptz, sempre em UTC
 export type DateKey = string; // date, "2026-10-12"
@@ -64,6 +66,8 @@ export type DashboardRow = {
   includeInterest: boolean;
   revenueGoalCents: number | null;
   adPlatforms: ("meta" | "google")[];
+  /** Dia em que a semana começa nos gráficos dos Painéis (lib/charts/options.ts). */
+  weekStart: WeekStart;
 };
 
 export type AdAccountRow = {

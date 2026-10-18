@@ -29,7 +29,7 @@ import type {
   Visit,
 } from "./types";
 
-export const STORE_VERSION = 6;
+export const STORE_VERSION = 7;
 
 /** Aparência padrão de quem entra pela primeira vez. */
 export const DEFAULT_APPEARANCE: UserAppearance = { wallpaper: null, showTaglines: true, homePage: "inicio" };
@@ -134,6 +134,7 @@ export function createSeed(now: Date): Store {
     includeInterest: false,
     revenueGoalCents: 15_000_000,
     adPlatforms: ["meta", "google"] as ("meta" | "google")[],
+    weekStart: "monday" as const,
   };
 
   // Contas, campanhas, conjuntos e anúncios -------------------------------------
@@ -1034,7 +1035,7 @@ export function createSeed(now: Date): Store {
  */
 export function upgradeStore(store: Store): Store | null {
   const from = store.version as number;
-  if (from !== 4 && from !== 5) return null;
+  if (from !== 4 && from !== 5 && from !== 6) return null;
   if (from === 4) {
     const dashboardCurrency = new Map(store.dashboards.map((d) => [d.id, d.currency]));
     for (const u of store.users) {
@@ -1055,6 +1056,8 @@ export function upgradeStore(store: Store): Store | null {
     if (i.videoViews3s !== undefined) continue;
     Object.assign(i, simulatedVideoMetrics(i.adId ?? "", i.date, i.impressions, i.adId ? (format.get(i.adId) ?? null) : null));
   }
+  // Versão 7: início da semana dos Painéis (segunda, como no banco).
+  for (const d of store.dashboards) d.weekStart ??= "monday";
   store.version = STORE_VERSION;
   return store;
 }

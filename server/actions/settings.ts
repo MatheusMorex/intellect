@@ -94,6 +94,7 @@ const dashboardInput = z.object({
   revenueBasis: z.enum(["net", "gross"]),
   includeInterest: z.boolean(),
   adPlatforms: z.array(z.enum(["meta", "google"])).max(2),
+  weekStart: z.enum(["monday", "sunday"], { error: "Escolha o dia em que a semana começa." }),
 });
 
 export async function updateDashboardSettings(input: z.input<typeof dashboardInput>): Promise<ActionResult> {
@@ -115,6 +116,7 @@ export async function updateDashboardSettings(input: z.input<typeof dashboardInp
     d.revenueBasis = v.revenueBasis;
     d.includeInterest = v.includeInterest;
     d.adPlatforms = [...new Set(v.adPlatforms)];
+    d.weekStart = v.weekStart;
   });
   revalidatePath("/", "layout");
   return ok();

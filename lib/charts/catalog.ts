@@ -327,11 +327,23 @@ const DIMENSION_ORIGINS: Record<Dimension, readonly ComponentOrigin[]> = {
 };
 
 /**
+ * Dimensões que só aceitam algumas métricas. Por produto, o pedido se divide
+ * pelos itens: dá para saber quanto cada produto vendeu (a soma dos itens pagos,
+ * como "Vendas por produto" do Resumo) e em quantos pedidos ele entrou, mas não
+ * dá para dividir a taxa da plataforma, os juros, o frete nem os reembolsos.
+ */
+const DIMENSION_METRICS: Partial<Record<Dimension, readonly MetricId[]>> = {
+  product: ["gross", "paid", "orders"],
+};
+
+/**
  * A métrica pode ser aberta por esta dimensão? O ROAS por produto, por exemplo,
  * não pode: o gasto com anúncios não é dividido por produto. As despesas
  * ("costs") ficam zeradas nas linhas de cada dimensão, porque não se dividem.
  */
 export function metricSupportsDimension(def: MetricDef, dimension: Dimension): boolean {
+  const only = DIMENSION_METRICS[dimension];
+  if (only && !only.includes(def.id)) return false;
   const allowed = DIMENSION_ORIGINS[dimension];
   return metricComponents(def).every((c) => allowed.includes(COMPONENT_ORIGIN[c]));
 }

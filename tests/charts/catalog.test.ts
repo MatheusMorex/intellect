@@ -60,3 +60,14 @@ test("dimensões: gasto não se divide por produto nem por UTM, só por campanha
   assert.equal(metricSupportsDimension(getMetric("profit"), "campaign"), true);
   assert.equal(metricSupportsDimension(getMetric("profit"), "product"), false);
 });
+
+test("por produto: só faturamento (soma dos itens), vendas pagas e pedidos", () => {
+  const allowed = METRICS.filter((m) => metricSupportsDimension(m, "product")).map((m) => m.id);
+  assert.deepEqual(allowed.sort(), ["gross", "orders", "paid"]);
+  // A taxa da plataforma e os reembolsos não se dividem por item.
+  assert.equal(metricSupportsDimension(getMetric("net"), "product"), false);
+  assert.equal(metricSupportsDimension(getMetric("ticket"), "product"), false);
+  assert.equal(metricSupportsDimension(getMetric("refundRate"), "product"), false);
+  // Nas outras dimensões de pedido, continua valendo a regra pela origem das peças.
+  assert.equal(metricSupportsDimension(getMetric("net"), "paymentMethod"), true);
+});

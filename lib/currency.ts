@@ -7,6 +7,7 @@ export const DASHBOARD_CURRENCIES = [
   { code: "EUR", name: "Euro", long: "Euro (€)" },
   { code: "GBP", name: "Libra", long: "Libra esterlina (£)" },
   { code: "CHF", name: "Franco suíço", long: "Franco suíço (CHF)" },
+  { code: "USD", name: "Dólar", long: "Dólar americano (US$)" },
 ] as const;
 
 export type DashboardCurrency = (typeof DASHBOARD_CURRENCIES)[number]["code"];

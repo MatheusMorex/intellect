@@ -114,6 +114,7 @@ async function DashboardTab({ dashboardId, all, user }: { dashboardId: string; a
           revenueBasis: dashboard.revenueBasis,
           includeInterest: dashboard.includeInterest,
           adPlatforms: dashboard.adPlatforms,
+          weekStart: dashboard.weekStart,
         }}
       />
     </div>

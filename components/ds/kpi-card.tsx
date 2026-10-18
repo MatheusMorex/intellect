@@ -1,4 +1,4 @@
-import { AlertCircle, ArrowDown, ArrowUp } from "lucide-react";
+import { AlertCircle, AlertTriangle, ArrowDown, ArrowUp } from "lucide-react";
 
 import { HelpTip } from "@/components/ds/help-tip";
 import { Button } from "@/components/ui/button";
@@ -21,7 +21,8 @@ import { cn } from "@/lib/utils";
 /** Tempo com o mouse parado em cima do card até a explicação aparecer. */
 export const KPI_EXPLAIN_DELAY_MS = 3000;
 
-type Delta = { text: string; direction: "up" | "down" };
+/** flat: sem seta (variação "Novo" ou zerada). */
+type Delta = { text: string; direction: "up" | "down" | "flat" };
 
 function Explanation({ explain, purpose, formula }: { explain?: string; purpose?: string; formula?: string }) {
   return (
@@ -57,6 +58,11 @@ export function KpiCard({
   state = "ready",
   size = "md",
   onRetry,
+  deltaSuffix = "vs. período anterior",
+  deltaTone,
+  caption,
+  alert,
+  children,
 }: {
   label: string;
   value?: string;
@@ -71,15 +77,35 @@ export function KpiCard({
   state?: "ready" | "loading" | "empty" | "error";
   size?: "md" | "sm";
   onRetry?: () => void;
+  /** Com o que a variação compara ("vs. mesmo período do ano anterior"). */
+  deltaSuffix?: string;
+  /** Cor da variação já decidida (Painéis: pelo sentido da métrica); sem ela, sai de polarity. */
+  deltaTone?: "good" | "bad" | "neutral";
+  /** Linha pequena embaixo do nome (o período, nos Painéis). */
+  caption?: string;
+  /** Cartão em alerta: o texto diz o limite que passou (ROAS abaixo de 1,00x). */
+  alert?: string;
+  /** Extras embaixo do valor: minigráfico de tendência, barra de meta. */
+  children?: React.ReactNode;
 }) {
-  const good = !delta || polarity === "neutral" ? null : (delta.direction === "up") === (polarity === "up-good");
+  const good =
+    deltaTone != null
+      ? deltaTone === "neutral"
+        ? null
+        : deltaTone === "good"
+      : !delta || polarity === "neutral" || delta.direction === "flat"
+        ? null
+        : (delta.direction === "up") === (polarity === "up-good");
   const deltaColor = good == null ? "text-muted-foreground" : good ? "text-success" : "text-danger";
-  const DeltaIcon = delta?.direction === "down" ? ArrowDown : ArrowUp;
+  const DeltaIcon = delta?.direction === "down" ? ArrowDown : delta?.direction === "up" ? ArrowUp : null;
   const shown = state === "empty" ? (value ?? ZERO_RATIO) : value;
+  const spokenDelta = !delta
+    ? ""
+    : delta.direction === "flat"
+      ? `, ${delta.text} ${deltaSuffix}`
+      : `, ${delta.text} ${delta.direction === "up" ? "maior" : "menor"} ${deltaSuffix.replace(/^vs\. /, "que no ")}`;
   const spoken =
-    (state === "ready" || state === "empty") && shown
-      ? `${label}: ${shown}${delta ? `, ${delta.text} ${delta.direction === "up" ? "maior" : "menor"} que no período anterior` : ""}`
-      : undefined;
+    (state === "ready" || state === "empty") && shown ? `${label}: ${shown}${spokenDelta}${alert ? `. ${alert}` : ""}` : undefined;
   const hasExplanation = !!(formula || explain || purpose);
 
   const card = (
@@ -87,7 +113,7 @@ export function KpiCard({
       role="group"
       aria-label={spoken ?? label}
       aria-busy={state === "loading" || undefined}
-      className={cn("@container text-foreground", OUTLINE_BOX, size === "md" ? "p-4" : "p-3")}
+      className={cn("@container text-foreground", OUTLINE_BOX, size === "md" ? "p-4" : "p-3", alert && "border-danger")}
     >
       <div className="flex items-center gap-1 text-xs text-muted-foreground">
         {label}
@@ -97,6 +123,7 @@ export function KpiCard({
           </HelpTip>
         )}
       </div>
+      {caption && <p className="text-xs text-muted-foreground/80">{caption}</p>}
 
       {state === "loading" && (
         <>
@@ -139,10 +166,17 @@ export function KpiCard({
           </p>
           {delta && (
             <p className={cn("flex items-center gap-1 text-xs", deltaColor)}>
-              <DeltaIcon aria-hidden="true" className="size-3" />
-              {delta.text} vs. período anterior
+              {DeltaIcon && <DeltaIcon aria-hidden="true" className="size-3" />}
+              {delta.text} {deltaSuffix}
             </p>
           )}
+          {alert && (
+            <p className="mt-1 flex items-center gap-1 text-xs font-semibold text-danger">
+              <AlertTriangle aria-hidden="true" className="size-3" />
+              {alert}
+            </p>
+          )}
+          {children}
         </>
       )}
     </div>

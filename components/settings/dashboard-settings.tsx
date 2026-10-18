@@ -12,6 +12,8 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { msg as chartsMsg } from "@/lib/charts/messages";
+import type { WeekStart } from "@/lib/charts/options";
 import { DASHBOARD_CURRENCIES } from "@/lib/currency";
 import type { HelpTopic } from "@/lib/help";
 import { timezonesWith } from "@/lib/timezones";
@@ -25,7 +27,10 @@ type Dashboard = {
   revenueBasis: "net" | "gross";
   includeInterest: boolean;
   adPlatforms: ("meta" | "google")[];
+  weekStart: WeekStart;
 };
+
+const WEEK_STARTS: WeekStart[] = ["monday", "sunday"];
 
 function Field({ label, htmlFor, help, children }: { label: string; htmlFor?: string; help: HelpTopic; children: React.ReactNode }) {
   return (
@@ -94,6 +99,20 @@ export function DashboardSettingsForm({ dashboard, canEdit }: { dashboard: Dashb
                 {timezonesWith(form.timezone).map(([v, t]) => (
                   <SelectItem key={v} value={v}>
                     {t}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field label="Início da semana" htmlFor="dash-week" help="config-semana">
+            <Select value={form.weekStart} onValueChange={(v) => setForm({ ...form, weekStart: v as WeekStart })}>
+              <SelectTrigger id="dash-week" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {WEEK_STARTS.map((w) => (
+                  <SelectItem key={w} value={w}>
+                    {chartsMsg.weekStart[w]}
                   </SelectItem>
                 ))}
               </SelectContent>

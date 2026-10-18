@@ -3,7 +3,9 @@
 // As métricas que já existem no glossário (lib/metrics-glossary.ts) usam os
 // textos de lá; aqui ficam só as novas.
 
+import type { Dimension } from "@/lib/charts/catalog";
 import type { CompareMode, Granularity, PanelPeriodId, WeekStart } from "@/lib/charts/options";
+import type { WidgetType } from "@/lib/charts/widgets";
 import type { MetricInfo } from "@/lib/metrics-glossary";
 
 export const chartsPtBR = {
@@ -83,6 +85,145 @@ export const chartsPtBR = {
     noMetric: "Use pelo menos uma métrica na fórmula.",
     divideByZero: "Não dá para dividir por zero.",
     badNumber: (text: string) => `“${text}” não é um número válido.`,
+  },
+
+  /** Por onde um gráfico de barras abre a métrica. */
+  dimension: {
+    platform: "Plataforma",
+    adAccount: "Conta de anúncio",
+    campaign: "Campanha",
+    product: "Produto",
+    paymentMethod: "Forma de pagamento",
+    utmSource: "Origem (utm_source)",
+    utmMedium: "Mídia (utm_medium)",
+    utmCampaign: "Campanha (utm_campaign)",
+    utmContent: "Conteúdo (utm_content)",
+  } satisfies Record<Dimension, string>,
+
+  /** Linha das vendas que não têm aquela informação (ficam juntas, para a soma bater com o total). */
+  withoutValue: {
+    adAccount: "Sem conta de anúncio",
+    campaign: "Sem campanha",
+    utm: "Sem UTM",
+  },
+
+  /** Tipos de gráfico, com a dica "Quando usar". */
+  widgetType: {
+    kpi: {
+      label: "Cartão de KPI",
+      whenToUse: "Um número que você acompanha sempre, com a variação contra o período de comparação, a tendência e, se quiser, uma meta.",
+    },
+    line: {
+      label: "Gráfico de linhas",
+      whenToUse: "Ver a tendência ao longo do tempo e comparar a evolução de até 4 métricas. Com unidades diferentes, cada uma ganha o próprio eixo.",
+    },
+    column: {
+      label: "Gráfico de colunas",
+      whenToUse: "Comparar valores entre dias, semanas ou meses e ver do que um total é feito (colunas empilhadas).",
+    },
+    bar: {
+      label: "Gráfico de barras",
+      whenToUse: "Rankings e comparações entre itens com nomes longos, como campanhas e produtos.",
+    },
+  } satisfies Record<WidgetType, { label: string; whenToUse: string }>,
+
+  panel: {
+    title: "Painéis",
+    sections: { kpis: "Números principais", charts: "Gráficos" },
+    filters: { account: "Conta de anúncio", source: "Fonte de tráfego", product: "Produto" },
+    granularityAdjusted: "Agrupamento ajustado",
+    compareTitle: "Comparação",
+    fx: {
+      title: "Não deu para buscar a cotação do dia",
+      body: (currency: string) =>
+        `Este dashboard mostra os valores em ${currency}, e parte dos pedidos, gastos ou custos está em outra moeda. Sem a cotação, os números ficariam errados, então eles não aparecem. Confira a internet e tente de novo em alguns minutos.`,
+      retry: "Tentar de novo",
+    },
+    granularity: "Agrupar por",
+    automatic: (label: string) => `Automático (${label.toLowerCase()})`,
+    compare: "Comparar com",
+    compareDates: "Datas da comparação",
+    compareDatesApply: "Comparar",
+    compareDatesMissing: "Escolha as datas do período de comparação para ver a variação.",
+    compareUnavailable: "“Todo o período” não tem um período anterior para comparar. Escolha outro período ou compare com datas escolhidas.",
+    /** Texto depois da variação no cartão: "+12,4% vs. período anterior". */
+    versus: {
+      previous: "vs. período anterior",
+      year: "vs. mesmo período do ano anterior",
+      custom: "vs. período escolhido",
+    } satisfies Record<Exclude<CompareMode, "off">, string>,
+    /** Nome da série de comparação no gráfico: "Faturamento líquido (período anterior)". */
+    compareSeries: {
+      previous: "período anterior",
+      year: "ano anterior",
+      custom: "comparação",
+    } satisfies Record<Exclude<CompareMode, "off">, string>,
+    compareRange: (range: string) => `Comparando com ${range}.`,
+    empty: {
+      title: "Ainda não há dados neste período",
+      description: "Escolha outro período, tire algum filtro ou confira as integrações do dashboard.",
+    },
+    emptyDailyOnly: {
+      title: "Este gráfico não existe por hora",
+      description: "O gasto com anúncios, os impostos e as despesas chegam por dia. Escolha agrupar por dia para ver este gráfico.",
+    },
+    error: {
+      title: "Não deu para carregar este gráfico",
+      description: "Algo deu errado ao buscar os números. Os outros gráficos continuam valendo.",
+      retry: "Tentar de novo",
+    },
+    loading: "Carregando o gráfico…",
+    notes: {
+      hourUnavailable: "O gasto, as impressões, os cliques, os impostos e as despesas chegam por dia: por hora, eles aparecem sem dado.",
+      expensesFiltered: "As despesas não entram quando há filtro de conta, produto ou fonte (não dá para dividir uma conta de luz).",
+      productRevenue: "Por produto, o faturamento é a soma dos itens pagos, como em “Vendas por produto” do Resumo.",
+      expensesByItem: "As despesas não se dividem por item: ficam de fora do lucro de cada linha.",
+      percent: "Cada coluna soma 100%: a altura mostra a participação de cada parte no total daquele período.",
+      stackedCompare: "Nas colunas empilhadas, a comparação aparece na dica de cada coluna.",
+    },
+    average: {
+      /** Linha de média de uma métrica somável: o total dividido pelo número de dias, semanas... */
+      sum: (granularity: string) => `Média por ${granularity.toLowerCase()}`,
+      /** Linha de média de uma taxa: a taxa do período inteiro, refeita dos totais. */
+      rate: "Média do período",
+    },
+    goal: "Meta",
+    kpi: {
+      goal: (percent: string, target: string) => `${percent} da meta de ${target}`,
+      alert: "Em alerta",
+      alertBelow: (value: string) => `abaixo de ${value}`,
+      alertAbove: (value: string) => `acima de ${value}`,
+      trend: (granularity: string) => `Tendência por ${granularity.toLowerCase()}`,
+    },
+    table: {
+      show: "Ver como tabela",
+      hide: "Ver como gráfico",
+      time: "Período",
+      category: "Item",
+      compareNote: (name: string) => `Em cinza: ${name} e a variação.`,
+    },
+    legendHint: "Clique na legenda para esconder ou mostrar uma série.",
+    footer: (label: string, description: string) =>
+      `${label}, ${description}, no fuso do dashboard. As vendas contam pelo dia do pedido; o gasto, pelo dia informado pela plataforma.`,
+  },
+
+  /** Erros na configuração de um widget (o editor da Fase 5 mostra estes textos). */
+  widgetError: {
+    id: "O identificador do widget usa só letras minúsculas, números e hífen (até 40).",
+    metric: "Escolha uma métrica da lista.",
+    dimension: "Escolha por onde abrir a métrica: campanha, conta, produto...",
+    textTooLong: (max: number) => `Use até ${max} caracteres.`,
+    seriesMin: "Escolha pelo menos uma métrica.",
+    seriesMax: (max: number) => `Dá para mostrar até ${max} métricas neste gráfico.`,
+    repeated: "A mesma métrica aparece duas vezes.",
+    leftAxisEmpty: "Coloque pelo menos uma métrica no eixo esquerdo.",
+    mixedUnits: "Métricas de unidades diferentes (R$, %, x) não podem dividir o mesmo eixo: use o outro eixo ou outro gráfico.",
+    stackRates: "Só métricas somáveis (faturamento, gasto, pedidos...) podem ser empilhadas. Taxas como ROAS e CPA não se somam.",
+    dimensionMetric: (metric: string, dimension: string) => `“${metric}” não pode ser aberta por ${dimension.toLowerCase()}.`,
+    goalPositive: "A meta precisa ser maior que zero.",
+    goalDashboardMoney: "A meta de faturamento do dashboard só vale para métricas em dinheiro.",
+    goalAxis: "A linha de meta precisa ficar num eixo que tenha alguma métrica.",
+    topN: "Escolha mostrar de 1 a 50 itens.",
   },
 
   /** Métricas que não estão no glossário. */

@@ -51,10 +51,11 @@ export function sourceOf(o: Pick<OrderRow, "attributionStatus" | "attributedPlat
 }
 
 // ---- contexto de cálculo (índices para não varrer tudo a cada linha) ---------------------
+// Também usado pelos Painéis (server/charts/source.ts), para seguirem as mesmas regras do Resumo.
 
-type Scope = ReturnType<typeof buildScope>;
+export type Scope = ReturnType<typeof buildScope>;
 
-function buildScope(store: Store, dashboard: DashboardRow, filters: TrackingFilters, fx: Converter = identityConverter(dashboard.currency)) {
+export function buildScope(store: Store, dashboard: DashboardRow, filters: TrackingFilters, fx: Converter = identityConverter(dashboard.currency)) {
   // Valor em outra moeda vira a do dashboard pela cotação do dia; sem cotação conta 0 e fx.misses() acusa.
   const convert: ConvertCents = (amount, currency, day) => fx.cents(amount, currency, day) ?? 0;
   const linkedAccounts = new Set(
@@ -138,7 +139,7 @@ function buildScope(store: Store, dashboard: DashboardRow, filters: TrackingFilt
   return { accounts, storeIds, campaignAccount, accountProvider, itemsByOrder, spendAccounts, orderMatches, costCtx, costsOf, convert };
 }
 
-function earliestDay(store: Store, dashboard: DashboardRow): string | null {
+export function earliestDay(store: Store, dashboard: DashboardRow): string | null {
   const scope = buildScope(store, dashboard, { accounts: [], products: [], sources: [] });
   let earliest: string | null = null;
   for (const i of store.adInsightsDaily) {
@@ -249,14 +250,14 @@ function totalsFor(store: Store, dashboard: DashboardRow, scope: Scope, range: D
 export type ChartPoint = { key: string; label: string; valueCents: number; count: number };
 export type ApprovalPoint = { key: PaymentMethod; label: string; approved: number; total: number; rate: number | null };
 
-const METHOD_LABEL: Record<PaymentMethod, string> = {
+export const METHOD_LABEL: Record<PaymentMethod, string> = {
   pix: "Pix",
   credit_card: "Cartão",
   boleto: "Boleto",
   paypal: "PayPal",
   other: "Outros",
 };
-const SOURCE_LABEL: Record<Source, string> = { meta: "Meta", google: "Google", other: "Outras fontes", untracked: "Não rastreadas" };
+export const SOURCE_LABEL: Record<Source, string> = { meta: "Meta", google: "Google", other: "Outras fontes", untracked: "Não rastreadas" };
 
 function charts(store: Store, dashboard: DashboardRow, scope: Scope, range: DateRange) {
   const orders = store.orders.filter(

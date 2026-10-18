@@ -235,6 +235,20 @@ export function checkGranularity(range: DateRange, requested: Granularity): Gran
 }
 
 /**
+ * Granularidade automática pelo tamanho do período, quando a pessoa não
+ * escolheu: Hoje e Ontem por hora; até 45 dias por dia; até ~6 meses por
+ * semana; até 10 anos por mês; mais que isso, por ano.
+ */
+export function autoGranularity(range: DateRange): Granularity {
+  const days = daysInRange(range);
+  if (days <= 2) return "hour";
+  if (days <= 45) return "day";
+  if (days <= 200) return "week";
+  if (days <= 3660) return "month";
+  return "year";
+}
+
+/**
  * Todos os baldes do período, em ordem, inclusive os sem dado. Não inclui o
  * que ainda não aconteceu (as horas depois de agora). Quem chama deve passar
  * uma granularidade aprovada por checkGranularity.
