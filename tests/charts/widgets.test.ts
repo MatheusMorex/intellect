@@ -22,7 +22,19 @@ describe("configuração dos widgets (o que a Fase 5 vai salvar)", () => {
 
   test("valores padrão entram quando não vêm", () => {
     const kpi = PANEL_WIDGET.parse({ id: "a", type: "kpi", metric: "net" });
-    assert.deepEqual(kpi, { id: "a", type: "kpi", metric: "net", title: "", subtitle: "", sparkline: true, goal: null, alert: null });
+    assert.deepEqual(kpi, {
+      id: "a",
+      type: "kpi",
+      metric: "net",
+      title: "",
+      subtitle: "",
+      ignoreFilters: false,
+      overrides: {},
+      display: { legend: "auto", numbers: "auto", decimals: null, colors: [], axisMin: null, axisMax: null, grid: true },
+      sparkline: true,
+      goal: null,
+      alert: null,
+    });
     const bar = PANEL_WIDGET.parse({ id: "b", type: "bar", dimension: "campaign", metrics: ["net"] });
     assert.equal(bar.type === "bar" && bar.topN, 10);
     assert.equal(bar.type === "bar" && bar.order, "desc");

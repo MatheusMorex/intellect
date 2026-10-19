@@ -1,24 +1,25 @@
 "use client";
 
-import { BarChart3, Info } from "lucide-react";
+import { BarChart3, Download, Info } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { EmptyState } from "@/components/ds/empty-state";
 import { HelpTip } from "@/components/ds/help-tip";
 import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { exportFileName, specToCsv } from "@/lib/charts/csv";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatChange, formatMetricValue } from "@/lib/charts/format";
 import { msg } from "@/lib/charts/messages";
-import type { ChartSpec, FunnelSpec, GanttSpec, PanelChartSpec, PieSpec, SpecCompare, TreemapNode, TreemapSpec } from "@/lib/charts/spec";
-import type { WidgetType } from "@/lib/charts/widgets";
+import type { ChartHelp, ChartSpec, FunnelSpec, GanttSpec, PanelChartSpec, PieSpec, SpecCompare, TreemapNode, TreemapSpec } from "@/lib/charts/spec";
 import { OUTLINE_BOX } from "@/lib/surfaces";
 import { cn } from "@/lib/utils";
 
 import { colorScale } from "./color-scale";
-import { GANTT_ROW, GANTT_SPAN, ganttDate, ganttMark, ganttRows, ganttStatus } from "./echarts-option";
+import { GANTT_ROW, GANTT_SPAN, ganttDate, ganttMark, ganttRows, ganttStatus, seriesColor } from "./echarts-option";
 import { useChartTheme } from "./use-chart-theme";
 
 // Moldura de um gráfico dos Painéis: título, "?" com a dica de quando usar
@@ -31,7 +32,7 @@ const EChartsChart = dynamic(() => import("@/components/charts/echarts-chart"), 
   loading: () => <Skeleton className="h-full w-full rounded-md" />,
 });
 
-export type ChartHelp = { type: WidgetType; metrics: { label: string; formula: string }[] };
+export type { ChartHelp } from "@/lib/charts/spec";
 
 /** Altura do gráfico: fixa nos de tempo, na pizza e no treemap; nas barras, cresce com o número de itens. */
 export function chartHeight(spec: PanelChartSpec) {
@@ -284,7 +285,7 @@ function ChartTable({ spec }: { spec: PanelChartSpec }) {
 function GanttLegend({ spec }: { spec: GanttSpec }) {
   const theme = useChartTheme();
   if (!theme) return null;
-  const color = (index: number | null) => (index == null ? theme.muted : theme.palette[index % theme.palette.length] || theme.text);
+  const color = (index: number | null) => (index == null ? theme.muted : seriesColor(index, theme, spec.display));
   return (
     <div className="grid gap-1 text-xs text-muted-foreground">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -344,14 +345,85 @@ function ColorLegend({ spec }: { spec: TreemapSpec }) {
   );
 }
 
-export function ChartFrame({ spec, title, subtitle, help }: { spec: PanelChartSpec; title: string; subtitle?: string; help: ChartHelp }) {
+/** Baixa um arquivo no navegador (imagem do gráfico ou CSV dos dados). */
+function download(name: string, href: string) {
+  const link = document.createElement("a");
+  link.href = href;
+  link.download = name;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
+/** "Exportar": a imagem do gráfico (PNG) e os dados (CSV), com os mesmos números da tabela. */
+function ExportMenu({ spec, title, image }: { spec: PanelChartSpec; title: string; image: (() => string | null) | null }) {
+  const csv = () => {
+    const url = URL.createObjectURL(new Blob([specToCsv(spec)], { type: "text/csv;charset=utf-8" }));
+    download(exportFileName(title, "csv"), url);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+  const png = () => {
+    const url = image?.();
+    if (url) download(exportFileName(title, "png"), url);
+  };
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="sm" aria-label={msg.panels.export.menu}>
+          <Download aria-hidden="true" className="size-4" />
+          <span className="sr-only sm:not-sr-only">{msg.panels.export.menu}</span>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onSelect={png} disabled={!image}>
+          {image ? msg.panels.export.png : msg.panels.export.pngNeedsChart}
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={csv}>{msg.panels.export.csv}</DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/**
+ * fill: o gráfico ocupa a altura da célula da grade (painéis salvos); sem ele,
+ * a altura sai do tipo de gráfico (pré-visualização do editor).
+ * scope: aviso de que o gráfico usa período ou filtros diferentes dos do painel.
+ */
+export function ChartFrame({
+  spec,
+  title,
+  subtitle,
+  help,
+  scope,
+  fill = false,
+}: {
+  spec: PanelChartSpec;
+  title: string;
+  subtitle?: string;
+  help: ChartHelp;
+  scope?: string;
+  fill?: boolean;
+}) {
   const [asTable, setAsTable] = useState(false);
+  const [image, setImage] = useState<(() => string | null) | null>(null);
+  const imageRef = useRef<(() => string | null) | null>(null);
   const type = msg.widgetType[help.type];
   const height = chartHeight(spec);
+  const onExport = (fn: (() => string | null) | null) => {
+    if (imageRef.current === fn) return;
+    imageRef.current = fn;
+    setImage(() => fn);
+  };
 
   return (
-    <figure className={cn("grid min-w-0 content-start gap-3 p-4 text-foreground", OUTLINE_BOX)}>
-      <figcaption className="flex items-start justify-between gap-2">
+    <figure
+      className={cn(
+        "min-w-0 gap-3 p-4 text-foreground",
+        fill ? "flex h-full min-h-0 flex-col overflow-hidden" : "grid content-start",
+        OUTLINE_BOX,
+      )}
+    >
+      <figcaption className="flex shrink-0 items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="flex items-center gap-1">
             <span className="font-semibold">{title}</span>
@@ -367,22 +439,37 @@ export function ChartFrame({ spec, title, subtitle, help }: { spec: PanelChartSp
             </HelpTip>
           </div>
           {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
+          {scope && <p className="text-xs font-medium text-primary">{scope}</p>}
         </div>
         {!spec.empty && (
-          <Button variant="ghost" size="sm" onClick={() => setAsTable((v) => !v)} aria-pressed={asTable}>
-            {asTable ? msg.panel.table.hide : msg.panel.table.show}
-          </Button>
+          <div className="flex shrink-0 items-center">
+            <Button variant="ghost" size="sm" onClick={() => setAsTable((v) => !v)} aria-pressed={asTable}>
+              {asTable ? msg.panel.table.hide : msg.panel.table.show}
+            </Button>
+            <ExportMenu spec={spec} title={title} image={asTable ? null : image} />
+          </div>
         )}
       </figcaption>
 
       {spec.empty ? (
-        <EmptyState icon={BarChart3} title={emptyText(spec).title} description={emptyText(spec).description} className="py-8" />
+        <EmptyState
+          icon={BarChart3}
+          title={emptyText(spec).title}
+          description={emptyText(spec).description}
+          className={fill ? "min-h-0 flex-1 py-4" : "py-8"}
+        />
       ) : asTable ? (
-        <ChartTable spec={spec} />
-      ) : (
+        <div className={fill ? "min-h-0 flex-1 overflow-auto [&>div]:max-h-none" : undefined}>
+          <ChartTable spec={spec} />
+        </div>
+      ) : fill ? (
         // O gráfico é desenho; os números ficam na tabela e na dica (leitor de tela usa "Ver como tabela").
+        <div aria-hidden="true" className="relative min-h-[120px] flex-1">
+          <EChartsChart spec={spec} height="100%" onExport={onExport} />
+        </div>
+      ) : (
         <div aria-hidden="true" style={{ height }}>
-          <EChartsChart spec={spec} height={height} />
+          <EChartsChart spec={spec} height={height} onExport={onExport} />
         </div>
       )}
 
@@ -395,7 +482,7 @@ export function ChartFrame({ spec, title, subtitle, help }: { spec: PanelChartSp
       )}
 
       {spec.notes.length > 0 && (
-        <ul className="grid gap-1 text-xs text-muted-foreground">
+        <ul className="grid shrink-0 gap-1 text-xs text-muted-foreground">
           {spec.notes.map((n) => (
             <li key={n} className="flex items-start gap-1.5">
               <Info aria-hidden="true" className="mt-0.5 size-3 shrink-0" />

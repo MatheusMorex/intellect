@@ -18,3 +18,9 @@
 .rich-text blockquote { border-left: 3px solid var(--ds-border-input); padding-left: 0.75rem; color: var(--ds-text-muted); }
 .rich-text .mention { color: var(--ds-accent); background: var(--ds-accent-subtle); border-radius: var(--ds-radius-sm); padding: 0 0.2rem; font-weight: 500; }
 .rich-text p.is-editor-empty:first-child::before { content: attr(data-placeholder); color: var(--ds-text-muted); float: left; height: 0; pointer-events: none; }
+
+/* Grade dos Painéis em edição (react-grid-layout): cores do tema no lugar do vermelho padrão,
+   e o canto de redimensionar sempre visível. */
+.panel-grid .react-grid-item.react-grid-placeholder { background: var(--ds-accent); opacity: 0.18; border-radius: var(--ds-radius-md); }
+.panel-grid .react-grid-item > .react-resizable-handle { opacity: 1; z-index: 5; }
+.panel-grid .react-grid-item > .react-resizable-handle::after { width: 8px; height: 8px; border-color: var(--ds-text-muted); }

@@ -22,6 +22,7 @@ import {
   type MetricId,
 } from "@/lib/charts/catalog";
 import { msg } from "@/lib/charts/messages";
+import { GRANULARITIES, PANEL_PRESETS } from "@/lib/charts/options";
 
 export const WIDGET_TYPES = ["kpi", "line", "column", "bar", "pie", "donut", "treemap", "funnel", "gantt"] as const;
 export type WidgetType = (typeof WIDGET_TYPES)[number];
@@ -34,12 +35,50 @@ const dimension = z.enum(DIMENSIONS, { error: err.dimension });
 const axis = z.enum(["left", "right"]);
 const text = (max: number) => z.string().trim().max(max, { error: err.textTooLong(max) });
 
+/**
+ * Período, agrupamento e comparação próprios do gráfico (senão, os do painel).
+ * "Personalizado" e "datas escolhidas" ficam de fora: dependem de datas que
+ * só fazem sentido na tela de quem está olhando.
+ */
+const overrides = z
+  .object({
+    periodo: z.enum(PANEL_PRESETS).optional(),
+    agrupar: z.enum(GRANULARITIES).optional(),
+    comparar: z.enum(["off", "previous", "year"]).optional(),
+  })
+  .prefault({});
+
+/** Aparência do gráfico. Os valores do eixo ficam na unidade da métrica (dinheiro em centavos, percentual em fração). */
+export const WIDGET_DISPLAY = z
+  .object({
+    /** Legenda no lugar de cada tipo (em cima nas linhas, embaixo na pizza), em cima, embaixo ou escondida. */
+    legend: z.enum(["auto", "top", "bottom", "none"]).default("auto"),
+    /** Números: o jeito de cada tipo (completo no cartão, abreviado nos rótulos), completos (R$ 1.234,56) ou abreviados (R$ 1,2 mil). */
+    numbers: z.enum(["auto", "full", "compact"]).default("auto"),
+    /** Casas decimais nos rótulos e na dica; null = o padrão de cada métrica. */
+    decimals: z.number().int().min(0, { error: err.decimals }).max(4, { error: err.decimals }).nullable().default(null),
+    /** Cor de cada série, na ordem (#rrggbb); o que faltar vem da paleta do tema. */
+    colors: z.array(z.string().regex(/^#[0-9a-f]{6}$/i, { error: err.color })).max(8).default([]),
+    /** Eixo de valores das linhas, colunas e barras: mínimo e máximo fixos (null = automático). */
+    axisMin: z.number().nullable().default(null),
+    axisMax: z.number().nullable().default(null),
+    /** Linhas de grade no fundo. */
+    grid: z.boolean().default(true),
+  })
+  .prefault({});
+export type WidgetDisplay = z.output<typeof WIDGET_DISPLAY>;
+export const DEFAULT_DISPLAY: WidgetDisplay = WIDGET_DISPLAY.parse({});
+
 const common = {
   /** Identificador do widget dentro do painel (letras minúsculas, números e hífen). */
   id: z.string().regex(/^[a-z0-9][a-z0-9-]{0,39}$/, { error: err.id }),
   /** Vazio: o título sai dos nomes das métricas. */
   title: text(80).default(""),
   subtitle: text(160).default(""),
+  /** O gráfico não usa os filtros de conta, fonte e produto do painel. */
+  ignoreFilters: z.boolean().default(false),
+  overrides,
+  display: WIDGET_DISPLAY,
 };
 
 const kpiWidget = z.object({
@@ -202,6 +241,7 @@ export const PANEL_WIDGET = WIDGET_SHAPES.superRefine((w, ctx) => {
   const byDimension = (id: MetricId, d: Dimension, path: (string | number)[]) => {
     if (!metricSupportsDimension(getMetric(id), d)) issue(err.dimensionMetric(getMetric(id).info.label, msg.dimension[d]), path);
   };
+  if (w.display.axisMin != null && w.display.axisMax != null && w.display.axisMin >= w.display.axisMax) issue(err.axisRange, ["display", "axisMax"]);
   switch (w.type) {
     case "kpi":
       if (w.goal?.source === "dashboard" && getMetric(w.metric).format !== "money") issue(err.goalDashboardMoney, ["goal"]);

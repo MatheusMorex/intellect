@@ -48,12 +48,29 @@ echarts.use([
   CanvasRenderer,
 ]);
 
-export default function EChartsChart({ spec, height }: { spec: PanelChartSpec; height: number }) {
+/**
+ * height: em pixels, ou "100%" para ocupar a célula da grade dos painéis.
+ * onExport: recebe a função que tira a imagem do gráfico (PNG), para o menu "Exportar".
+ */
+export default function EChartsChart({
+  spec,
+  height,
+  onExport,
+}: {
+  spec: PanelChartSpec;
+  height: number | "100%";
+  onExport?: (image: (() => string | null) | null) => void;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   const chart = useRef<echarts.ECharts | null>(null);
   const theme = useChartTheme();
+  const themeRef = useRef(theme);
   const reducedMotion = useReducedMotion();
   const router = useRouter();
+
+  useEffect(() => {
+    themeRef.current = theme;
+  }, [theme]);
 
   useEffect(() => {
     const el = ref.current;
@@ -65,14 +82,19 @@ export default function EChartsChart({ spec, height }: { spec: PanelChartSpec; h
       const href = (params.data as { href?: unknown } | undefined)?.href;
       if (typeof href === "string" && href.startsWith("/")) router.push(href);
     });
-    // Acompanha a largura do card (menu lateral recolhido, celular, grade).
+    // Acompanha a largura e a altura do card (menu lateral recolhido, celular, grade redimensionada).
     const observer = new ResizeObserver(() => instance.resize());
     observer.observe(el);
+    // A imagem sai com o fundo do card (sem fundo, o PNG ficaria transparente).
+    onExport?.(() => instance.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: themeRef.current?.surface ?? "#ffffff" }));
     return () => {
+      onExport?.(null);
       observer.disconnect();
       instance.dispose();
       chart.current = null;
     };
+    // onExport muda a cada render do pai; a função guardada continua valendo para esta instância.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
   useEffect(() => {
@@ -80,5 +102,5 @@ export default function EChartsChart({ spec, height }: { spec: PanelChartSpec; h
     chart.current.setOption(toEChartsOption(spec, theme, { reducedMotion }), { notMerge: true });
   }, [spec, theme, reducedMotion]);
 
-  return <div ref={ref} className="w-full" style={{ height }} />;
+  return <div ref={ref} className={height === "100%" ? "absolute inset-0" : "w-full"} style={height === "100%" ? undefined : { height }} />;
 }

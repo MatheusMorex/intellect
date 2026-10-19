@@ -9,6 +9,7 @@ import { TZDate } from "@date-fns/tz";
 import { addDays, format } from "date-fns";
 import { generateNKeysBetween } from "fractional-indexing";
 
+import { templatePanel } from "../../lib/charts/templates";
 import { adFormatFromName, simulatedVideoMetrics } from "../ads/simulation";
 
 import type {
@@ -23,13 +24,14 @@ import type {
   CampaignRow,
   CardRow,
   OrderRow,
+  PanelRow,
   PaymentMethod,
   Store,
   UserAppearance,
   Visit,
 } from "./types";
 
-export const STORE_VERSION = 7;
+export const STORE_VERSION = 8;
 
 /** Aparência padrão de quem entra pela primeira vez. */
 export const DEFAULT_APPEARANCE: UserAppearance = { wallpaper: null, showTaglines: true, homePage: "inicio" };
@@ -59,7 +61,7 @@ export function emptyStore(now = new Date()): Store {
   return {
     version: STORE_VERSION,
     seededAt: now.toISOString(),
-    users: [], workspaces: [], workspaceMembers: [], dashboards: [], adConnections: [], adAccounts: [], dashboardAdAccounts: [],
+    users: [], workspaces: [], workspaceMembers: [], dashboards: [], panels: [], adConnections: [], adAccounts: [], dashboardAdAccounts: [],
     campaigns: [], adSets: [], ads: [], adInsightsDaily: [], keywords: [], keywordInsightsDaily: [], stores: [], dashboardStores: [],
     webhookDeliveries: [], products: [], orders: [], orderItems: [], orderEvents: [], costSettings: [], productCosts: [],
     additionalFees: [], expenses: [], integrationTests: [], invites: [], boards: [], boardMembers: [], boardStars: [], boardVisits: [],
@@ -972,6 +974,7 @@ export function createSeed(now: Date): Store {
     workspaces: [workspace],
     workspaceMembers,
     dashboards: [dashboard],
+    panels: [defaultPanel(dashboard.id, ana.id, seededAt, id)],
     adConnections: connections,
     adAccounts: [meta, google],
     dashboardAdAccounts: [meta, google].map((a) => ({ id: id(), dashboardId: dashboard.id, adAccountId: a.id })),
@@ -1034,9 +1037,30 @@ export function createSeed(now: Date): Store {
  * armazenamento em arquivo só existe no modo de teste, então os números de
  * vídeo que faltam são simulados como no seed.
  */
+/** O painel "Visão geral" de um dashboard (modelo pronto), como o seed e a versão 8 criam. */
+export function defaultPanel(dashboardId: string, createdBy: string | null, at: string, makeId: () => string = () => crypto.randomUUID()): PanelRow {
+  const { widgets, layout } = templatePanel("visao-geral");
+  return {
+    id: makeId(),
+    dashboardId,
+    name: "Visão geral",
+    position: 0,
+    isDefault: true,
+    visibility: "workspace",
+    viewerIds: [],
+    membersCanFilter: true,
+    defaults: {},
+    widgets,
+    layout,
+    createdBy,
+    createdAt: at,
+    updatedAt: at,
+  };
+}
+
 export function upgradeStore(store: Store): Store | null {
   const from = store.version as number;
-  if (from !== 4 && from !== 5 && from !== 6) return null;
+  if (from !== 4 && from !== 5 && from !== 6 && from !== 7) return null;
   if (from === 4) {
     const dashboardCurrency = new Map(store.dashboards.map((d) => [d.id, d.currency]));
     for (const u of store.users) {
@@ -1059,6 +1083,11 @@ export function upgradeStore(store: Store): Store | null {
   }
   // Versão 7: início da semana dos Painéis (segunda, como no banco).
   for (const d of store.dashboards) d.weekStart ??= "monday";
+  // Versão 8: painéis salvos (Fase 5 dos Painéis); cada dashboard ganha a "Visão geral".
+  if (!store.panels) {
+    const at = new Date().toISOString();
+    store.panels = store.dashboards.map((d) => defaultPanel(d.id, null, at));
+  }
   store.version = STORE_VERSION;
   return store;
 }

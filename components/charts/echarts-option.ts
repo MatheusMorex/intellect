@@ -31,9 +31,11 @@ import type {
   PieSpec,
   ReferenceLine,
   SpecCompare,
+  SpecDisplay,
   TreemapNode,
   TreemapSpec,
 } from "@/lib/charts/spec";
+import { DEFAULT_SPEC_DISPLAY } from "@/lib/charts/spec";
 
 import { colorScale, scalePosition } from "./color-scale";
 import type { ChartTheme } from "./use-chart-theme";
@@ -101,16 +103,26 @@ function tooltipBox(theme: ChartTheme) {
   };
 }
 
+/** A aparência escolhida no editor, ou a padrão. */
+export const displayOf = (spec: { display?: SpecDisplay }): SpecDisplay => spec.display ?? DEFAULT_SPEC_DISPLAY;
+
+/** Cor de uma série (ou fatia, etapa, pessoa): a escolhida no editor ou a da paleta do tema. */
+export function seriesColor(index: number, theme: ChartTheme, display?: SpecDisplay): string {
+  return display?.colors[index] || theme.palette[index % theme.palette.length] || theme.text;
+}
+
 /** Padrões no modo para daltônicos: a parte não depende só da cor. */
 const ariaOf = (theme: ChartTheme) => ({ enabled: theme.colorblind, label: { enabled: false }, decal: { show: theme.colorblind } });
 
 function axisOption(spec: ChartSpec, theme: ChartTheme, { reducedMotion }: Options): EChartsOption {
   const horizontal = spec.axis === "category";
-  const color = (index: number) => theme.palette[index % theme.palette.length] || theme.text;
+  const d = displayOf(spec);
+  const color = (index: number) => seriesColor(index, theme, d);
   const fmt = (value: number | null | undefined, format: MetricFormat, decimals?: number) =>
     formatMetricValue(value, format, { currency: spec.currency, decimals });
+  // Rótulos e eixo: abreviados (R$ 1,2 mil) ou completos, como escolhido no editor.
   const compactFmt = (value: number, format: MetricFormat, decimals: number) =>
-    formatMetricValue(value, format, { currency: spec.currency, style: "compact", decimals });
+    formatMetricValue(value, format, { currency: spec.currency, style: d.numbers === "full" ? "full" : "compact", decimals });
 
   // Percentual pequeno (CTR de 1,2%) precisa de uma casa no eixo, senão os rótulos se repetem.
   const axisMax = (axis: "left" | "right") =>
@@ -136,10 +148,12 @@ function axisOption(spec: ChartSpec, theme: ChartTheme, { reducedMotion }: Optio
   const valueAxis = (format: MetricFormat, axis: "left" | "right") => ({
     type: "value" as const,
     position: horizontal ? ("bottom" as const) : axis,
-    max: spec.stack === "percent" && axis === "left" ? 1 : undefined,
+    // Mínimo e máximo fixos (editor) valem para o eixo esquerdo; o empilhado 100% vai sempre até 100%.
+    min: axis === "left" && d.axisMin != null ? d.axisMin : undefined,
+    max: spec.stack === "percent" && axis === "left" ? 1 : axis === "left" && d.axisMax != null ? d.axisMax : undefined,
     // Nas barras o eixo de valores fica embaixo e tem pouca largura: rótulo que encostaria no vizinho some.
     axisLabel: { color: theme.muted, formatter: axisFormatter(format, axis), hideOverlap: true },
-    splitLine: { show: axis === "left", lineStyle: { color: theme.border, type: "dashed" as const } },
+    splitLine: { show: axis === "left" && d.grid, lineStyle: { color: theme.border, type: "dashed" as const } },
   });
   const valueAxes = [valueAxis(spec.axes.left, "left"), ...(spec.axes.right ? [valueAxis(spec.axes.right, "right")] : [])];
 
@@ -278,7 +292,8 @@ function axisOption(spec: ChartSpec, theme: ChartTheme, { reducedMotion }: Optio
             formatter: (p: { value?: unknown }) => {
               const v = typeof p.value === "number" ? p.value : null;
               if (v == null || v === 0) return "";
-              return spec.stack === "percent" ? compactFmt(v, "percent", 0) : compactFmt(v, s.format, s.format === "multiplier" ? 2 : 0);
+              if (spec.stack === "percent") return compactFmt(v, "percent", d.decimals ?? 0);
+              return compactFmt(v, s.format, d.decimals ?? (s.format === "multiplier" ? 2 : 0));
             },
           }
         : undefined,
@@ -308,7 +323,8 @@ function axisOption(spec: ChartSpec, theme: ChartTheme, { reducedMotion }: Optio
   });
 
   const legendNames = [...new Set(series.map((s) => String(s.name)))];
-  const legend = legendNames.length > 1;
+  const legend = legendNames.length > 1 && d.legend !== "none";
+  const legendBottom = legend && d.legend === "bottom";
   const zoom = spec.zoom && spec.categories.length > 7;
 
   return {
@@ -318,11 +334,16 @@ function axisOption(spec: ChartSpec, theme: ChartTheme, { reducedMotion }: Optio
     textStyle: { fontFamily: theme.font },
     aria: ariaOf(theme),
     // Nas barras, espaço à direita para o valor na ponta da maior barra.
-    grid: { left: 8, right: horizontal && showLabels ? 76 : 12, top: legend ? 40 : 16, bottom: zoom ? 48 : 8 },
+    grid: {
+      left: 8,
+      right: horizontal && showLabels ? 76 : 12,
+      top: legend && !legendBottom ? 40 : 16,
+      bottom: (zoom ? 48 : 8) + (legendBottom ? 28 : 0),
+    },
     legend: legend
       ? {
           type: "scroll",
-          top: 0,
+          ...(legendBottom ? { bottom: zoom ? 36 : 0 } : { top: 0 }),
           left: 0,
           data: legendNames,
           icon: "roundRect",
@@ -378,8 +399,10 @@ function changeHtml(change: Change, theme: ChartTheme) {
 export function tooltipHtml(spec: ChartSpec, theme: ChartTheme, index: number, visible: Set<string | undefined>): string {
   const category = spec.categories[index];
   if (!category) return "";
-  const color = (i: number) => theme.palette[i % theme.palette.length] || theme.text;
-  const fmt = (value: number | null | undefined, format: MetricFormat) => formatMetricValue(value, format, { currency: spec.currency });
+  const d = displayOf(spec);
+  const color = (i: number) => seriesColor(i, theme, d);
+  const fmt = (value: number | null | undefined, format: MetricFormat) =>
+    formatMetricValue(value, format, { currency: spec.currency, decimals: d.decimals ?? undefined });
   const parts: string[] = [`<div style="font-weight:600;margin-bottom:4px">${escapeHtml(category.longLabel)}</div>`];
   if (category.partial) {
     parts.push(
@@ -411,12 +434,14 @@ export function tooltipHtml(spec: ChartSpec, theme: ChartTheme, index: number, v
 
 // ---- pizza e rosca ------------------------------------------------------------------------------
 
-const sliceColor = (slice: PieSlice, theme: ChartTheme) =>
-  slice.color == null ? theme.muted : theme.palette[slice.color % theme.palette.length] || theme.text;
+const sliceColor = (slice: PieSlice, theme: ChartTheme, display?: SpecDisplay) =>
+  slice.color == null ? theme.muted : seriesColor(slice.color, theme, display);
 
 function pieOption(spec: PieSpec, theme: ChartTheme, { reducedMotion }: Options): EChartsOption {
-  const compact = (value: number) => formatMetricValue(value, spec.metric.format, { currency: spec.currency, style: "compact" });
-  const share = (value: number) => formatMetricValue(value, "percent", { currency: spec.currency });
+  const d = displayOf(spec);
+  const compact = (value: number) =>
+    formatMetricValue(value, spec.metric.format, { currency: spec.currency, style: d.numbers === "full" ? "full" : "compact", decimals: d.decimals ?? undefined });
+  const share = (value: number) => formatMetricValue(value, "percent", { currency: spec.currency, decimals: d.decimals ?? undefined });
   const labelOf = (slice: PieSlice) =>
     spec.labels === "value" ? compact(slice.value) : spec.labels === "percent" ? share(slice.share) : `${compact(slice.value)} · ${share(slice.share)}`;
 
@@ -444,7 +469,7 @@ function pieOption(spec: PieSpec, theme: ChartTheme, { reducedMotion }: Options)
     },
     labelLine: { length: 8, length2: 6, lineStyle: { color: theme.border } },
     emphasis: { scaleSize: 4 },
-    data: spec.slices.map((slice) => ({ name: slice.label, value: slice.value, itemStyle: { color: sliceColor(slice, theme) } })),
+    data: spec.slices.map((slice) => ({ name: slice.label, value: slice.value, itemStyle: { color: sliceColor(slice, theme, d) } })),
   };
 
   return {
@@ -490,7 +515,9 @@ function pieOption(spec: PieSpec, theme: ChartTheme, { reducedMotion }: Options)
       : undefined,
     legend: {
       type: "scroll",
-      bottom: 0,
+      // Na pizza, a legenda fica embaixo (em "automático"); o centro da rosca é o centro do gráfico.
+      show: d.legend !== "none",
+      ...(d.legend === "top" ? { top: 0 } : { bottom: 0 }),
       left: "center",
       data: spec.slices.map((s) => s.label),
       icon: "roundRect",
@@ -526,7 +553,7 @@ export function pieTooltipHtml(spec: PieSpec, theme: ChartTheme, index: number):
   const share = formatMetricValue(slice.share, "percent", { currency: spec.currency });
   return (
     `<div style="font-weight:600;margin-bottom:4px">` +
-    `<span style="display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px;background:${sliceColor(slice, theme)}"></span>${escapeHtml(slice.label)}</div>` +
+    `<span style="display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px;background:${sliceColor(slice, theme, spec.display)}"></span>${escapeHtml(slice.label)}</div>` +
     `<div style="display:flex;justify-content:space-between;gap:16px"><span>${escapeHtml(spec.metric.name)}</span>` +
     `<span style="font-weight:600;font-variant-numeric:tabular-nums">${escapeHtml(value)}</span></div>` +
     `<div style="color:${theme.muted};font-size:11px">${escapeHtml(msg.panel.pie.share(share))}</div>` +
@@ -545,7 +572,7 @@ export function treemapColors(spec: TreemapSpec, theme: ChartTheme): Map<string,
       if (spec.color && scale) {
         colors.set(node.key, node.color == null ? theme.muted : scale(scalePosition(node.color, spec.color.min, spec.color.mid, spec.color.max)));
       }
-      else colors.set(node.key, node.others ? theme.muted : theme.palette[i % theme.palette.length] || theme.text);
+      else colors.set(node.key, node.others ? theme.muted : seriesColor(i, theme, spec.display));
       walk(node.children);
     });
   walk(spec.nodes);
@@ -557,7 +584,9 @@ type TreemapData = NonNullable<TreemapSeriesOption["data"]>[number];
 function treemapOption(spec: TreemapSpec, theme: ChartTheme, { reducedMotion }: Options): EChartsOption {
   const colors = treemapColors(spec, theme);
   const byKey = new Map<string, TreemapNode>();
-  const compact = (value: number) => formatMetricValue(value, spec.size.format, { currency: spec.currency, style: "compact" });
+  const d = displayOf(spec);
+  const compact = (value: number) =>
+    formatMetricValue(value, spec.size.format, { currency: spec.currency, style: d.numbers === "full" ? "full" : "compact", decimals: d.decimals ?? undefined });
   // O valor da cor escrito no retângulo: a cor nunca é a única informação.
   const colorText = (node: TreemapNode) => (spec.color ? ` · ${formatMetricValue(node.color, spec.color.format, { currency: spec.currency })}` : "");
   const toData = (nodes: TreemapNode[]): TreemapData[] =>
@@ -659,7 +688,7 @@ export function treemapTooltipHtml(spec: TreemapSpec, theme: ChartTheme, node: T
 
 // ---- funil --------------------------------------------------------------------------------------
 
-const stepColor = (index: number, theme: ChartTheme) => theme.palette[index % theme.palette.length] || theme.text;
+const stepColor = (index: number, theme: ChartTheme, display?: SpecDisplay) => seriesColor(index, theme, display);
 
 /** O texto ao lado de cada etapa: a quantidade e quanto ela é da anterior (a primeira é o topo). */
 export function funnelStepText(spec: FunnelSpec, step: FunnelStep, index: number): string {
@@ -713,7 +742,7 @@ function funnelOption(spec: FunnelSpec, theme: ChartTheme, { reducedMotion }: Op
       name: step.label,
       value: step.value,
       itemStyle: {
-        color: stepColor(i, theme),
+        color: stepColor(i, theme, spec.display),
         borderColor: step.biggestLoss ? theme.bad : theme.surface,
         borderWidth: step.biggestLoss ? 3 : 1,
       },
@@ -746,7 +775,7 @@ export function funnelTooltipHtml(spec: FunnelSpec, theme: ChartTheme, index: nu
   const pct = (value: number) => formatMetricValue(value, "percent", { currency: spec.currency });
   const parts = [
     `<div style="font-weight:600;margin-bottom:4px">` +
-      `<span style="display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px;background:${stepColor(index, theme)}"></span>${escapeHtml(step.label)}</div>`,
+      `<span style="display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px;background:${stepColor(index, theme, spec.display)}"></span>${escapeHtml(step.label)}</div>`,
     `<div style="font-weight:600;font-variant-numeric:tabular-nums">${escapeHtml(formatMetricValue(step.value, "number", { currency: spec.currency }))}</div>`,
   ];
   const ratios = [
@@ -774,8 +803,8 @@ export function ganttRows(spec: GanttSpec): GanttRow[] {
   return spec.groups.flatMap((g): GanttRow[] => [{ kind: "group", label: g.label }, ...g.tasks.map((task): GanttRow => ({ kind: "task", task }))]);
 }
 
-export const ganttColor = (task: GanttTask, theme: ChartTheme) =>
-  task.color == null ? theme.muted : theme.palette[task.color % theme.palette.length] || theme.text;
+export const ganttColor = (task: GanttTask, theme: ChartTheme, display?: SpecDisplay) =>
+  task.color == null ? theme.muted : seriesColor(task.color, theme, display);
 
 /** Marca na frente do nome: atrasada e concluída não dependem só da cor. */
 export const ganttMark = (task: GanttTask) => (task.overdue ? "⚠ " : task.done ? "✓ " : "");
@@ -808,7 +837,7 @@ function ganttOption(spec: GanttSpec, theme: ChartTheme, { reducedMotion }: Opti
     const row = Number(api.value(0));
     const end = api.coord([Number(api.value(2)), row]);
     const height = (api.size?.([0, 1]) as number[])[1] * 0.56;
-    const color = ganttColor(task, theme);
+    const color = ganttColor(task, theme, spec.display);
     const outline = task.overdue ? theme.bad : color;
     if (task.start == null) {
       // Marco: só a data de entrega, um losango.
@@ -945,7 +974,7 @@ export function ganttTooltipHtml(spec: GanttSpec, theme: ChartTheme, task: Gantt
   const parts = [
     `<div style="font-weight:600;margin-bottom:2px">${escapeHtml(task.label)}</div>`,
     `<div style="color:${theme.muted};font-size:11px;margin-bottom:4px">${escapeHtml(`${task.board} › ${task.list}`)}</div>`,
-    `<div><span style="display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px;background:${ganttColor(task, theme)}"></span>${escapeHtml(task.people)}</div>`,
+    `<div><span style="display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px;background:${ganttColor(task, theme, spec.display)}"></span>${escapeHtml(task.people)}</div>`,
     `<div style="font-variant-numeric:tabular-nums">${escapeHtml(when)}</div>`,
     `<div>${escapeHtml(msg.panel.gantt.progress(formatMetricValue(task.progress, "percent", { currency: "BRL", decimals: 0 })))}` +
       (task.checklist ? ` <span style="color:${theme.muted}">(${escapeHtml(msg.panel.gantt.checklist(task.checklist.done, task.checklist.total))})</span>` : "") +

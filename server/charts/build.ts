@@ -133,6 +133,8 @@ export type KpiView = {
   goal: { target: number; progress: number | null } | null;
   /** O limite de alerta passou (o cartão fica em alerta). */
   alert: { when: "below" | "above"; value: number } | null;
+  /** Número completo ou abreviado e casas decimais (aparência escolhida no editor). */
+  display?: { numbers: "auto" | "full" | "compact"; decimals: number | null };
 };
 
 export function buildKpi(pc: PanelComputer, w: KpiWidget): KpiView {

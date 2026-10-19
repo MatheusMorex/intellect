@@ -60,7 +60,8 @@ export function PeriodFilter({
         <Button variant="outline" className={cn("justify-start", pending && "opacity-70")} aria-busy={pending || undefined}>
           <CalendarDays aria-hidden="true" className="text-muted-foreground" />
           {label}
-          <span className="font-normal text-muted-foreground">· {description}</span>
+          {/* No celular as datas por extenso não cabem ao lado do botão: aparecem dentro do calendário. */}
+          <span className="hidden font-normal text-muted-foreground sm:inline">· {description}</span>
           <ChevronDown aria-hidden="true" className="ml-1 text-muted-foreground" />
         </Button>
       </PopoverTrigger>

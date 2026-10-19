@@ -10,7 +10,13 @@ import type { KpiView } from "@/server/charts/build";
 // sentido da métrica (CPA caindo é verde), a tendência, a meta e o alerta.
 
 export function PanelKpi({ view }: { view: KpiView }) {
-  const fmt = (value: number | null) => formatMetricValue(value, view.format, { currency: view.currency });
+  // O cartão mostra o número completo; abreviado só se escolhido no editor.
+  const fmt = (value: number | null) =>
+    formatMetricValue(value, view.format, {
+      currency: view.currency,
+      style: view.display?.numbers === "compact" ? "compact" : "full",
+      decimals: view.display?.decimals ?? undefined,
+    });
   // Sem base de comparação (sem dado de um lado, ou os dois zerados), o cartão não mostra variação, como o Resumo.
   const change = view.compare?.change.kind === "none" ? undefined : view.compare?.change;
   const delta = change

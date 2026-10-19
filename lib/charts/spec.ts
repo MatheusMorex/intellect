@@ -9,6 +9,33 @@
 import type { MetricDirection, MetricFormat } from "@/lib/charts/catalog";
 import type { Change } from "@/lib/charts/format";
 
+/** Aparência escolhida no editor (lib/charts/widgets.ts, WIDGET_DISPLAY). Sem ela, valem os padrões. */
+export type SpecDisplay = {
+  legend: "auto" | "top" | "bottom" | "none";
+  numbers: "auto" | "full" | "compact";
+  decimals: number | null;
+  colors: string[];
+  axisMin: number | null;
+  axisMax: number | null;
+  grid: boolean;
+};
+
+export const DEFAULT_SPEC_DISPLAY: SpecDisplay = {
+  legend: "auto",
+  numbers: "auto",
+  decimals: null,
+  colors: [],
+  axisMin: null,
+  axisMax: null,
+  grid: true,
+};
+
+/** Tipo do gráfico e a fórmula de cada métrica, para o "?" de "Quando usar". */
+export type ChartHelp = {
+  type: "kpi" | "line" | "column" | "bar" | "pie" | "donut" | "treemap" | "funnel" | "gantt";
+  metrics: { label: string; formula: string }[];
+};
+
 /** Um ponto do eixo: um dia, uma semana, uma campanha... */
 export type ChartCategory = {
   key: string;
@@ -79,6 +106,7 @@ export type ChartSpec = {
   empty: boolean;
   /** Por quê: no-data (nada no período) ou daily-only (as métricas só existem por dia e o gráfico está por hora). */
   emptyReason: "no-data" | "daily-only" | null;
+  display?: SpecDisplay;
 };
 
 // ---- proporção: pizza, rosca e treemap -----------------------------------------------------------
@@ -114,6 +142,7 @@ export type PieSpec = {
   notes: string[];
   empty: boolean;
   emptyReason: "no-data" | null;
+  display?: SpecDisplay;
 };
 
 export type TreemapNode = {
@@ -147,6 +176,7 @@ export type TreemapSpec = {
   notes: string[];
   empty: boolean;
   emptyReason: "no-data" | null;
+  display?: SpecDisplay;
 };
 
 // ---- processo: funil e Gantt ----------------------------------------------------------------------
@@ -176,6 +206,7 @@ export type FunnelSpec = {
   empty: boolean;
   /** no-board: o quadro não existe ou a pessoa não pode ver. */
   emptyReason: "no-data" | "no-board" | null;
+  display?: SpecDisplay;
 };
 
 export type GanttTask = {
@@ -213,6 +244,7 @@ export type GanttSpec = {
   notes: string[];
   empty: boolean;
   emptyReason: "no-tasks" | "no-board" | null;
+  display?: SpecDisplay;
 };
 
 /** Qualquer gráfico dos Painéis. */

@@ -70,6 +70,34 @@ export type DashboardRow = {
   weekStart: WeekStart;
 };
 
+/**
+ * Um painel de gráficos de um dashboard (S28 Painéis): os gráficos, onde cada
+ * um fica na grade, quem vê e com que filtros abre. No banco: dashboard_panels.
+ */
+export type PanelRow = {
+  id: Id;
+  dashboardId: Id;
+  name: string;
+  /** Ordem das abas. */
+  position: number;
+  /** O painel que abre primeiro (um por dashboard). */
+  isDefault: boolean;
+  /** Quem vê, além dos admins do workspace: todo o workspace ou só as pessoas escolhidas. */
+  visibility: "workspace" | "restricted";
+  viewerIds: Id[];
+  /** Membros podem mudar período e filtros só para a própria visualização (no endereço da página). */
+  membersCanFilter: boolean;
+  /** Período, agrupamento, comparação e filtros com que o painel abre (os parâmetros do endereço). */
+  defaults: Record<string, string>;
+  /** Configuração de cada gráfico (lib/charts/widgets.ts, PANEL_WIDGET), validada a cada leitura. */
+  widgets: unknown[];
+  /** Posição de cada gráfico na grade de 12 colunas (lib/charts/templates.ts). */
+  layout: { i: string; x: number; y: number; w: number; h: number }[];
+  createdBy: Id | null;
+  createdAt: IsoDateTime;
+  updatedAt: IsoDateTime;
+};
+
 export type AdAccountRow = {
   id: Id;
   workspaceId: Id;
@@ -553,6 +581,7 @@ export type Store = {
   workspaces: WorkspaceRow[];
   workspaceMembers: WorkspaceMemberRow[];
   dashboards: DashboardRow[];
+  panels: PanelRow[];
   adConnections: AdConnectionRow[];
   adAccounts: AdAccountRow[];
   dashboardAdAccounts: DashboardAdAccountRow[];

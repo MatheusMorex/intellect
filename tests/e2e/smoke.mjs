@@ -433,6 +433,8 @@ await step("Painéis: dica do gráfico com o período por extenso e a comparaç�
   const chart = page.locator("figure", { hasText: "Faturamento líquido e ROAS" });
   const canvas = chart.locator("canvas").first();
   await canvas.waitFor();
+  // O gráfico pode estar abaixo da área visível: rola até ele antes de usar o mouse.
+  await chart.scrollIntoViewIfNeeded();
   const box = await canvas.boundingBox();
   await page.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.6);
   await chart.getByText(/período anterior, /).first().waitFor({ timeout: 10_000 });
@@ -526,6 +528,129 @@ await step("Painéis: Gantt marca a tarefa atrasada e o clique abre o card", asy
   await late.getByRole("link", { name: "Revisar a página do Kit Completo" }).click();
   await page.waitForURL(/\/b\/.+\?card=/);
   await page.getByRole("dialog").getByRole("heading", { name: /Revisar a página do Kit Completo/ }).waitFor();
+});
+
+// ---- Painéis salvos (Fase 5) ----------------------------------------------------------------------
+
+const panelsNav = () => page.getByRole("navigation", { name: "Painéis deste dashboard" });
+const panelOf = (id) => store().panels.find((p) => p.id === id);
+let testPanelId = null;
+
+await step("Painéis: novo painel a partir do modelo Gestor de tráfego", async () => {
+  await page.goto(`${BASE}/d/${dashboardId}/paineis?periodo=30d`);
+  await page.locator("figure canvas").first().waitFor();
+  await panelsNav().getByRole("button", { name: "Novo painel" }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Nome do painel").fill("Tráfego do teste");
+  await dialog.getByText("Gestor de tráfego", { exact: true }).click();
+  await dialog.getByRole("button", { name: "Criar painel" }).click();
+  await page.waitForURL(/painel=.+&editar=1/);
+  testPanelId = new URL(page.url()).searchParams.get("painel");
+  await panelsNav().getByRole("link", { name: "Tráfego do teste" }).waitFor();
+  await page.locator("figure", { hasText: "CPC e CTR" }).locator("canvas").first().waitFor();
+  assert.equal(panelOf(testPanelId).widgets.length, 15, "o modelo tem 15 gráficos");
+});
+
+await step("Painéis: arrastar um gráfico muda a grade, e ela é salva sozinha", async () => {
+  const before = panelOf(testPanelId).layout.find((l) => l.i === "kpi-gasto");
+  const handle = page.getByRole("button", { name: "Arrastar para mudar de lugar: Gasto com anúncios" });
+  const box = await handle.boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 420, box.y + 12, { steps: 15 });
+  await page.mouse.up();
+  await page.getByText("Grade salva").waitFor();
+  // O arquivo de dados tem que mudar de verdade (até 15 s: o notebook é lento).
+  let after = before;
+  for (let i = 0; i < 30 && after.x === before.x && after.y === before.y; i++) {
+    await page.waitForTimeout(500);
+    after = panelOf(testPanelId).layout.find((l) => l.i === "kpi-gasto");
+  }
+  assert.notDeepEqual([after.x, after.y], [before.x, before.y], "o cartão mudou de lugar na grade salva");
+  // Recarregando, a grade continua como ficou.
+  await page.reload();
+  await page.getByText("Arraste pelo ícone de pontinhos", { exact: false }).waitFor();
+  assert.deepEqual(panelOf(testPanelId).layout.find((l) => l.i === "kpi-gasto"), after);
+});
+
+await step("Painéis: adicionar um gráfico pelo editor, com prévia", async () => {
+  await page.getByRole("button", { name: "Adicionar gráfico" }).click();
+  const sheet = page.getByRole("dialog");
+  await sheet.getByRole("heading", { name: "Novo gráfico" }).waitFor();
+  await sheet.getByRole("combobox", { name: "Tipo de gráfico" }).click();
+  await page.getByRole("option", { name: "Gráfico de pizza" }).click();
+  await sheet.getByRole("textbox", { name: "Título", exact: true }).fill("Pizza do teste");
+  await sheet.locator("canvas").first().waitFor();
+  await sheet.getByRole("button", { name: "Salvar gráfico" }).click();
+  await sheet.waitFor({ state: "detached" });
+  await page.locator("figure", { hasText: "Pizza do teste" }).locator("canvas").first().waitFor();
+  assert.ok(panelOf(testPanelId).widgets.some((w) => w.type === "pie" && w.title === "Pizza do teste"));
+});
+
+await step("Painéis: editar o gráfico e depois remover", async () => {
+  await page.getByRole("button", { name: "Editar gráfico: Pizza do teste" }).click();
+  const sheet = page.getByRole("dialog");
+  await sheet.getByRole("heading", { name: "Editar gráfico" }).waitFor();
+  await sheet.getByRole("textbox", { name: "Título", exact: true }).fill("Pizza editada");
+  await sheet.getByRole("button", { name: "Salvar gráfico" }).click();
+  await sheet.waitFor({ state: "detached" });
+  await page.locator("figure", { hasText: "Pizza editada" }).first().waitFor();
+  await page.getByRole("button", { name: "Remover gráfico: Pizza editada" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Remover gráfico" }).click();
+  await page.locator("figure", { hasText: "Pizza editada" }).waitFor({ state: "detached" });
+  assert.ok(!panelOf(testPanelId).widgets.some((w) => w.type === "pie"));
+});
+
+await step("Painéis: exportar os dados (CSV) e a imagem (PNG) de um gráfico", async () => {
+  await page.getByRole("link", { name: "Concluir edição" }).click();
+  await page.waitForURL((url) => !url.searchParams.has("editar"));
+  const chart = page.locator("figure", { hasText: "CPC e CTR" });
+  await chart.locator("canvas").first().waitFor();
+  await chart.getByRole("button", { name: "Exportar" }).click();
+  const [csv] = await Promise.all([page.waitForEvent("download"), page.getByRole("menuitem", { name: "Baixar dados (CSV)" }).click()]);
+  assert.equal(csv.suggestedFilename(), "CPC e CTR.csv");
+  // Com a comparação ligada, cada métrica tem também a coluna do período anterior.
+  assert.match(fs.readFileSync(await csv.path(), "utf8"), /^﻿Período;CPC \(R\$\);CPC \(período anterior\) \(R\$\);CTR \(%\);CTR \(período anterior\) \(%\)\r\n/);
+  await chart.getByRole("button", { name: "Exportar" }).click();
+  const [png] = await Promise.all([page.waitForEvent("download"), page.getByRole("menuitem", { name: "Baixar imagem (PNG)" }).click()]);
+  assert.equal(png.suggestedFilename(), "CPC e CTR.png");
+  const bytes = fs.readFileSync(await png.path());
+  assert.deepEqual([...bytes.subarray(0, 4)], [0x89, 0x50, 0x4e, 0x47], "é um PNG de verdade");
+});
+
+await step("Painéis: painel restrito some para quem não foi liberado", async () => {
+  await page.getByRole("button", { name: "Opções do painel" }).click();
+  await page.getByRole("menuitem", { name: "Quem pode ver…" }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByText("Só as pessoas escolhidas", { exact: true }).click();
+  await dialog.getByRole("button", { name: "Salvar" }).click();
+  await dialog.waitFor({ state: "detached" });
+  await panelsNav().getByLabel("Só para pessoas escolhidas").waitFor();
+  assert.equal(panelOf(testPanelId).visibility, "restricted");
+
+  await page.goto(`${BASE}/api/dev/login?email=bruno@intellect.test&next=${encodeURIComponent(`/d/${dashboardId}/paineis`)}`);
+  await panelsNav().getByRole("link", { name: "Visão geral" }).waitFor();
+  await page.locator("figure canvas").first().waitFor();
+  assert.equal(await panelsNav().getByRole("link", { name: /Tráfego do teste/ }).count(), 0, "o Bruno não vê a aba");
+  assert.equal(await page.getByRole("link", { name: "Editar painel" }).count(), 0, "membro não edita");
+  // Pelo endereço direto também não abre: cai no painel padrão, com o aviso.
+  await page.goto(`${BASE}/d/${dashboardId}/paineis?painel=${testPanelId}`);
+  await page.getByText("Esse painel não existe mais ou não está liberado para você.", { exact: false }).waitFor();
+  await page.locator("figure canvas").first().waitFor();
+
+  await page.goto(`${BASE}/api/dev/login?email=ana@intellect.test&next=${encodeURIComponent(`/d/${dashboardId}/paineis?painel=${testPanelId}`)}`);
+  await panelsNav().getByRole("link", { name: /Tráfego do teste/ }).waitFor();
+});
+
+await step("Painéis: excluir o painel de teste", async () => {
+  await page.locator("figure canvas").first().waitFor();
+  await page.getByRole("button", { name: "Opções do painel" }).click();
+  await page.getByRole("menuitem", { name: "Excluir painel" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Excluir painel" }).click();
+  await page.waitForURL(/\/paineis$/);
+  await panelsNav().getByRole("link", { name: "Visão geral" }).waitFor();
+  assert.equal(panelOf(testPanelId), undefined);
+  await page.locator("figure canvas").first().waitFor();
 });
 
 await step("Relatórios (endereço antigo) leva para Painéis", async () => {
