@@ -8,6 +8,7 @@ import { requireBoard, type Ctx } from "@/server/access";
 import { backgroundView } from "@/server/data/boards";
 import { listDashboardsFor } from "@/server/data/tracking";
 import { listsOfBoard } from "@/server/kanban/core";
+import { withLiveRead } from "@/server/live/scope";
 import { readStore } from "@/server/store/db";
 import type { AutomationRow, Store } from "@/server/store/types";
 
@@ -54,7 +55,7 @@ const view = (a: AutomationRow) => ({
   actions: a.actions as unknown as AutomationAction[],
 });
 
-export async function getAutomationDirectory(ctx: Ctx, boardId: string) {
+async function getAutomationDirectoryImpl(ctx: Ctx, boardId: string) {
   const { board, role } = requireBoard(ctx, boardId);
   const store = readStore();
   const dashboards = listDashboardsFor(ctx)
@@ -88,7 +89,7 @@ export async function getAutomationDirectory(ctx: Ctx, boardId: string) {
 
 export type AutomationDirectory = Awaited<ReturnType<typeof getAutomationDirectory>>;
 
-export async function getAutomationRuns(ctx: Ctx, boardId: string, filter: { automationId?: string; status?: string } = {}) {
+async function getAutomationRunsImpl(ctx: Ctx, boardId: string, filter: { automationId?: string; status?: string } = {}) {
   requireBoard(ctx, boardId);
   const store = readStore();
   const autos = new Map(store.automations.filter((a) => a.boardId === boardId).map((a) => [a.id, a]));
@@ -114,7 +115,7 @@ export async function getAutomationRuns(ctx: Ctx, boardId: string, filter: { aut
     });
 }
 
-export async function getAutomationEditor(ctx: Ctx, boardId: string, automationId: string | null) {
+async function getAutomationEditorImpl(ctx: Ctx, boardId: string, automationId: string | null) {
   const { board, role } = requireBoard(ctx, boardId, "normal");
   if (role === "observer") notFound();
   const store = readStore();
@@ -132,3 +133,17 @@ export async function getAutomationEditor(ctx: Ctx, boardId: string, automationI
 }
 
 export type AutomationEditor = Awaited<ReturnType<typeof getAutomationEditor>>;
+
+// ---- modo real (AUTH_MODE=live): as leituras rodam sobre o retrato do Supabase (server/live/scope.ts) ----
+
+export async function getAutomationDirectory(...args: Parameters<typeof getAutomationDirectoryImpl>): ReturnType<typeof getAutomationDirectoryImpl> {
+  return withLiveRead(args[0].user.id, () => getAutomationDirectoryImpl(...args));
+}
+
+export async function getAutomationRuns(...args: Parameters<typeof getAutomationRunsImpl>): ReturnType<typeof getAutomationRunsImpl> {
+  return withLiveRead(args[0].user.id, () => getAutomationRunsImpl(...args));
+}
+
+export async function getAutomationEditor(...args: Parameters<typeof getAutomationEditorImpl>): ReturnType<typeof getAutomationEditorImpl> {
+  return withLiveRead(args[0].user.id, () => getAutomationEditorImpl(...args));
+}

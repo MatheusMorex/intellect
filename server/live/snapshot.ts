@@ -136,49 +136,99 @@ export async function loadSnapshot(userId: string): Promise<Store> {
 
   const memberOf = new Set(ids(myBoardMemberships, "board_id"));
   const boards = allBoards.filter((b) => b.visibility === "workspace" || memberOf.has(b.id as string));
-  const boardIds = ids(boards);
 
-  // 3ª rodada: tudo o que é dos quadros. O que é dos cards vem pelo quadro do card (junção no banco),
-  // sem esperar a lista de cards.
-  const viaCard = (key: keyof Store) => [...col(key), "cards!inner(board_id)"];
-  const [boardMembers, lists, cards, labels, activities, cardMembers, cardLabels, checklists, comments, checklistItems] = await Promise.all([
-    selectIn("board_members", col("boardMembers"), "board_id", boardIds),
-    selectIn("lists", col("lists"), "board_id", boardIds),
-    selectIn("cards", col("cards"), "board_id", boardIds),
-    selectIn("labels", col("labels"), "board_id", boardIds),
-    (async () => {
-      if (boardIds.length === 0) return [];
-      const { data, error } = await adminClient()
-        .from("activities")
-        .select(col("activities").join(", "))
-        .in("board_id", boardIds.slice(0, IN_CHUNK))
-        .order("created_at", { ascending: false })
-        .limit(MAX_ACTIVITIES);
-      if (error) throw new Error(`[banco] ler activities: ${error.message}`);
-      return data as unknown as Row[];
-    })(),
-    selectIn("card_members", viaCard("cardMembers"), "cards.board_id", boardIds),
-    selectIn("card_labels", viaCard("cardLabels"), "cards.board_id", boardIds),
-    selectIn("checklists", viaCard("checklists"), "cards.board_id", boardIds),
-    selectIn("comments", viaCard("comments"), "cards.board_id", boardIds),
-    selectIn("checklist_items", [...col("checklistItems"), "checklists!inner(cards!inner(board_id))"], "checklists.cards.board_id", boardIds),
+  store.workspaces = load("workspaces", workspaces);
+  store.workspaceMembers = load("workspaceMembers", workspaceMembers);
+  store.boardStars = load("boardStars", stars);
+  store.boardVisits = load("boardVisits", visits);
+  store.invites = load("invites", invites);
+  store.notifications = load("notifications", notifications);
+  await fillBoards(store, boards, memberProfiles, userId);
+  return store;
+}
+
+/**
+ * Retrato de um workspace inteiro, sem pessoa logada: o relógio da automação
+ * (agendadas, prazos e lembretes) olha todos os quadros. As notificações que
+ * entram são só os lembretes de prazo recentes (para não lembrar duas vezes).
+ */
+export async function loadWorkspaceSnapshot(workspaceId: string): Promise<Store> {
+  const store = emptyStore();
+  const col = (key: keyof Store) => tableOf(key).columns;
+  const [workspaces, workspaceMembers, boards, memberProfiles] = await Promise.all([
+    selectIn("workspaces", col("workspaces"), "id", [workspaceId]),
+    selectIn("workspace_members", col("workspaceMembers"), "workspace_id", [workspaceId]),
+    selectIn("boards", [...col("boards"), "updated_at"], "workspace_id", [workspaceId]),
+    selectIn("profiles", [...col("users"), "workspace_members!inner(workspace_id)"], "workspace_members.workspace_id", [workspaceId]),
   ]);
+  const since = new Date(Date.now() - 3 * 86_400_000).toISOString();
+  const reminders = await selectIn("notifications", col("notifications"), "board_id", ids(boards), (q) => q.eq("type", "due_soon").gte("created_at", since));
+  store.workspaces = load("workspaces", workspaces);
+  store.workspaceMembers = load("workspaceMembers", workspaceMembers);
+  store.notifications = load("notifications", reminders);
+  await fillBoards(store, boards, memberProfiles, null);
+  return store;
+}
+
+/** Execuções com chave de repetição dos últimos dias (para a mesma automação não rodar duas vezes). */
+const RUNS_DAYS = 32;
+/** Execuções mais recentes, para o histórico (S16). */
+const RECENT_RUNS = 300;
+
+/**
+ * Última rodada, comum aos dois retratos: tudo o que é dos quadros. O que é dos
+ * cards vem pelo quadro do card (junção no banco), sem esperar a lista de cards.
+ */
+async function fillBoards(store: Store, boards: Row[], memberProfiles: Row[], userId: string | null) {
+  const col = (key: keyof Store) => tableOf(key).columns;
+  const boardIds = ids(boards);
+  const viaCard = (key: keyof Store) => [...col(key), "cards!inner(board_id)"];
+  const viaAutomation = [...col("automationRuns"), "automations!inner(board_id)"];
+  const latest = async (table: string, columns: readonly string[], filter: (q: Query) => Query, order: string, limit: number) => {
+    if (boardIds.length === 0) return [];
+    const { data, error } = await filter(adminClient().from(table).select(columns.join(", ")))
+      .order(order, { ascending: false })
+      .limit(limit);
+    if (error) throw new Error(`[banco] ler ${table}: ${error.message}`);
+    return data as unknown as Row[];
+  };
+  const someBoards = boardIds.slice(0, IN_CHUNK);
+  const since = new Date(Date.now() - RUNS_DAYS * 86_400_000).toISOString();
+  const [boardMembers, lists, cards, labels, activities, cardMembers, cardLabels, checklists, comments, checklistItems, automations, keyedRuns, recentRuns] =
+    await Promise.all([
+      selectIn("board_members", col("boardMembers"), "board_id", boardIds),
+      selectIn("lists", col("lists"), "board_id", boardIds),
+      selectIn("cards", col("cards"), "board_id", boardIds),
+      selectIn("labels", col("labels"), "board_id", boardIds),
+      latest("activities", col("activities"), (q) => q.in("board_id", someBoards), "created_at", MAX_ACTIVITIES),
+      selectIn("card_members", viaCard("cardMembers"), "cards.board_id", boardIds),
+      selectIn("card_labels", viaCard("cardLabels"), "cards.board_id", boardIds),
+      selectIn("checklists", viaCard("checklists"), "cards.board_id", boardIds),
+      selectIn("comments", viaCard("comments"), "cards.board_id", boardIds),
+      selectIn("checklist_items", [...col("checklistItems"), "checklists!inner(cards!inner(board_id))"], "checklists.cards.board_id", boardIds),
+      selectIn("automations", col("automations"), "board_id", boardIds),
+      selectIn("automation_runs", viaAutomation, "automations.board_id", boardIds, (q) => q.not("dedupe_key", "is", null).gte("started_at", since)),
+      latest("automation_runs", viaAutomation, (q) => q.in("automations.board_id", someBoards), "started_at", RECENT_RUNS),
+    ]);
 
   // Quem aparece em comentários e atividades mas saiu do workspace (raro): mais uma consulta, só se precisar.
   const known = new Set(ids(memberProfiles));
   const missing = new Set<string>();
-  if (!known.has(userId)) missing.add(userId);
+  if (userId && !known.has(userId)) missing.add(userId);
   for (const c of comments) if (c.author_id && !known.has(c.author_id as string)) missing.add(c.author_id as string);
   for (const a of activities) if (a.actor_id && !known.has(a.actor_id as string)) missing.add(a.actor_id as string);
   const profiles = missing.size ? [...memberProfiles, ...(await selectIn("profiles", col("users"), "id", [...missing]))] : memberProfiles;
 
+  // Execuções: as duas listas juntas, sem repetir, da mais antiga para a mais nova; o quadro vem da automação.
+  const runRows = new Map<string, Row>();
+  for (const r of [...keyedRuns, ...recentRuns]) runRows.set(r.id as string, r);
+  const sortedRuns = [...runRows.values()].sort((a, b) => String(a.started_at).localeCompare(String(b.started_at)));
+  const runs = load("automationRuns", sortedRuns);
+  sortedRuns.forEach((r, i) => (runs[i].boardId = (r.automations as { board_id: string }).board_id));
+
   store.users = load("users", profiles);
-  store.workspaces = load("workspaces", workspaces);
-  store.workspaceMembers = load("workspaceMembers", workspaceMembers);
   store.boards = load("boards", boards);
   store.boardMembers = load("boardMembers", boardMembers);
-  store.boardStars = load("boardStars", stars);
-  store.boardVisits = load("boardVisits", visits);
   store.lists = load("lists", lists);
   store.cards = load("cards", cards);
   store.labels = load("labels", labels);
@@ -187,12 +237,11 @@ export async function loadSnapshot(userId: string): Promise<Store> {
   store.checklists = load("checklists", checklists);
   store.checklistItems = load("checklistItems", checklistItems);
   store.comments = load("comments", comments);
-  store.invites = load("invites", invites);
-  store.notifications = load("notifications", notifications);
   store.activities = load("activities", activities).reverse();
+  store.automations = load("automations", automations);
+  store.automationRuns = runs;
   // Carimbo do quadro (tempo real): a hora da última mudança.
   store.boardStamps = Object.fromEntries(boards.map((b) => [b.id as string, String(b.updated_at ?? "")]));
-  return store;
 }
 
 // ---- diferença -----------------------------------------------------------------------------------
@@ -200,8 +249,11 @@ export async function loadSnapshot(userId: string): Promise<Store> {
 export type TableChanges = {
   spec: TableSpec;
   inserts: Row[];
-  /** id → colunas que mudaram (já no formato do banco) e os valores lidos dos contadores. */
-  updates: { id: string; patch: Row; expected: Row }[];
+  /**
+   * id → colunas que mudaram (já no formato do banco) e os valores lidos dos contadores.
+   * deferred: a segunda passada de uma linha nova (referência circular).
+   */
+  updates: { id: string; patch: Row; expected: Row; deferred?: boolean }[];
   deletes: string[];
 };
 
@@ -220,7 +272,15 @@ export function diffSnapshot(base: Store, current: Store): TableChanges[] {
     for (const [id, row] of after) {
       const old = before.get(id);
       if (!old) {
-        if (!allowed) changes.inserts.push(rowToDb(spec, row));
+        if (allowed) continue;
+        const insert = rowToDb(spec, row);
+        // Referência circular: entra vazia e ganha o valor depois de todas as linhas novas
+        // (uma coluna por vez: uma referência que não existe não leva a outra junto).
+        for (const column of spec.deferred ?? []) {
+          if (insert[column] != null) changes.updates.push({ id, patch: { [column]: insert[column] }, expected: {}, deferred: true });
+          insert[column] = null;
+        }
+        changes.inserts.push(insert);
         continue;
       }
       const changed: Row = {};
@@ -259,6 +319,9 @@ async function applyUpdate(spec: TableSpec, update: TableChanges["updates"][numb
   let query = adminClient().from(spec.table).update(patch).eq("id", update.id);
   for (const [column, value] of Object.entries(update.expected)) query = query.eq(column, value as never);
   const { data, error } = await query.select("id");
+  // Segunda passada apontando para algo que não chegou a existir (a automação criou um card e
+  // desfez tudo por erro): a referência fica vazia, como o banco faria se o card fosse apagado.
+  if (error?.code === "23503" && update.deferred) return;
   if (error) throw new WriteFailed(spec.table, error.message);
   if (Object.keys(update.expected).length > 0 && (data?.length ?? 0) === 0) throw new WriteConflict(spec.table === "cards" ? "este card" : "este quadro");
 }

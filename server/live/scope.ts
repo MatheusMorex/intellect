@@ -12,7 +12,7 @@ import { cache } from "react";
 import { isLive } from "@/server/mode";
 import type { Store } from "@/server/store/types";
 
-import { diffSnapshot, flushChanges, loadSnapshot, NotLiveYet, removeUnusedBoardImages, unmappedChanges, WriteConflict } from "./snapshot";
+import { diffSnapshot, flushChanges, loadSnapshot, loadWorkspaceSnapshot, NotLiveYet, removeUnusedBoardImages, unmappedChanges, WriteConflict } from "./snapshot";
 
 type Scope = { userId: string; store: Store; base: Store };
 
@@ -58,9 +58,18 @@ export async function withLiveRead<T>(userId: string, fn: () => T | Promise<T>):
  * aleatória (para as tentativas não baterem de novo).
  */
 export async function withLiveWrite<T>(userId: string, fn: () => Promise<T>, attempts = 8): Promise<T> {
+  return write(userId, () => loadSnapshot(userId), fn, attempts);
+}
+
+/** O relógio da automação: o mesmo que uma ação, sobre o workspace inteiro (sem pessoa logada). */
+export async function withLiveWorkspace<T>(workspaceId: string, fn: () => Promise<T>, attempts = 8): Promise<T> {
+  return write("relógio", () => loadWorkspaceSnapshot(workspaceId), fn, attempts);
+}
+
+async function write<T>(userId: string, loader: () => Promise<Store>, fn: () => Promise<T>, attempts: number): Promise<T> {
   if (!isLive() || als.getStore()) return fn();
   for (let attempt = 1; ; attempt++) {
-    const scope = open(userId, await loadSnapshot(userId));
+    const scope = open(userId, await loader());
     try {
       const result = await als.run(scope, fn);
       await save(scope);

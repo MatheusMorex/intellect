@@ -24,6 +24,13 @@ export type TableSpec = {
   updatedAt?: boolean;
   /** Contadores: só gravam se o valor no banco ainda for o lido (senão, conflito e a ação roda de novo). */
   compareAndSet?: readonly string[];
+  /**
+   * Referências que entram numa segunda passada: a linha nova entra com elas vazias e,
+   * depois de todas as linhas novas, ganha o valor (referência circular entre tabelas).
+   */
+  deferred?: readonly string[];
+  /** Campos que só existem no app (calculados ao carregar): não vão para o banco. */
+  appOnly?: readonly string[];
   /** Ajustes de formato na ida e na volta, sobre a linha já em camelCase. */
   fromDb?: (row: Row) => Row;
   toDb?: (row: Row) => Row;
@@ -85,6 +92,40 @@ export const TABLES: readonly TableSpec[] = [
   { key: "boardMembers", table: "board_members", columns: ["id", "board_id", "user_id", "role"], updatedAt: true },
   { key: "lists", table: "lists", columns: ["id", "board_id", "name", "rank", "color", "archived_at"], updatedAt: true },
   { key: "labels", table: "labels", columns: ["id", "board_id", "name", "color", "created_at"], updatedAt: true },
+  {
+    key: "automations",
+    table: "automations",
+    columns: [
+      "id",
+      "board_id",
+      "type",
+      "name",
+      "trigger",
+      "filters",
+      "actions",
+      "enabled",
+      "timezone",
+      "next_run_at",
+      "dashboard_id",
+      "created_by",
+      "failure_count",
+      "disabled_reason",
+      "created_at",
+      "updated_at",
+    ],
+  },
+  {
+    // Antes dos cards e das atividades: a chave única (automação, dedupe_key) recusa a execução
+    // repetida antes de qualquer card ser criado. O card e a atividade de origem entram depois.
+    key: "automationRuns",
+    table: "automation_runs",
+    columns: ["id", "automation_id", "trigger_activity_id", "card_id", "status", "dedupe_key", "depth", "chain", "message", "operations", "started_at", "finished_at"],
+    deferred: ["card_id", "trigger_activity_id"],
+    // O quadro vem da automação, ao carregar (server/live/snapshot.ts).
+    appOnly: ["boardId"],
+    // O banco aceita profundidade até 5; a execução parada por passar disso fica com 5.
+    toDb: (r) => ("depth" in r ? { ...r, depth: Math.min(Number(r.depth), 5) } : r),
+  },
   {
     key: "cards",
     table: "cards",

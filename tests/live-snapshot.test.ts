@@ -39,6 +39,35 @@ for (const m of SQL.matchAll(/create table public\.(\w+) \(([\s\S]*?)\n\);/g)) {
 const camel = (s: string) => s.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
 const NOW = new Date("2026-10-20T15:00:00Z");
 const seed = createSeed(NOW);
+// Os dados de exemplo nascem sem atividades nem execuções: uma de cada, completa, para o mapa ser conferido.
+seed.activities.push({
+  id: "33333333-3333-4333-8333-333333333333",
+  workspaceId: seed.workspaces[0].id,
+  boardId: seed.boards[0].id,
+  cardId: seed.cards[0].id,
+  actorId: seed.users[0].id,
+  actorKind: "automation",
+  type: "card.moved",
+  data: { from: "A", to: "B" },
+  automationRunId: null,
+  automationCheckedAt: NOW.toISOString(),
+  createdAt: NOW.toISOString(),
+});
+seed.automationRuns.push({
+  id: "44444444-4444-4444-8444-444444444444",
+  automationId: seed.automations[0].id,
+  boardId: seed.automations[0].boardId,
+  triggerActivityId: null,
+  cardId: null,
+  status: "success",
+  dedupeKey: "chave",
+  depth: 0,
+  chain: [seed.automations[0].id],
+  message: "1 ação feita.",
+  operations: 1,
+  startedAt: NOW.toISOString(),
+  finishedAt: NOW.toISOString(),
+});
 
 describe("mapa do retrato × migrações", () => {
   test("cada coluna do mapa existe na tabela", () => {
@@ -65,7 +94,7 @@ describe("mapa do retrato × migrações", () => {
       // Os dados de exemplo não têm convites: os testes com o banco (tests/live) criam e conferem.
       const rows = seed[spec.key] as unknown as Row[];
       const fields = new Set(rows.flatMap((r) => Object.keys(r)));
-      const mapped = new Set(spec.columns.map(camel));
+      const mapped = new Set([...spec.columns.map(camel), ...(spec.appOnly ?? [])]);
       for (const field of fields) assert.ok(mapped.has(field), `${String(spec.key)}.${field} não tem coluna em ${spec.table}`);
     }
   });
@@ -75,10 +104,18 @@ describe("mapa do retrato × migrações", () => {
       if (spec.key === "users") continue; // o perfil não tem senha no banco
       for (const row of (seed[spec.key] as unknown as Row[]).slice(0, 30)) {
         const back = rowFromDb(spec, rowToDb(spec, row));
-        const expected = Object.fromEntries(Object.entries(row).filter(([, v]) => v !== undefined));
+        const expected = Object.fromEntries(Object.entries(row).filter(([k, v]) => v !== undefined && !spec.appOnly?.includes(k)));
         assert.deepEqual(back, expected, `${spec.table} ${row.id}`);
       }
     }
+  });
+
+  test("execução de automação: profundidade até 5 no banco; o quadro não vai (vem da automação)", () => {
+    const spec = tableOf("automationRuns");
+    const run = seed.automationRuns[0];
+    const db = rowToDb(spec, { ...run, depth: 6 });
+    assert.equal(db.depth, 5);
+    assert.ok(!("board_id" in db) && !("boardId" in db));
   });
 
   test("fundo de quadro com imagem: { fileId } no app, { path } no banco", () => {
@@ -182,14 +219,30 @@ describe("diferença entre o retrato lido e o retrato depois das regras", () => 
     assert.equal(profiles.inserts.length + profiles.deletes.length, 0);
   });
 
-  test("mudança numa parte fora do mapa (vínculo com campanha, automação) é acusada, não some em silêncio", () => {
+  test("mudança numa parte fora do mapa (vínculo com campanha, despesa) é acusada, não some em silêncio", () => {
     const current = clone(seed);
     assert.deepEqual(unmappedChanges(seed, current), []);
     current.cardLinks.pop();
-    current.automations[0].enabled = !current.automations[0].enabled;
+    current.expenses.pop();
     current.outbox.push({ id: "x", to: "a@b.c", subject: "s", text: "t", link: null, createdAt: NOW.toISOString() });
     current.boardStamps[seed.boards[0].id] = "outro";
-    assert.deepEqual(unmappedChanges(seed, current).sort(), ["automations", "cardLinks"]);
+    assert.deepEqual(unmappedChanges(seed, current).sort(), ["cardLinks", "expenses"]);
+  });
+
+  test("execução nova: o card e a atividade de origem entram numa segunda passada (referência circular)", () => {
+    const current = clone(seed);
+    const run = { ...seed.automationRuns[0], id: "22222222-2222-4222-8222-222222222222", cardId: seed.cards[0].id, triggerActivityId: seed.activities.at(-1)!.id };
+    current.automationRuns.push(run);
+    const c = changesOf(seed, current, "automation_runs")!;
+    assert.equal(c.inserts[0].card_id, null);
+    assert.equal(c.inserts[0].trigger_activity_id, null);
+    assert.deepEqual(
+      c.updates.map((u) => [u.id, u.patch, u.deferred]),
+      [
+        [run.id, { card_id: run.cardId }, true],
+        [run.id, { trigger_activity_id: run.triggerActivityId }, true],
+      ],
+    );
   });
 
   test("ordem das tabelas: quem é referenciado entra antes", () => {
@@ -204,5 +257,9 @@ describe("diferença entre o retrato lido e o retrato depois das regras", () => 
     before("cards", "comments");
     before("cards", "notifications");
     before("cards", "activities");
+    before("automations", "automation_runs");
+    // A execução entra antes dos cards: a chave única recusa a repetida antes de qualquer card novo.
+    before("automation_runs", "cards");
+    before("automation_runs", "activities");
   });
 });

@@ -13,7 +13,8 @@ Espere aparecer `Ready` e abra http://localhost:3000. A primeira abertura de cad
 ## Dois modos
 
 - **Simulado** (`AUTH_MODE=fake` no `.env.local`, o padrão): login e dados de exemplo no arquivo `.data/store.json`. `npm run seed` apaga os dados de exemplo (o app recria na próxima abertura).
-- **Real** (`AUTH_MODE=live`): login pelo Supabase Auth e dados no Supabase. Já ligados: login, perfil, workspace e convites (etapa 1) e o kanban inteiro (etapa 2: quadros, listas, cards, etiquetas, checklists, comentários, notificações, compartilhar e fundo com imagem). Os dashboards entram na etapa 4; até lá aparecem zerados.
+- **Real** (`AUTH_MODE=live`): login pelo Supabase Auth e dados no Supabase. Já ligados: login, perfil, workspace e convites (etapa 1), o kanban inteiro (etapa 2: quadros, listas, cards, etiquetas, checklists, comentários, notificações, compartilhar e fundo com imagem) e as automações (etapa 3: regras, botões, agendadas, por prazo, lembretes e histórico). Os dashboards entram na etapa 4; até lá aparecem zerados, e as regras por métrica (que dependem deles) ainda não têm dashboard para escolher.
+- **Relógio da automação:** a cada minuto, roda as agendadas, as regras por prazo e os lembretes (`server/automation/clock.ts`, ligado pelo `instrumentation.ts`). Precisa de um servidor sempre ligado (Railway ou Render) e de **um só** servidor rodando o relógio. `AUTOMATION_CLOCK=off` desliga.
 
 Como o modo real funciona por dentro: a cada tela ou ação, o app carrega do Supabase um "retrato" do que a pessoa pode ver, no mesmo formato do modo simulado (`server/live/snapshot.ts`). As mesmas regras rodam sobre ele, e no fim só o que mudou é gravado (`server/live/scope.ts`).
 

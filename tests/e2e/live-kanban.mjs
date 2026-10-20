@@ -238,6 +238,43 @@ try {
     await until(async () => Boolean((await db("cards", (q) => q.eq("board_id", boardId)))[0].archived_at), "o card arquivado");
   });
 
+  await step("automação: criar regra pelo construtor (card novo em A fazer ganha comentário)", async () => {
+    await page.goto(`${BASE}/b/${boardId}/automation`);
+    await (await hydrated(page.getByRole("link", { name: "Criar regra" }).first())).click();
+    await page.waitForURL(/automation\/new\?tipo=rule/);
+    await (await hydrated(page.getByLabel("Nome da automação"))).fill("Boas-vindas ao card");
+    await page.getByLabel("Quando", { exact: true }).click();
+    await page.getByRole("option", { name: "Um card for criado" }).click();
+    await page.getByLabel("Na lista").click();
+    await page.getByRole("option", { name: "A fazer" }).click();
+    await page.getByLabel("Comentário", { exact: true }).fill("Bem-vindo, {cardname}");
+    await page.getByRole("button", { name: "Criar automação" }).click();
+    await page.waitForURL(/automation\?aba=regras/);
+    await page.getByRole("heading", { name: "Boas-vindas ao card" }).waitFor();
+    const [rule] = await db("automations", (q) => q.eq("board_id", boardId).eq("name", "Boas-vindas ao card"));
+    assert.equal(rule.type, "rule");
+  });
+
+  await step("automação: a regra roda quando o card nasce, e a execução fica no histórico", async () => {
+    await page.goto(`${BASE}/b/${boardId}`);
+    const list = page.getByRole("region", { name: "Lista A fazer" });
+    await (await hydrated(list.getByRole("button", { name: "Adicionar card" }))).click();
+    await list.getByRole("textbox").fill("Card da regra");
+    await list.getByRole("textbox").press("Enter");
+    await list.getByRole("button", { name: "Card da regra", exact: true }).waitFor();
+    let card = null;
+    await until(async () => {
+      [card] = await db("cards", (q) => q.eq("board_id", boardId).eq("name", "Card da regra"));
+      return Boolean(card);
+    }, "o card da regra");
+    await until(async () => (await db("comments", (q) => q.eq("card_id", card.id))).length === 1, "o comentário da automação");
+    const [comment] = await db("comments", (q) => q.eq("card_id", card.id));
+    assert.equal(comment.body_text, "Bem-vindo, Card da regra");
+    assert.equal(comment.automation_name, "Boas-vindas ao card");
+    await page.goto(`${BASE}/b/${boardId}/automation?aba=historico`);
+    await page.getByRole("link", { name: "Boas-vindas ao card" }).first().waitFor();
+  });
+
   await step("sem erros no console", async () => {
     assert.deepEqual(problems, []);
   });

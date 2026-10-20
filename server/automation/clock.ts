@@ -1,8 +1,10 @@
-// Relógio do modo simulado: a cada minuto roda o que venceu (regras de métrica,
-// agendadas, por data de entrega e lembretes de prazo). No backend real isto
-// vira jobs agendados (Vercel Cron ou Inngest); a lógica é a mesma, em engine.ts.
+// Relógio da automação: a cada minuto roda o que venceu (regras de métrica,
+// agendadas, por data de entrega e lembretes de prazo). A lógica é a mesma nos
+// dois modos (engine.ts); no modo real, quem carrega e grava é server/live/clock.ts.
 
 import { dueWork, hasWork, runDueWork } from "@/server/automation/engine";
+import { tickLive } from "@/server/live/clock";
+import { isLive } from "@/server/mode";
 import { mutate, readStore } from "@/server/store/db";
 
 const EVERY_MS = 60_000;
@@ -17,11 +19,18 @@ export function tick(now = new Date()) {
 export function startClock() {
   const g = globalThis as unknown as Record<symbol, NodeJS.Timeout | undefined>;
   if (g[KEY]) return;
-  const run = () => {
+  // Uma volta por vez: no modo real a volta espera o banco e pode passar de um minuto.
+  let busy = false;
+  const run = async () => {
+    if (busy) return;
+    busy = true;
     try {
-      tick();
+      if (isLive()) await tickLive();
+      else tick();
     } catch (error) {
       console.error("[relógio da automação]", error);
+    } finally {
+      busy = false;
     }
   };
   g[KEY] = setInterval(run, EVERY_MS);

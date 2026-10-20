@@ -6,6 +6,7 @@ import { z } from "zod";
 import { automationInput, type AutomationInput, type MetricTrigger, type ScheduleTrigger } from "@/lib/automation/schema";
 import { requireBoard, requireDashboard, workspaceRole } from "@/server/access";
 import { requireUser, type SessionUser } from "@/server/auth/session";
+import { liveAction } from "@/server/live/action";
 import { conditionsMet, metricObjects, nextScheduleRun, runButton, runMetricAutomation } from "@/server/automation/engine";
 import { mutate, newId, nowIso, readStore } from "@/server/store/db";
 import type { AutomationRow, Store } from "@/server/store/types";
@@ -75,7 +76,7 @@ async function onAutomation(automationId: string, minRole: "observer" | "normal"
   return { user, automation, board, role };
 }
 
-export async function createAutomation(boardId: string, input: AutomationInput): Promise<ActionResult<{ id: string }>> {
+async function createAutomationImpl(boardId: string, input: AutomationInput): Promise<ActionResult<{ id: string }>> {
   const user = await requireUser();
   const { board } = requireBoard({ user }, boardId, "normal");
   if (board.closedAt) return fail("Este quadro está fechado.");
@@ -112,7 +113,7 @@ export async function createAutomation(boardId: string, input: AutomationInput):
   return ok({ id });
 }
 
-export async function updateAutomation(automationId: string, input: AutomationInput): Promise<ActionResult> {
+async function updateAutomationImpl(automationId: string, input: AutomationInput): Promise<ActionResult> {
   const ctx = await onAutomation(automationId);
   if (!ctx) return fail("Esta automação não existe mais.");
   const parsed = automationInput.safeParse(input);
@@ -136,7 +137,7 @@ export async function updateAutomation(automationId: string, input: AutomationIn
   return ok(undefined);
 }
 
-export async function toggleAutomation(automationId: string, enabled: boolean): Promise<ActionResult> {
+async function toggleAutomationImpl(automationId: string, enabled: boolean): Promise<ActionResult> {
   const ctx = await onAutomation(automationId);
   if (!ctx) return fail("Esta automação não existe mais.");
   mutate((store) => {
@@ -154,7 +155,7 @@ export async function toggleAutomation(automationId: string, enabled: boolean): 
   return ok(undefined);
 }
 
-export async function copyAutomation(automationId: string): Promise<ActionResult<{ id: string }>> {
+async function copyAutomationImpl(automationId: string): Promise<ActionResult<{ id: string }>> {
   const ctx = await onAutomation(automationId);
   if (!ctx) return fail("Esta automação não existe mais.");
   const id = mutate((store) => {
@@ -168,7 +169,7 @@ export async function copyAutomation(automationId: string): Promise<ActionResult
   return ok({ id });
 }
 
-export async function deleteAutomation(automationId: string): Promise<ActionResult> {
+async function deleteAutomationImpl(automationId: string): Promise<ActionResult> {
   const ctx = await onAutomation(automationId);
   if (!ctx) return fail("Esta automação não existe mais.");
   mutate((store) => {
@@ -179,7 +180,7 @@ export async function deleteAutomation(automationId: string): Promise<ActionResu
 }
 
 /** Botão do card (com cardId) ou do quadro. */
-export async function pressButton(automationId: string, cardId: string | null): Promise<ActionResult<{ status: string; message: string | null }>> {
+async function pressButtonImpl(automationId: string, cardId: string | null): Promise<ActionResult<{ status: string; message: string | null }>> {
   const ctx = await onAutomation(automationId);
   if (!ctx) return fail("Este botão não existe mais.");
   const { automation, board, user } = ctx;
@@ -199,7 +200,7 @@ export async function pressButton(automationId: string, cardId: string | null): 
 }
 
 /** Regra de métrica: roda agora, sem esperar a próxima checagem. */
-export async function runMetricNow(automationId: string): Promise<ActionResult<{ matched: number; runs: number }>> {
+async function runMetricNowImpl(automationId: string): Promise<ActionResult<{ matched: number; runs: number }>> {
   const ctx = await onAutomation(automationId);
   if (!ctx) return fail("Esta automação não existe mais.");
   if (ctx.automation.type !== "metric") return fail("Só regras de métrica rodam por aqui.");
@@ -209,7 +210,7 @@ export async function runMetricNow(automationId: string): Promise<ActionResult<{
 }
 
 /** Prévia do construtor: quem bate as condições agora, com os números. */
-export async function previewMetric(boardId: string, trigger: MetricTrigger) {
+async function previewMetricImpl(boardId: string, trigger: MetricTrigger) {
   const user = await requireUser();
   requireBoard({ user }, boardId, "observer");
   const parsed = automationInput.safeParse({ type: "metric", name: "prévia", trigger, filters: [], actions: [{ kind: "archive_card" }] });
@@ -226,4 +227,38 @@ export async function previewMetric(boardId: string, trigger: MetricTrigger) {
   } catch (error) {
     return { ok: false as const, error: error instanceof Error ? error.message : "Não deu para calcular." };
   }
+}
+
+// ---- modo real (AUTH_MODE=live): cada action roda sobre o retrato do Supabase (server/live/action.ts) ----
+
+export async function createAutomation(...args: Parameters<typeof createAutomationImpl>): ReturnType<typeof createAutomationImpl> {
+  return liveAction(() => createAutomationImpl(...args));
+}
+
+export async function updateAutomation(...args: Parameters<typeof updateAutomationImpl>): ReturnType<typeof updateAutomationImpl> {
+  return liveAction(() => updateAutomationImpl(...args));
+}
+
+export async function toggleAutomation(...args: Parameters<typeof toggleAutomationImpl>): ReturnType<typeof toggleAutomationImpl> {
+  return liveAction(() => toggleAutomationImpl(...args));
+}
+
+export async function copyAutomation(...args: Parameters<typeof copyAutomationImpl>): ReturnType<typeof copyAutomationImpl> {
+  return liveAction(() => copyAutomationImpl(...args));
+}
+
+export async function deleteAutomation(...args: Parameters<typeof deleteAutomationImpl>): ReturnType<typeof deleteAutomationImpl> {
+  return liveAction(() => deleteAutomationImpl(...args));
+}
+
+export async function pressButton(...args: Parameters<typeof pressButtonImpl>): ReturnType<typeof pressButtonImpl> {
+  return liveAction(() => pressButtonImpl(...args));
+}
+
+export async function runMetricNow(...args: Parameters<typeof runMetricNowImpl>): ReturnType<typeof runMetricNowImpl> {
+  return liveAction(() => runMetricNowImpl(...args));
+}
+
+export async function previewMetric(...args: Parameters<typeof previewMetricImpl>): ReturnType<typeof previewMetricImpl> {
+  return liveAction(() => previewMetricImpl(...args));
 }

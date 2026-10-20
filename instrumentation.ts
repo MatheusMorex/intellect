@@ -1,5 +1,5 @@
-// Roda uma vez quando o servidor sobe. No modo simulado, liga o relógio da
-// automação (métricas, agendadas, prazos e lembretes a cada minuto).
+// Roda uma vez quando o servidor sobe. Liga o relógio da
+// automação (métricas, agendadas, prazos e lembretes a cada minuto), nos dois modos.
 
 export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;

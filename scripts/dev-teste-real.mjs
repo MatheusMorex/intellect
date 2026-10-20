@@ -13,7 +13,6 @@ if (!process.env.NEXT_PUBLIC_SUPABASE_URL?.includes("aqaijwpnudhftlxwsfdm")) {
 
 const child = spawn(process.execPath, ["node_modules/next/dist/bin/next", "dev", ...process.argv.slice(2)], {
   stdio: "inherit",
-  // Relógio da automação desligado: as regras entram no modo real na etapa 3.
-  env: { ...process.env, AUTH_MODE: "live", AUTOMATION_CLOCK: "off" },
+  env: { ...process.env, AUTH_MODE: "live" },
 });
 child.on("exit", (code) => process.exit(code ?? 0));
