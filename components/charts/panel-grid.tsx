@@ -44,30 +44,36 @@ const layoutKey = (layout: PanelLayoutItem[]) => JSON.stringify([...layout].sort
 const heightOf = (h: number) => h * ROW_HEIGHT + (h - 1) * GRID_MARGIN;
 
 function ViewGrid({ layout, widgets, slots }: { layout: PanelLayoutItem[]; widgets: Map<string, PanelWidget>; slots: Record<string, ReactNode> }) {
+  // As 12 colunas dependem da largura da própria grade (container query), não da janela:
+  // numa tela de 1024 px com o menu aberto sobram ~730 px, e quatro cartões de KPI por
+  // linha cortariam os números. Abaixo de 56rem (896 px, perto do mínimo da grade de
+  // edição), vale a grade de 2 colunas.
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-12 lg:[grid-auto-rows:40px]">
-      {[...layout].sort(byPosition).map((item) => {
-        const widget = widgets.get(item.i);
-        if (!widget) return null;
-        const style = {
-          "--panel-col": `${item.x + 1} / span ${item.w}`,
-          "--panel-row": `${item.y + 1} / span ${item.h}`,
-          "--panel-h": `${heightOf(item.h)}px`,
-        } as CSSProperties;
-        return (
-          <div
-            key={item.i}
-            data-widget={item.i}
-            style={style}
-            className={cn(
-              "h-[var(--panel-h)] min-w-0 lg:h-auto lg:[grid-column:var(--panel-col)] lg:[grid-row:var(--panel-row)]",
-              widget.type === "kpi" ? "sm:col-span-1" : "sm:col-span-2",
-            )}
-          >
-            {slots[item.i]}
-          </div>
-        );
-      })}
+    <div className="@container">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 @4xl:grid-cols-12 @4xl:[grid-auto-rows:40px]">
+        {[...layout].sort(byPosition).map((item) => {
+          const widget = widgets.get(item.i);
+          if (!widget) return null;
+          const style = {
+            "--panel-col": `${item.x + 1} / span ${item.w}`,
+            "--panel-row": `${item.y + 1} / span ${item.h}`,
+            "--panel-h": `${heightOf(item.h)}px`,
+          } as CSSProperties;
+          return (
+            <div
+              key={item.i}
+              data-widget={item.i}
+              style={style}
+              className={cn(
+                "h-[var(--panel-h)] min-w-0 @4xl:h-auto @4xl:[grid-column:var(--panel-col)] @4xl:[grid-row:var(--panel-row)]",
+                widget.type === "kpi" ? "sm:col-span-1" : "sm:col-span-2",
+              )}
+            >
+              {slots[item.i]}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

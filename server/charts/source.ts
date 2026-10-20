@@ -15,7 +15,7 @@ import { msg } from "@/lib/charts/messages";
 import type { Granularity } from "@/lib/charts/options";
 import { markUnavailable, type BucketComponents, type Components, type Row } from "@/server/charts/compute";
 import { makeLocator, type Bucket, type BucketOptions } from "@/server/charts/time-buckets";
-import { buildScope, METHOD_LABEL, SOURCE_LABEL, sourceOf, type Scope, type TrackingFilters } from "@/server/data/tracking";
+import { buildScope, hasFilters, METHOD_LABEL, SOURCE_LABEL, sourceOf, type Scope, type TrackingFilters } from "@/server/data/tracking";
 import type { Converter } from "@/server/fx/convert";
 import { expensesInRange, metaAdsTaxCents } from "@/server/metrics/costs";
 import { dayKeyIn, inRange, type DateRange } from "@/server/period";
@@ -26,7 +26,7 @@ export type PanelSource = {
   dashboard: DashboardRow;
   scope: Scope;
   filters: TrackingFilters;
-  /** Há filtro de conta, produto ou fonte (as despesas ficam de fora). */
+  /** Há filtro de conta, produto, fonte ou campanha (as despesas ficam de fora). */
   filtered: boolean;
   /** Quadros abertos do workspace que a pessoa pode ver (funil do kanban e Gantt). */
   boards: BoardRow[];
@@ -38,7 +38,7 @@ export function panelSource(store: Store, dashboard: DashboardRow, filters: Trac
     dashboard,
     scope: buildScope(store, dashboard, filters, fx),
     filters,
-    filtered: filters.accounts.length + filters.products.length + filters.sources.length > 0,
+    filtered: hasFilters(filters),
     boards,
   };
 }
@@ -151,7 +151,7 @@ export function componentsInRange(src: PanelSource, range: DateRange): Component
     if (src.scope.orderMatches(o) && inRange(orderDay(o, src), range)) addOrder(acc, o, src);
   }
   for (const i of src.store.adInsightsDaily) {
-    if (src.scope.spendAccounts.has(i.adAccountId) && inRange(i.date, range)) addInsight(acc, i, src);
+    if (src.scope.spendMatches(i) && inRange(i.date, range)) addInsight(acc, i, src);
   }
   return finish(acc, src, expensesBetween(src, range));
 }
@@ -169,7 +169,7 @@ export function componentsByBucket(src: PanelSource, buckets: Bucket[], granular
   }
   if (granularity !== "hour") {
     for (const i of src.store.adInsightsDaily) {
-      if (!src.scope.spendAccounts.has(i.adAccountId)) continue;
+      if (!src.scope.spendMatches(i)) continue;
       const key = locator.byDay(i.date);
       if (key) addInsight(accs.get(key)!, i, src);
     }
@@ -285,7 +285,7 @@ export function componentsByPath(src: PanelSource, range: DateRange, dimensions:
   }
   if (levels.every((l) => l.insight)) {
     for (const i of src.store.adInsightsDaily) {
-      if (src.scope.spendAccounts.has(i.adAccountId) && inRange(i.date, range)) addInsight(groupOf(levels.map((l) => l.insight!(i))), i, src);
+      if (src.scope.spendMatches(i) && inRange(i.date, range)) addInsight(groupOf(levels.map((l) => l.insight!(i))), i, src);
     }
   }
   const list = [...groups];

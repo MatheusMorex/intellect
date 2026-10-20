@@ -4,11 +4,15 @@
 
 import { boardRole, requireDashboard, type Ctx } from "@/server/access";
 import { panelComputer, type PanelComputer } from "@/server/charts/build";
+import { versionedCache } from "@/server/charts/cache";
 import { visibleBoards } from "@/server/charts/kanban";
 import { parsePanelQuery, type PanelQuery } from "@/server/charts/params";
 import { panelSource } from "@/server/charts/source";
+import { floorToLocalHour } from "@/server/charts/time-buckets";
 import { earliestDay, lastSyncedAt, type SearchParams } from "@/server/data/tracking";
 import { prepareDashboardFx } from "@/server/fx/rates";
+import { readStore, storeVersion } from "@/server/store/db";
+import type { BoardRow, DashboardRow } from "@/server/store/types";
 import type { WeekStart } from "@/lib/charts/options";
 
 export type PanelPage = {
@@ -20,13 +24,23 @@ export type PanelPage = {
   fxUnavailable: boolean;
 };
 
+/** Telas prontas guardadas entre acessos (server/charts/cache.ts). */
+const pageCache = versionedCache<PanelPage>({ max: 60, ttlMs: 5 * 60_000 });
+
 export async function loadPanels(ctx: Ctx, dashboardId: string, sp: SearchParams = {}, now = new Date()): Promise<PanelPage> {
+  // O acesso é conferido em todo pedido; só as contas vêm do cache.
   const { dashboard } = requireDashboard(ctx, dashboardId);
+  const version = storeVersion();
+  // Funil do kanban e Gantt: só os quadros que esta pessoa pode ver (por isso entram na chave).
+  const boards = visibleBoards(readStore(), dashboard.workspaceId, (board) => boardRole(ctx, board) != null);
+  const key = [dashboard.id, boards.map((b) => b.id).join(","), panelQueryKey(sp), floorToLocalHour(now.getTime(), dashboard.timezone)].join("|");
+  return pageCache.get(key, version, () => buildPanelPage(dashboard, boards, sp, now), now.getTime());
+}
+
+async function buildPanelPage(dashboard: DashboardRow, boards: BoardRow[], sp: SearchParams, now: Date): Promise<PanelPage> {
   const fx = await prepareDashboardFx(dashboard);
   const store = fx.store;
   const query = parsePanelQuery(sp, dashboard.timezone, earliestDay(store, dashboard), now);
-  // Funil do kanban e Gantt: só os quadros que esta pessoa pode ver.
-  const boards = visibleBoards(store, dashboard.workspaceId, (board) => boardRole(ctx, board) != null);
   const computer = panelComputer(panelSource(store, dashboard, query.filters, fx.converter, boards), query, now);
   // Os totais convertem os custos em outra moeda dia a dia: só depois deles dá para saber se faltou cotação.
   computer.totals();

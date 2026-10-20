@@ -18,9 +18,9 @@ import { defaultPanel } from "@/server/store/seed";
 import type { PanelRow, Store } from "@/server/store/types";
 
 /** Parâmetros do endereço que são filtros da tela (o resto, como ?painel= e ?editar=, não entra nas contas). */
-export const FILTER_PARAMS = ["periodo", "de", "ate", "agrupar", "comparar", "cde", "cate", "conta", "fonte", "produto"] as const;
+export const FILTER_PARAMS = ["periodo", "de", "ate", "agrupar", "comparar", "cde", "cate", "conta", "fonte", "produto", "campanha"] as const;
 /** Os filtros que um gráfico pode ignorar ("Ignorar os filtros do painel"). */
-const DATA_FILTERS = ["conta", "fonte", "produto"] as const;
+const DATA_FILTERS = ["conta", "fonte", "produto", "campanha"] as const;
 
 const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v.join(",") : v);
 

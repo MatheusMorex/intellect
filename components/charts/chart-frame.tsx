@@ -429,7 +429,7 @@ export function ChartFrame({
             <span className="font-semibold">{title}</span>
             <HelpTip title={type.label} className="size-5">
               <p>
-                <span className="font-semibold text-foreground">Quando usar:</span> {type.whenToUse}
+                <span className="font-semibold text-foreground">{msg.panel.whenToUse}</span> {type.whenToUse}
               </p>
               {help.metrics.map((m) => (
                 <p key={m.label}>

@@ -17,6 +17,7 @@ export type SpecDisplay = {
   colors: string[];
   axisMin: number | null;
   axisMax: number | null;
+  axisScale: "linear" | "log";
   grid: boolean;
 };
 
@@ -27,6 +28,7 @@ export const DEFAULT_SPEC_DISPLAY: SpecDisplay = {
   colors: [],
   axisMin: null,
   axisMax: null,
+  axisScale: "linear",
   grid: true,
 };
 

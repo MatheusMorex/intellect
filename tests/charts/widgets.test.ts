@@ -30,7 +30,7 @@ describe("configuração dos widgets (o que a Fase 5 vai salvar)", () => {
       subtitle: "",
       ignoreFilters: false,
       overrides: {},
-      display: { legend: "auto", numbers: "auto", decimals: null, colors: [], axisMin: null, axisMax: null, grid: true },
+      display: { legend: "auto", numbers: "auto", decimals: null, colors: [], axisMin: null, axisMax: null, axisScale: "linear", grid: true },
       sparkline: true,
       goal: null,
       alert: null,
@@ -117,6 +117,29 @@ describe("configuração dos widgets (o que a Fase 5 vai salvar)", () => {
       assert.ok(errors(input).includes(expected), `${JSON.stringify(errors(input))} deveria ter "${expected}"`);
     });
   }
+
+  test("escala logarítmica: aceita linhas, colunas agrupadas e barras com valores que não ficam negativos", () => {
+    const log = { axisScale: "log" };
+    assert.deepEqual(errors({ id: "a", type: "line", series: [{ metric: "spend" }], display: log }), []);
+    assert.deepEqual(errors({ id: "a", type: "column", series: [{ metric: "spend" }], display: log }), []);
+    assert.deepEqual(errors({ id: "a", type: "bar", dimension: "campaign", metrics: ["spend"], display: { ...log, axisMin: 100 } }), []);
+    // A métrica do eixo direito não importa (a escala vale para o esquerdo).
+    assert.deepEqual(
+      errors({ id: "a", type: "line", series: [{ metric: "net" }, { metric: "profit", axis: "right" }], display: log }).filter((e) => e.includes("logarítmica")),
+      [],
+    );
+  });
+
+  test("escala logarítmica: recusa empilhado, valor que pode ser negativo e mínimo zero", () => {
+    const log = { axisScale: "log" };
+    const profit = msg.widgetError.logNegative("Lucro");
+    assert.ok(errors({ id: "a", type: "line", series: [{ metric: "profit" }], display: log }).includes(profit));
+    assert.ok(errors({ id: "a", type: "bar", dimension: "campaign", metrics: ["profit"], display: log }).includes(profit));
+    assert.ok(errors({ id: "a", type: "column", series: [{ metric: "spend" }, { metric: "net" }], mode: "stacked", display: log }).includes(msg.widgetError.logStacked));
+    assert.ok(errors({ id: "a", type: "bar", dimension: "campaign", metrics: ["spend", "net"], mode: "stacked", display: log }).includes(msg.widgetError.logStacked));
+    assert.ok(errors({ id: "a", type: "line", series: [{ metric: "spend" }], display: { ...log, axisMin: 0 } }).includes(msg.widgetError.logMin));
+    assert.ok(errors({ id: "a", type: "line", series: [{ metric: "spend" }], display: { axisScale: "cubica" } }).length > 0);
+  });
 
   test("valor infinito ou que não é número é recusado", () => {
     assert.ok(errors({ id: "a", type: "kpi", metric: "roas", alert: { when: "below", value: Infinity } }).length > 0);

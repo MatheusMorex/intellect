@@ -10,12 +10,13 @@
 //   volta (fim do horário de verão na Europa) o dia tem 25 blocos; no dia em que
 //   adianta, 23. Cada bloco é sempre uma hora de verdade.
 
-import { TZDate, tzOffset } from "@date-fns/tz";
+import { TZDate } from "@date-fns/tz";
 
 import { msg } from "@/lib/charts/messages";
 import { GRANULARITIES, GRANULARITY_MAX_DAYS, type Granularity, type WeekStart } from "@/lib/charts/options";
 import { dayKeyIn, type DateRange } from "@/server/period";
 import type { DateKey } from "@/server/store/types";
+import { offsetMinutes } from "@/server/tz";
 
 const HOUR_MS = 3_600_000;
 const DAY_MS = 86_400_000;
@@ -75,7 +76,7 @@ export function localMidnightUtc(day: DateKey, timezone: string): number {
 
 /** Início (ms UTC) da hora do fuso em que o instante cai. */
 export function floorToLocalHour(ms: number, timezone: string): number {
-  const offset = tzOffset(timezone, new Date(ms)) * 60_000;
+  const offset = offsetMinutes(ms, timezone) * 60_000;
   const local = ms + offset;
   return local - (local % HOUR_MS) - offset;
 }
@@ -272,7 +273,7 @@ export function listBuckets(range: DateRange, granularity: Granularity, options:
     for (let t = localMidnightUtc(range.from, tz); t < end; t += HOUR_MS) {
       if (t > nowMs) break;
       const day = dayKeyIn(new Date(t).toISOString(), tz);
-      const hour = new Date(t + tzOffset(tz, new Date(t)) * 60_000).getUTCHours();
+      const hour = new Date(t + offsetMinutes(t, tz) * 60_000).getUTCHours();
       const base = `${hour}h`;
       const repeated = seen.has(`${day} ${base}`) ? msg.repeatedHour(base) : base;
       seen.add(`${day} ${base}`);

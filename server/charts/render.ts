@@ -22,7 +22,27 @@ export type RenderedWidget =
   | { kind: "kpi"; view: KpiView }
   | { kind: "chart"; spec: PanelChartSpec; title: string; subtitle: string; help: ChartHelp };
 
+/**
+ * Gráficos já montados, por tela pronta. A tela fica no cache entre acessos
+ * (server/data/panels.ts); quando sai de lá, os gráficos dela saem junto.
+ */
+const rendered = new WeakMap<PanelComputer, Map<string, RenderedWidget>>();
+/** A prévia do editor monta uma versão a cada mudança: o limite segura a memória. */
+const MAX_PER_SCREEN = 200;
+
 export function renderWidget(pc: PanelComputer, widget: PanelWidget): RenderedWidget {
+  let screen = rendered.get(pc);
+  if (!screen) rendered.set(pc, (screen = new Map()));
+  const key = JSON.stringify(widget);
+  const hit = screen.get(key);
+  if (hit) return hit;
+  const result = buildWidget(pc, widget);
+  if (screen.size >= MAX_PER_SCREEN) screen.clear();
+  screen.set(key, result);
+  return result;
+}
+
+function buildWidget(pc: PanelComputer, widget: PanelWidget): RenderedWidget {
   if (widget.type === "kpi") {
     return { kind: "kpi", view: { ...buildKpi(pc, widget), display: { numbers: widget.display.numbers, decimals: widget.display.decimals } } };
   }

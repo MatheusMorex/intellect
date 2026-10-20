@@ -93,7 +93,7 @@ function csvDate(ms: number | null, timezone: string): string {
 
 function ganttRows(spec: GanttSpec): string[][] {
   const g = msg.panel.gantt;
-  const header = [g.tableTask, "Quadro", "Lista", g.people, g.tableStart, g.tableDue, csvHeader("Concluído", "percent"), g.tableStatus];
+  const header = [g.tableTask, g.tableBoard, g.tableList, g.people, g.tableStart, g.tableDue, csvHeader(g.tableDone, "percent"), g.tableStatus];
   const rows = spec.groups.flatMap((group) =>
     group.tasks.map((t) => [
       t.label,

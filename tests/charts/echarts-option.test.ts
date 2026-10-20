@@ -8,7 +8,7 @@ import type { BarSeriesOption, LineSeriesOption } from "echarts";
 
 import { COMPARE_SUFFIX, MAX_COLUMN_LABELS, PARTIAL_SUFFIX, partialRuns, splitPartial, toEChartsOption, tooltipHtml } from "../../components/charts/echarts-option.ts";
 import type { ChartTheme } from "../../components/charts/use-chart-theme.ts";
-import type { ChartCategory, ChartSpec } from "../../lib/charts/spec.ts";
+import { DEFAULT_SPEC_DISPLAY, type ChartCategory, type ChartSpec } from "../../lib/charts/spec.ts";
 
 const THEME: ChartTheme = {
   palette: ["#111111", "#222222", "#333333", "#444444", "#555555", "#666666", "#777777", "#888888"],
@@ -212,6 +212,47 @@ describe("tradução para o ECharts", () => {
     assert.deepEqual((bar.data as { itemStyle?: { opacity: number } }[])[3].itemStyle, { opacity: 0.55 });
     const html = tooltipHtml(s, THEME, 0, new Set(["Pagas", "Pendentes"]));
     assert.match(html, /75,0% · 3/);
+  });
+
+  test("escala logarítmica: eixo esquerdo em base 10, zero e negativo fora do desenho, mas na dica", () => {
+    const display = { ...DEFAULT_SPEC_DISPLAY, axisScale: "log" as const };
+    const s = spec({
+      display,
+      references: [
+        { kind: "average", axis: "left", value: 0, format: "money", label: "Média zerada", color: 0 },
+        { kind: "goal", axis: "left", value: 50_000, format: "money", label: "Meta", color: null },
+      ],
+    });
+    s.series[0].values = [10_000, 0, null, -5];
+    const o = toEChartsOption(s, THEME, opts);
+    const y = o.yAxis as { type: string; logBase?: number }[];
+    assert.equal(y[0].type, "log");
+    assert.equal(y[0].logBase, 10);
+    // O eixo direito (ROAS) continua linear.
+    assert.equal(y[1].type, "value");
+    const net = seriesOf(o).find((s) => s.id === "net") as unknown as { data: unknown[]; markLine?: { data: { name: string }[] } };
+    assert.deepEqual(net.data, [10_000, null, null, null]);
+    const dashed = seriesOf(o).find((x) => x.id === `net${PARTIAL_SUFFIX}`) as LineSeriesOption;
+    assert.deepEqual(dashed.data, [null, null, null, null]);
+    // Linha de referência em zero não existe no log; a meta continua.
+    assert.deepEqual(
+      net.markLine?.data.map((l) => l.name),
+      ["Meta"],
+    );
+    // A dica lê o spec: o zero continua aparecendo como R$ 0,00.
+    assert.match(plain(tooltipHtml(s, THEME, 1, new Set(["Faturamento líquido", "ROAS"]))), /R\$ 0,00/);
+  });
+
+  test("escala logarítmica não vale para empilhado (o eixo fica linear)", () => {
+    const s = spec({
+      display: { ...DEFAULT_SPEC_DISPLAY, axisScale: "log" },
+      stack: "stacked",
+      series: [{ id: "a", name: "Gasto", kind: "column", axis: "left", format: "money", direction: "down", values: [1, 2, 3, 4], color: 0 }],
+      axes: { left: "money", right: null },
+      references: [],
+      drawCompare: false,
+    });
+    assert.equal((toEChartsOption(s, THEME, opts).yAxis as { type: string }[])[0].type, "value");
   });
 
   test("barras horizontais: o primeiro do ranking em cima, nomes longos cortados", () => {

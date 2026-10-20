@@ -25,8 +25,15 @@ export type Source = "meta" | "google" | "other" | "untracked";
 
 // ---- filtros --------------------------------------------------------------------------
 
-export type TrackingFilters = { accounts: string[]; products: string[]; sources: Source[] };
+export type TrackingFilters = { accounts: string[]; products: string[]; sources: Source[]; campaigns: string[] };
 export type SearchParams = Record<string, string | string[] | undefined>;
+
+export const NO_FILTERS: TrackingFilters = { accounts: [], products: [], sources: [], campaigns: [] };
+
+/** Algum filtro escolhido (as despesas do dashboard ficam de fora, porque não dá para dividi-las). */
+export function hasFilters(f: TrackingFilters) {
+  return f.accounts.length + f.products.length + f.sources.length + f.campaigns.length > 0;
+}
 
 const list = (v: string | string[] | undefined) =>
   (Array.isArray(v) ? v.join(",") : (v ?? ""))
@@ -36,7 +43,7 @@ const list = (v: string | string[] | undefined) =>
 
 export function parseFilters(sp: SearchParams): TrackingFilters {
   const sources = list(sp.fonte).filter((s): s is Source => ["meta", "google", "other", "untracked"].includes(s));
-  return { accounts: list(sp.conta), products: list(sp.produto), sources };
+  return { accounts: list(sp.conta), products: list(sp.produto), sources, campaigns: list(sp.campanha) };
 }
 
 export function periodParams(sp: SearchParams) {
@@ -79,6 +86,10 @@ export function buildScope(store: Store, dashboard: DashboardRow, filters: Track
       .filter((a) => filters.sources.length === 0 || filters.sources.includes(a.provider))
       .map((a) => a.id),
   );
+  const campaigns = filters.campaigns.length ? new Set(filters.campaigns) : null;
+  /** A linha de gasto entra nas contas: conta (e fonte) escolhida e, com filtro de campanha, uma das campanhas. */
+  const spendMatches = (i: { adAccountId: string; campaignId: string }) =>
+    spendAccounts.has(i.adAccountId) && (!campaigns || campaigns.has(i.campaignId));
 
   const orderMatches = (o: OrderRow) => {
     if (!storeIds.has(o.storeId) || o.isTest) return false;
@@ -87,6 +98,8 @@ export function buildScope(store: Store, dashboard: DashboardRow, filters: Track
       const account = o.campaignId ? campaignAccount.get(o.campaignId) : undefined;
       if (!account || !filters.accounts.includes(account)) return false;
     }
+    // Com filtro de campanha, só as vendas atribuídas a uma delas (sem campanha fica de fora).
+    if (campaigns && !(o.campaignId && campaigns.has(o.campaignId))) return false;
     if (filters.products.length) {
       const items = itemsByOrder.get(o.id) ?? [];
       if (!items.some((i) => i.productId && filters.products.includes(i.productId))) return false;
@@ -136,14 +149,14 @@ export function buildScope(store: Store, dashboard: DashboardRow, filters: Track
     );
   };
 
-  return { accounts, storeIds, campaignAccount, accountProvider, itemsByOrder, spendAccounts, orderMatches, costCtx, costsOf, convert };
+  return { accounts, storeIds, campaignAccount, accountProvider, itemsByOrder, spendAccounts, spendMatches, orderMatches, costCtx, costsOf, convert };
 }
 
 export function earliestDay(store: Store, dashboard: DashboardRow): string | null {
-  const scope = buildScope(store, dashboard, { accounts: [], products: [], sources: [] });
+  const scope = buildScope(store, dashboard, NO_FILTERS);
   let earliest: string | null = null;
   for (const i of store.adInsightsDaily) {
-    if (scope.spendAccounts.has(i.adAccountId) && (!earliest || i.date < earliest)) earliest = i.date;
+    if (scope.spendMatches(i) && (!earliest || i.date < earliest)) earliest = i.date;
   }
   for (const o of store.orders) {
     if (!scope.storeIds.has(o.storeId)) continue;
@@ -188,7 +201,7 @@ function totalsFor(store: Store, dashboard: DashboardRow, scope: Scope, range: D
   let spendGoogle = 0;
   const metaByDay = new Map<string, number>();
   for (const i of store.adInsightsDaily) {
-    if (!scope.spendAccounts.has(i.adAccountId) || !inRange(i.date, range)) continue;
+    if (!scope.spendMatches(i) || !inRange(i.date, range)) continue;
     if (scope.accountProvider.get(i.adAccountId) === "meta") {
       spendMeta += i.spendCents;
       metaByDay.set(i.date, (metaByDay.get(i.date) ?? 0) + i.spendCents);
@@ -208,7 +221,7 @@ function totalsFor(store: Store, dashboard: DashboardRow, scope: Scope, range: D
     if (o.status === "waiting_payment") pendingValue += o.totalCents;
   }
   const metaTax = metaAdsTaxCents(metaByDay, scope.costCtx.settings);
-  // Despesas só entram no Resumo sem filtro de produto, conta ou fonte (não dá para dividir uma conta de luz).
+  // Despesas só entram no Resumo sem filtro de produto, conta, fonte ou campanha (não dá para dividir uma conta de luz).
   const expenses = expensesInRange(
     store.expenses.filter((e) => e.dashboardId === dashboard.id),
     range,
@@ -326,7 +339,7 @@ export async function getDashboardSummary(ctx: Ctx, dashboardId: string, sp: Sea
   const filters = parseFilters(sp);
   const period = resolve(store, dashboard, sp);
   const scope = buildScope(store, dashboard, filters, fx.converter);
-  const filtered = filters.accounts.length + filters.products.length + filters.sources.length > 0;
+  const filtered = hasFilters(filters);
   const current = totalsFor(store, dashboard, scope, period.range, filtered);
   const previous = period.previous ? totalsFor(store, dashboard, scope, period.previous, filtered) : null;
   const ch = (a: number | null, b: number | null | undefined) => (previous && a != null && b != null ? change(a, b) : null);
@@ -368,7 +381,7 @@ export async function getDashboardSummary(ctx: Ctx, dashboardId: string, sp: Sea
 export async function getFilterOptions(ctx: Ctx, dashboardId: string) {
   const { dashboard } = requireDashboard(ctx, dashboardId);
   const store = readStore();
-  const scope = buildScope(store, dashboard, { accounts: [], products: [], sources: [] });
+  const scope = buildScope(store, dashboard, NO_FILTERS);
   return {
     accounts: scope.accounts.map((a) => ({ value: a.id, label: `${a.provider === "meta" ? "Meta" : "Google"} · ${a.name}` })),
     products: store.products
@@ -378,7 +391,20 @@ export async function getFilterOptions(ctx: Ctx, dashboardId: string) {
     sources: (["meta", "google", "other", "untracked"] as Source[])
       .filter((s) => s === "other" || s === "untracked" || dashboard.adPlatforms.includes(s))
       .map((s) => ({ value: s, label: SOURCE_LABEL[s] })),
+    campaigns: campaignOptions(store, scope.accounts),
   };
+}
+
+/** Campanhas das contas do dashboard ("Meta · Nome"); nome repetido em outra conta ganha o nome da conta. */
+function campaignOptions(store: Store, accounts: Scope["accounts"]) {
+  const account = new Map(accounts.map((a) => [a.id, a]));
+  const campaigns = store.campaigns.filter((c) => account.has(c.adAccountId));
+  const label = (c: (typeof campaigns)[number]) => `${account.get(c.adAccountId)!.provider === "meta" ? "Meta" : "Google"} · ${c.name}`;
+  const count = new Map<string, number>();
+  for (const c of campaigns) count.set(label(c), (count.get(label(c)) ?? 0) + 1);
+  return campaigns
+    .map((c) => ({ value: c.id, label: count.get(label(c))! > 1 ? `${label(c)} (${account.get(c.adAccountId)!.name})` : label(c) }))
+    .sort((a, b) => a.label.localeCompare(b.label, "pt-BR"));
 }
 
 export function lastSyncedAt(store: Store, dashboard: DashboardRow): string | null {
@@ -545,7 +571,7 @@ export async function getTrafficReport(
   const store = fx.store;
   const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
   const period = resolve(store, dashboard, sp);
-  const scope = buildScope(store, dashboard, { accounts: [], products: [], sources: [] }, fx.converter);
+  const scope = buildScope(store, dashboard, NO_FILTERS, fx.converter);
   const accounts = scope.accounts.filter((a) => a.provider === provider);
   const accountCurrency = new Map(accounts.map((a) => [a.id, a.currency]));
   const campaignCurrency = (campaignId: string) => accountCurrency.get(scope.campaignAccount.get(campaignId) ?? "") ?? dashboard.currency;

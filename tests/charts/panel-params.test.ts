@@ -102,8 +102,9 @@ describe("endereço da página dos Painéis", () => {
     assert.deepEqual(parse({ periodo: "maximo", comparar: "ano" }).compareRange, { from: "2024-01-10", to: "2025-10-17" });
   });
 
-  test("filtros vêm do endereço (conta, fonte e produto), como no Resumo", () => {
+  test("filtros vêm do endereço (conta, fonte, produto e campanha), como no Resumo", () => {
     const q = parse({ conta: "a1,a2", fonte: "meta,xpto", produto: "p1" });
-    assert.deepEqual(q.filters, { accounts: ["a1", "a2"], sources: ["meta"], products: ["p1"] });
+    assert.deepEqual(q.filters, { accounts: ["a1", "a2"], sources: ["meta"], products: ["p1"], campaigns: [] });
+    assert.deepEqual(parse({ campanha: "c1, c2" }).filters.campaigns, ["c1", "c2"]);
   });
 });

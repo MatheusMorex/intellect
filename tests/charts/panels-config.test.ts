@@ -310,7 +310,7 @@ describe("aparência escolhida no editor", () => {
     emptyReason: null,
     display,
   });
-  const base: SpecDisplay = { legend: "auto", numbers: "auto", decimals: null, colors: [], axisMin: null, axisMax: null, grid: true };
+  const base: SpecDisplay = { legend: "auto", numbers: "auto", decimals: null, colors: [], axisMin: null, axisMax: null, axisScale: "linear", grid: true };
 
   test("cores escolhidas, legenda escondida ou embaixo, eixo fixo e sem grade", () => {
     const option = toEChartsOption(spec({ ...base, colors: ["#ff0000"], legend: "none", axisMin: 0, axisMax: 500_000, grid: false }), THEME, { reducedMotion: true });

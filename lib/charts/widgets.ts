@@ -62,6 +62,8 @@ export const WIDGET_DISPLAY = z
     /** Eixo de valores das linhas, colunas e barras: mínimo e máximo fixos (null = automático). */
     axisMin: z.number().nullable().default(null),
     axisMax: z.number().nullable().default(null),
+    /** Escala do eixo de valores (o esquerdo, como o mínimo e o máximo): linear ou logarítmica (base 10). */
+    axisScale: z.enum(["linear", "log"]).default("linear"),
     /** Linhas de grade no fundo. */
     grid: z.boolean().default(true),
   })
@@ -75,7 +77,7 @@ const common = {
   /** Vazio: o título sai dos nomes das métricas. */
   title: text(80).default(""),
   subtitle: text(160).default(""),
-  /** O gráfico não usa os filtros de conta, fonte e produto do painel. */
+  /** O gráfico não usa os filtros de conta, fonte, produto e campanha do painel. */
   ignoreFilters: z.boolean().default(false),
   overrides,
   display: WIDGET_DISPLAY,
@@ -242,6 +244,13 @@ export const PANEL_WIDGET = WIDGET_SHAPES.superRefine((w, ctx) => {
     if (!metricSupportsDimension(getMetric(id), d)) issue(err.dimensionMetric(getMetric(id).info.label, msg.dimension[d]), path);
   };
   if (w.display.axisMin != null && w.display.axisMax != null && w.display.axisMin >= w.display.axisMax) issue(err.axisRange, ["display", "axisMax"]);
+  // Escala logarítmica: só mostra valores acima de zero e não serve para partes empilhadas.
+  const log = w.display.axisScale === "log";
+  if (log && w.display.axisMin != null && w.display.axisMin <= 0) issue(err.logMin, ["display", "axisMin"]);
+  const logMetrics = (ids: MetricId[]) => {
+    const negative = ids.find((id) => metricCanBeNegative(getMetric(id)));
+    if (negative) issue(err.logNegative(getMetric(negative).info.label), ["display", "axisScale"]);
+  };
   switch (w.type) {
     case "kpi":
       if (w.goal?.source === "dashboard" && getMetric(w.metric).format !== "money") issue(err.goalDashboardMoney, ["goal"]);
@@ -254,6 +263,7 @@ export const PANEL_WIDGET = WIDGET_SHAPES.superRefine((w, ctx) => {
       if (left.length === 0) issue(err.leftAxisEmpty, ["series"]);
       if (formats(left).size > 1 || formats(right).size > 1) issue(err.mixedUnits, ["series"]);
       if (w.goal && (w.goal.axis === "left" ? left : right).length === 0) issue(err.goalAxis, ["goal"]);
+      if (log) logMetrics(left);
       return;
     }
     case "column": {
@@ -261,12 +271,16 @@ export const PANEL_WIDGET = WIDGET_SHAPES.superRefine((w, ctx) => {
       if (!unique(ids) || (w.line && ids.includes(w.line.metric))) issue(err.repeated, ["series"]);
       if (formats(ids).size > 1) issue(err.mixedUnits, ["series"]);
       if (w.mode !== "grouped" && !allSummable(ids)) issue(err.stackRates, ["mode"]);
+      if (log && w.mode !== "grouped") issue(err.logStacked, ["display", "axisScale"]);
+      else if (log) logMetrics(ids);
       return;
     }
     case "bar": {
       if (!unique(w.metrics)) issue(err.repeated, ["metrics"]);
       if (formats(w.metrics).size > 1) issue(err.mixedUnits, ["metrics"]);
       if (w.mode === "stacked" && !allSummable(w.metrics)) issue(err.stackRates, ["mode"]);
+      if (log && w.mode === "stacked") issue(err.logStacked, ["display", "axisScale"]);
+      else if (log) logMetrics(w.metrics);
       w.metrics.forEach((id, i) => byDimension(id, w.dimension, ["metrics", i]));
       return;
     }

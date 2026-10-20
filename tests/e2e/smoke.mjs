@@ -40,12 +40,29 @@ async function step(name, fn) {
   }
 }
 
+/**
+ * Espera o React assumir o elemento (hidratação): o HTML do servidor aparece antes, e um
+ * clique ou texto digitado nesse intervalo se perde (o React refaz o campo). Hidratado, o
+ * elemento ganha a propriedade __reactProps$… com os eventos.
+ */
+async function hydrated(locator) {
+  await locator.waitFor();
+  await locator.evaluate(
+    (el) =>
+      new Promise((resolve) => {
+        const check = () => (Object.keys(el).some((k) => k.startsWith("__reactProps$")) ? resolve() : setTimeout(check, 50));
+        check();
+      }),
+  );
+  return locator;
+}
+
 const dashboardId = store().dashboards[0].id;
 const boardId = store().boards[0].id;
 
 await step("login com senha errada mostra o erro", async () => {
   await page.goto(`${BASE}/login`);
-  await page.getByLabel("E-mail").fill("ana@intellect.test");
+  await (await hydrated(page.getByLabel("E-mail"))).fill("ana@intellect.test");
   await page.getByLabel("Senha", { exact: true }).fill("senha-errada");
   await page.getByRole("button", { name: "Entrar", exact: true }).click();
   await page.getByText("E-mail ou senha não conferem.").waitFor();
@@ -175,7 +192,7 @@ await step("convite: senha fraca dá erro, depois cria a conta e abre o quadro",
 
 await step("busca global: / acha o card e abre", async () => {
   await page.goto(`${BASE}/w/intellect`);
-  await page.getByRole("heading", { name: /Olá, Ana/ }).click();
+  await (await hydrated(page.getByRole("heading", { name: /Olá, Ana/ }))).click();
   await page.keyboard.press("/");
   await page.getByPlaceholder(/Buscar quadros, cards/).fill("remarketing");
   await page.getByRole("option", { name: /Escalar o Remarketing 30d/ }).click();
@@ -185,7 +202,7 @@ await step("busca global: / acha o card e abre", async () => {
 
 await step("criar quadro pelo Início", async () => {
   await page.goto(`${BASE}/w/intellect`);
-  await page.getByRole("main").getByRole("button", { name: "Criar quadro" }).first().click();
+  await (await hydrated(page.getByRole("main").getByRole("button", { name: "Criar quadro" }).first())).click();
   await page.getByLabel("Nome do quadro").fill("Quadro do teste automático");
   await page.getByRole("radio", { name: "verde" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Criar quadro" }).click();
@@ -206,7 +223,7 @@ await step("perfil: modo para daltônicos liga e desliga", async () => {
 
 await step("notificações: o Bruno vê a menção e marca como lida", async () => {
   await page.goto(`${BASE}/api/dev/login?email=bruno@intellect.test&next=${encodeURIComponent("/w/intellect")}`);
-  await page.getByRole("button", { name: /Notificações, \d+ não lidas/ }).click();
+  await (await hydrated(page.getByRole("button", { name: /Notificações, \d+ não lidas/ }))).click();
   await page.getByText(/mencionou você em Testar frete grátis/).first().waitFor();
   await page.getByRole("button", { name: "Marcar todas como lidas" }).click();
   await page.getByRole("button", { name: "Notificações", exact: true }).waitFor();
@@ -254,7 +271,7 @@ await step("automação: a regra roda quando o card nasce", async () => {
 await step("automação: botão do card no verso", async () => {
   const card = store().cards.find((c) => c.name === "Roteiro de vídeo com depoimento de cliente");
   await page.goto(`${BASE}/b/${boardId}?card=${card.id}`);
-  await page.getByRole("dialog").getByRole("button", { name: "Pedir revisão" }).click();
+  await (await hydrated(page.getByRole("dialog").getByRole("button", { name: "Pedir revisão" }))).click();
   await page.getByText("Pedir revisão: feito").waitFor();
   const s = store();
   const bruno = s.users.find((u) => u.email.startsWith("bruno"));
@@ -267,7 +284,7 @@ await step("automação: botão do card no verso", async () => {
 
 await step("automação: regra de métrica roda agora e aparece no histórico", async () => {
   await page.goto(`${BASE}/b/${boardId}/automation?aba=metricas`);
-  await page.getByRole("button", { name: "Ações de ROAS baixo nos últimos 7 dias" }).click();
+  await (await hydrated(page.getByRole("button", { name: "Ações de ROAS baixo nos últimos 7 dias" }))).click();
   await page.getByRole("menuitem", { name: "Rodar agora" }).click();
   await page.getByText(/^Rodou:/).waitFor();
   await page.goto(`${BASE}/b/${boardId}/automation?aba=historico`);
@@ -277,7 +294,7 @@ await step("automação: regra de métrica roda agora e aparece no histórico", 
 
 await step("automação: desligar pelo diretório", async () => {
   await page.goto(`${BASE}/b/${boardId}/automation?aba=regras`);
-  await page.getByRole("switch", { name: "Criativo novo ganha etiqueta: ligada" }).click();
+  await (await hydrated(page.getByRole("switch", { name: "Criativo novo ganha etiqueta: ligada" }))).click();
   await page.getByRole("switch", { name: "Criativo novo ganha etiqueta: desligada" }).waitFor();
   for (let i = 0; i < 20 && store().automations.find((a) => a.name === "Criativo novo ganha etiqueta").enabled; i++) await page.waitForTimeout(300);
   assert.equal(store().automations.find((a) => a.name === "Criativo novo ganha etiqueta").enabled, false);
@@ -285,7 +302,7 @@ await step("automação: desligar pelo diretório", async () => {
 
 await step("período: escolher Ontem muda a URL", async () => {
   await page.goto(`${BASE}/d/${dashboardId}`);
-  await page.getByRole("button", { name: /Últimos 7 dias/ }).click();
+  await (await hydrated(page.getByRole("button", { name: /Últimos 7 dias/ }))).click();
   await page.getByRole("radio", { name: "Ontem" }).click();
   await page.waitForURL(/periodo=ontem/);
 });
@@ -299,7 +316,7 @@ await step("filtro de fonte: só Meta", async () => {
 
 await step("Meta: criar card a partir da campanha", async () => {
   await page.goto(`${BASE}/d/${dashboardId}/meta?periodo=30d`);
-  await page.getByRole("button", { name: /Ações de \[Vendas\] Remarketing 30d/ }).click();
+  await (await hydrated(page.getByRole("button", { name: /Ações de \[Vendas\] Remarketing 30d/ }))).click();
   await page.getByRole("menuitem", { name: "Criar card" }).click();
   await page.getByRole("button", { name: "Criar card" }).click();
   await page.getByText(/Card criado em/).waitFor();
@@ -340,7 +357,7 @@ await step("Meta: abrir os conjuntos de uma campanha", async () => {
 
 await step("Taxas: salvar o imposto sobre vendas", async () => {
   await page.goto(`${BASE}/d/${dashboardId}/fees`);
-  await page.getByLabel("Imposto sobre vendas (%)").fill("6,5");
+  await (await hydrated(page.getByLabel("Imposto sobre vendas (%)"))).fill("6,5");
   await page.getByRole("button", { name: "Salvar impostos" }).click();
   await page.getByText("Impostos salvos").waitFor();
   await page.getByText("Histórico de impostos").waitFor();
@@ -356,7 +373,7 @@ await step("Taxas: valor inválido mostra o erro", async () => {
 
 await step("Despesas: lançar e excluir", async () => {
   await page.goto(`${BASE}/d/${dashboardId}/expenses?periodo=mes`);
-  await page.getByRole("button", { name: "Nova despesa" }).click();
+  await (await hydrated(page.getByRole("button", { name: "Nova despesa" }))).click();
   await page.getByLabel("Descrição (obrigatório)").fill("Despesa do teste automático");
   await page.getByLabel("Valor (R$)").fill("99,90");
   await page.getByRole("button", { name: "Salvar despesa" }).click();
@@ -393,7 +410,7 @@ await step("Integrações: teste de integração recebe o pedido simulado", asyn
 
 await step("Vendas: abrir o detalhe de um pedido", async () => {
   await page.goto(`${BASE}/d/${dashboardId}/orders?periodo=hoje`);
-  await page.locator("table a").first().click();
+  await (await hydrated(page.locator("table a").first())).click();
   await page.getByRole("heading", { name: /Pedido #/ }).waitFor();
   await page.getByText("Jornada até a compra").waitFor();
 });
@@ -409,7 +426,7 @@ async function kpiValue(label) {
 
 await step("Painéis: abre pelo menu, com cartões e gráficos", async () => {
   await page.goto(`${BASE}/d/${dashboardId}?periodo=30d`);
-  await page.getByRole("navigation", { name: "Principal" }).getByRole("link", { name: "Painéis" }).click();
+  await (await hydrated(page.getByRole("navigation", { name: "Principal" }).getByRole("link", { name: "Painéis" }))).click();
   await page.waitForURL(/\/paineis/);
   await page.getByRole("heading", { name: "Painéis" }).waitFor();
   await page.getByRole("group", { name: /^ROAS: / }).waitFor();
@@ -460,7 +477,9 @@ await step("Painéis: por hora num período longo vira por dia, com o aviso", as
 await step("Painéis: ver como tabela, com 'Outros' no ranking", async () => {
   await page.goto(`${BASE}/d/${dashboardId}/paineis?periodo=30d`);
   const chart = page.locator("figure", { hasText: "Top 10 campanhas por faturamento líquido" });
-  await chart.getByRole("button", { name: "Ver como tabela" }).click();
+  // Gráfico desenhado = componente hidratado (o ECharts só desenha no navegador).
+  await chart.locator("canvas").first().waitFor();
+  await (await hydrated(chart.getByRole("button", { name: "Ver como tabela" }))).click();
   await chart.getByRole("table").waitFor();
   assert.ok((await chart.getByRole("row").count()) >= 3, "a tabela deveria ter linhas");
   await chart.getByRole("button", { name: "Ver como gráfico" }).click();
@@ -651,6 +670,88 @@ await step("Painéis: excluir o painel de teste", async () => {
   await panelsNav().getByRole("link", { name: "Visão geral" }).waitFor();
   assert.equal(panelOf(testPanelId), undefined);
   await page.locator("figure canvas").first().waitFor();
+});
+
+// ---- Polimento (Fase 6) ------------------------------------------------------------------------------
+
+await step("Painéis: filtro de campanha muda os números, igual ao Resumo com o mesmo filtro", async () => {
+  await page.goto(`${BASE}/d/${dashboardId}/paineis?periodo=30d`);
+  await page.locator("figure canvas").first().waitFor();
+  const all = await kpiValue("Faturamento líquido");
+  await page.getByRole("button", { name: /^Campanha:/ }).click();
+  await page.getByRole("option", { name: "Meta · [Vendas] Remarketing 30d" }).click();
+  await page.keyboard.press("Escape");
+  await page.waitForURL(/campanha=/);
+  await page.locator("figure canvas").first().waitFor();
+  const one = await kpiValue("Faturamento líquido");
+  assert.notEqual(one, all, "com uma campanha só, o faturamento tem que mudar");
+  const campanha = new URL(page.url()).searchParams.get("campanha");
+  await page.goto(`${BASE}/d/${dashboardId}?periodo=30d&campanha=${campanha}`);
+  assert.equal(await kpiValue("Faturamento líquido"), one, "o Resumo com o mesmo filtro dá o mesmo número");
+});
+
+await step("Painéis: venda nova aparece na hora (o cache é renovado quando chega dado)", async () => {
+  await page.goto(`${BASE}/d/${dashboardId}/paineis?periodo=hoje`);
+  await page.locator("figure canvas").first().waitFor();
+  const before = await kpiValue("Faturamento líquido");
+  // Abre de novo: agora a tela vem do cache.
+  await page.reload();
+  assert.equal(await kpiValue("Faturamento líquido"), before);
+  const count = store().orders.length;
+  execFileSync(process.execPath, ["scripts/simulate-order.mjs", "--campanha", "remarketing", "--valor", "497,00"], { stdio: "pipe" });
+  for (let i = 0; i < 30 && store().orders.length === count; i++) await page.waitForTimeout(1000);
+  assert.equal(store().orders.length, count + 1, "o pedido simulado chegou");
+  await page.reload();
+  assert.notEqual(await kpiValue("Faturamento líquido"), before, "o número mudou sem esperar o cache vencer");
+});
+
+await step("Painéis: escala logarítmica pelo editor", async () => {
+  await page.goto(`${BASE}/d/${dashboardId}/paineis?periodo=30d&editar=1`);
+  await page.locator("figure canvas").first().waitFor();
+  await page.getByRole("button", { name: "Adicionar gráfico" }).click();
+  const sheet = page.getByRole("dialog");
+  await sheet.getByRole("heading", { name: "Novo gráfico" }).waitFor();
+  await sheet.getByRole("combobox", { name: "Tipo de gráfico" }).click();
+  await page.getByRole("option", { name: "Gráfico de linhas" }).click();
+  await sheet.getByRole("textbox", { name: "Título", exact: true }).fill("Linha log do teste");
+  await sheet.getByRole("combobox", { name: "Escala do eixo" }).click();
+  await page.getByRole("option", { name: "Logarítmica" }).click();
+  await sheet.getByText("cada linha da grade vale 10 vezes", { exact: false }).waitFor();
+  await sheet.locator("canvas").first().waitFor();
+  await sheet.getByRole("button", { name: "Salvar gráfico" }).click();
+  await sheet.waitFor({ state: "detached" });
+  await page.locator("figure", { hasText: "Linha log do teste" }).locator("canvas").first().waitFor();
+  const panel = store().panels.find((p) => p.dashboardId === dashboardId && p.isDefault);
+  assert.equal(panel.widgets.find((w) => w.title === "Linha log do teste")?.display.axisScale, "log");
+  await page.getByRole("button", { name: "Remover gráfico: Linha log do teste" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Remover gráfico" }).click();
+  await page.locator("figure", { hasText: "Linha log do teste" }).waitFor({ state: "detached" });
+  await page.getByRole("link", { name: "Concluir edição" }).click();
+  await page.waitForURL((url) => !url.searchParams.has("editar"));
+});
+
+await step("Painéis: tablet (768 e 1024 px), notebook (1280 px) e celular (390 px) sem nada cortado", async () => {
+  for (const [width, height] of [
+    [768, 1024],
+    [1024, 768],
+    [1280, 800],
+    [390, 844],
+  ]) {
+    await page.setViewportSize({ width, height });
+    await page.goto(`${BASE}/d/${dashboardId}/paineis?periodo=30d`);
+    await page.locator("figure canvas").first().waitFor();
+    const { scroll, inner, cut } = await page.evaluate(() => ({
+      scroll: document.documentElement.scrollWidth,
+      inner: window.innerWidth,
+      // Cartões de KPI com o número ou a meta saindo da borda (o cartão não rola: o texto ficaria cortado).
+      cut: [...document.querySelectorAll("[data-widget] [role=group]")]
+        .filter((el) => el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1)
+        .map((el) => el.getAttribute("aria-label")?.split(":")[0]),
+    }));
+    assert.ok(scroll <= inner, `${width} px: a página tem ${scroll} px de largura`);
+    assert.deepEqual(cut, [], `${width} px: cartões cortados`);
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
 });
 
 await step("Relatórios (endereço antigo) leva para Painéis", async () => {

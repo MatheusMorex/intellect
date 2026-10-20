@@ -770,6 +770,14 @@ function LookFields({ w, set }: { w: PanelWidget; set: SetWidget }) {
               <ValueField label={e.axisMax} value={d.axisMax} format={format} onChange={(axisMax) => setDisplay({ axisMax })} />
             </Field>
           </div>
+          <Field label={e.axisScale} hint={d.axisScale === "log" ? e.axisScaleHint : undefined}>
+            <Choice
+              label={e.axisScale}
+              value={d.axisScale}
+              options={(["linear", "log"] as const).map((value) => ({ value, label: e.axisScaleOptions[value] }))}
+              onChange={(axisScale) => setDisplay({ axisScale })}
+            />
+          </Field>
           <Toggle label={e.grid} checked={d.grid} onChange={(grid) => setDisplay({ grid })} />
         </>
       )}

@@ -145,8 +145,14 @@ function axisOption(spec: ChartSpec, theme: ChartTheme, { reducedMotion }: Optio
     axisTick: { show: false },
     inverse: horizontal, // o primeiro do ranking em cima
   };
+  // Escala logarítmica (editor) no eixo esquerdo, como o mínimo e o máximo. Zero e negativo
+  // não existem nela: saem do desenho, mas continuam na dica e na tabela (que leem o spec).
+  const logAxis = (axis: "left" | "right") => d.axisScale === "log" && axis === "left" && spec.stack === "none";
+  const plotted = (values: (number | null)[], axis: "left" | "right") =>
+    logAxis(axis) ? values.map((v) => (v != null && v > 0 ? v : null)) : values;
   const valueAxis = (format: MetricFormat, axis: "left" | "right") => ({
-    type: "value" as const,
+    type: logAxis(axis) ? ("log" as const) : ("value" as const),
+    ...(logAxis(axis) ? { logBase: 10 } : {}),
     position: horizontal ? ("bottom" as const) : axis,
     // Mínimo e máximo fixos (editor) valem para o eixo esquerdo; o empilhado 100% vai sempre até 100%.
     min: axis === "left" && d.axisMin != null ? d.axisMin : undefined,
@@ -159,7 +165,7 @@ function axisOption(spec: ChartSpec, theme: ChartTheme, { reducedMotion }: Optio
 
   // ---- linhas de referência (meta e média) ----
   const referenceMarks = (series: ChartSeries) => {
-    const lines = spec.references.filter((r) => r.axis === series.axis && firstOnAxis(series));
+    const lines = spec.references.filter((r) => r.axis === series.axis && firstOnAxis(series) && (!logAxis(r.axis) || r.value > 0));
     if (!lines.length) return undefined;
     return {
       silent: true,
@@ -237,11 +243,12 @@ function axisOption(spec: ChartSpec, theme: ChartTheme, { reducedMotion }: Optio
         emphasis: { focus: "series" },
         z: 3,
       };
-      const parts = runs.length ? splitPartial(s.values, spec.categories) : null;
+      const values = plotted(s.values, s.axis);
+      const parts = runs.length ? splitPartial(values, spec.categories) : null;
       series.push({
         ...base,
         id: s.id,
-        data: parts ? parts.solid : s.values,
+        data: parts ? parts.solid : values,
         areaStyle: spec.area ? { color: c, opacity: 0.12 } : undefined,
         markLine: referenceMarks(s),
         ...extras,
@@ -260,7 +267,7 @@ function axisOption(spec: ChartSpec, theme: ChartTheme, { reducedMotion }: Optio
           ...base,
           id: `${s.id}${COMPARE_SUFFIX}`,
           name: `${s.name} (${spec.compareName})`,
-          data: s.compare.values,
+          data: plotted(s.compare.values, s.axis),
           showSymbol: false,
           lineStyle: { color: c, width: 1.5, type: "dotted", opacity: 0.75 },
           itemStyle: { color: c, opacity: 0.75 },
@@ -280,7 +287,7 @@ function axisOption(spec: ChartSpec, theme: ChartTheme, { reducedMotion }: Optio
       stack: stacked ? "total" : undefined,
       barMaxWidth: horizontal ? 22 : 40,
       itemStyle: { color: c, borderRadius: stacked ? 0 : horizontal ? [0, 3, 3, 0] : [3, 3, 0, 0] },
-      data: s.values.map((value, i) => ({ value, itemStyle: spec.categories[i].partial ? { opacity: 0.55 } : undefined })),
+      data: plotted(s.values, s.axis).map((value, i) => ({ value, itemStyle: spec.categories[i].partial ? { opacity: 0.55 } : undefined })),
       label: showLabels
         ? {
             show: true,
@@ -316,7 +323,7 @@ function axisOption(spec: ChartSpec, theme: ChartTheme, { reducedMotion }: Optio
           borderRadius: [3, 3, 0, 0],
           decal: { symbol: "rect", dashArrayX: [1, 0], dashArrayY: [2, 4], rotation: Math.PI / 4, color: theme.surface },
         },
-        data: s.compare.values,
+        data: plotted(s.compare.values, s.axis),
         emphasis: { focus: "series" },
       });
     }

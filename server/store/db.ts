@@ -15,6 +15,8 @@ const DIR = path.join(process.cwd(), ".data");
 const FILE = path.join(DIR, "store.json");
 
 let cache: { mtimeMs: number; store: Store } | null = null;
+/** Sobe a cada gravação e quando o arquivo muda por fora (outro processo, como o simulate:order). */
+let generation = 0;
 
 function writeFile(store: Store) {
   fs.mkdirSync(DIR, { recursive: true });
@@ -31,6 +33,7 @@ function writeFile(store: Store) {
     }
   }
   cache = { mtimeMs: fs.statSync(FILE).mtimeMs, store };
+  generation++;
 }
 
 /** No modo real não há arquivo: o que ainda não foi ligado ao banco aparece vazio (tudo zerado). */
@@ -55,6 +58,7 @@ export function readStore(): Store {
     const store = JSON.parse(fs.readFileSync(FILE, "utf8")) as Store;
     if (store.version === STORE_VERSION) {
       cache = { mtimeMs: stat.mtimeMs, store };
+      generation++;
       return store;
     }
     const upgraded = upgradeStore(store);
@@ -66,6 +70,16 @@ export function readStore(): Store {
   const seeded = createSeed(new Date());
   writeFile(seeded);
   return seeded;
+}
+
+/**
+ * Versão dos dados: muda sempre que algo é gravado. O cache dos Painéis
+ * (server/charts/cache.ts) joga fora o que calculou quando ela muda. No banco,
+ * vira um contador por dashboard que sobe quando chegam pedidos ou gastos.
+ */
+export function storeVersion(): number {
+  readStore(); // confere se o arquivo mudou por fora
+  return generation;
 }
 
 const afterHooks: ((store: Store) => void)[] = [];

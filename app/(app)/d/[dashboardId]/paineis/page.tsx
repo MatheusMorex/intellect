@@ -23,7 +23,7 @@ import { panelQueryKey } from "@/server/data/panels";
 import { getPanels } from "@/server/data/panels-request";
 import { getFilterOptions, isStale, type SearchParams } from "@/server/data/tracking";
 
-export const metadata: Metadata = { title: "Painéis" };
+export const metadata: Metadata = { title: msg.panel.title };
 
 const PRESETS = PANEL_PRESETS.map((id) => ({ id, label: msg.periods[id] }));
 const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
@@ -137,6 +137,7 @@ export default async function PanelsPage({
               { name: "conta", label: msg.panel.filters.account, options: options.accounts, selected: query.filters.accounts },
               { name: "fonte", label: msg.panel.filters.source, options: options.sources, selected: query.filters.sources },
               { name: "produto", label: msg.panel.filters.product, options: options.products, selected: query.filters.products },
+              { name: "campanha", label: msg.panel.filters.campaign, options: options.campaigns, selected: query.filters.campaigns },
             ]}
           />
           <PanelControls

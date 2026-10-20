@@ -138,6 +138,37 @@ describe("Painéis × Resumo: mesmo período, mesmo número", () => {
       assertSameAsResumo(summary.current, panel.computer.totals(), JSON.stringify(f));
     }
   });
+
+  test("com filtro de campanha: igual ao Resumo e às linhas dessas campanhas no gráfico por campanha", async () => {
+    const options = await m.tracking.getFilterOptions(ctx, dashboardId);
+    const ids = new Set(options.campaigns.map((c) => c.value));
+    assert.ok(ids.size > 2, "deveria ter campanhas para escolher");
+    const rows = (await both({ periodo: "30d" })).panel.computer.dimension("campaign");
+    // Campanhas com venda e gasto no período (senão o teste não prova nada).
+    const busy = rows.filter((r) => ids.has(r.key) && (r.components.paidCount ?? 0) > 0 && (r.components.spendCents ?? 0) > 0);
+    assert.ok(busy.length >= 2, "deveria ter 2 campanhas com venda e gasto");
+    for (const chosen of [busy.slice(0, 1), busy.slice(0, 2)]) {
+      const label = chosen.map((r) => r.label).join(" + ");
+      const { summary, panel } = await both({ periodo: "30d", campanha: chosen.map((r) => r.key).join(",") });
+      const total = panel.computer.totals();
+      assert.equal(total.expensesCents, 0, label);
+      assertSameAsResumo(summary.current, total, label);
+      const expected = m.compute.sumComponents(chosen.map((r) => r.components));
+      for (const c of ["spendCents", "grossCents", "netCents", "paidCount", "ordersCount", "impressions", "clicks"] as const) {
+        assert.equal(total[c], expected[c], `${label}: ${c}`);
+      }
+      // Os rankings também só mostram as escolhidas.
+      assert.deepEqual(new Set(panel.computer.dimension("campaign").map((r) => r.key)), new Set(chosen.map((r) => r.key)), label);
+    }
+  });
+
+  test("filtro de campanha sem nenhuma venda nem gasto: tudo zerado, sem quebrar", async () => {
+    const { summary, panel } = await both({ periodo: "30d", campanha: "campanha-que-nao-existe" });
+    const total = panel.computer.totals();
+    assert.equal(total.paidCount, 0);
+    assert.equal(total.spendCents, 0);
+    assertSameAsResumo(summary.current, total, "campanha inexistente");
+  });
 });
 
 describe("a soma das partes fecha com o total", () => {

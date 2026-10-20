@@ -7,6 +7,7 @@ import { ptBR } from "date-fns/locale";
 
 import { DATE_KEY, DEFAULT_PERIOD, isPeriodId, periodLabel, type PeriodId } from "@/lib/periods";
 import type { DateKey } from "@/server/store/types";
+import { dayKeyAt } from "@/server/tz";
 
 export type DateRange = { from: DateKey; to: DateKey };
 
@@ -27,8 +28,9 @@ export function todayIn(timezone: string, now = new Date()) {
   return new TZDate(now.getTime(), timezone);
 }
 
+/** O dia (aaaa-mm-dd) do instante no fuso. Rápido: chamado para cada pedido (server/tz.ts). */
 export function dayKeyIn(isoUtc: string, timezone: string): DateKey {
-  return key(new TZDate(new Date(isoUtc).getTime(), timezone));
+  return dayKeyAt(Date.parse(isoUtc), timezone);
 }
 
 export function inRange(day: DateKey, range: DateRange) {

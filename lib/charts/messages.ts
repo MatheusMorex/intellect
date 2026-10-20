@@ -155,10 +155,12 @@ export const chartsPtBR = {
 
   panel: {
     title: "Painéis",
+    /** Começo da dica "?" de cada gráfico. */
+    whenToUse: "Quando usar:",
     /** Títulos automáticos dos gráficos que não saem de métricas. */
     titles: { salesFunnel: "Funil de vendas", kanbanFunnel: "Funil do quadro", gantt: "Cronograma das tarefas" },
     sections: { kpis: "Números principais", charts: "Gráficos" },
-    filters: { account: "Conta de anúncio", source: "Fonte de tráfego", product: "Produto" },
+    filters: { account: "Conta de anúncio", source: "Fonte de tráfego", product: "Produto", campaign: "Campanha" },
     granularityAdjusted: "Agrupamento ajustado",
     compareTitle: "Comparação",
     fx: {
@@ -211,7 +213,7 @@ export const chartsPtBR = {
     loading: "Carregando o gráfico…",
     notes: {
       hourUnavailable: "O gasto, as impressões, os cliques, os impostos e as despesas chegam por dia: por hora, eles aparecem sem dado.",
-      expensesFiltered: "As despesas não entram quando há filtro de conta, produto ou fonte (não dá para dividir uma conta de luz).",
+      expensesFiltered: "As despesas não entram quando há filtro de conta, produto, fonte ou campanha (não dá para dividir uma conta de luz).",
       productRevenue: "Por produto, o faturamento é a soma dos itens pagos, como em “Vendas por produto” do Resumo.",
       expensesByItem: "As despesas não se dividem por item: ficam de fora do lucro de cada linha.",
       percent: "Cada coluna soma 100%: a altura mostra a participação de cada parte no total daquele período.",
@@ -258,8 +260,11 @@ export const chartsPtBR = {
       window: "Mostra as tarefas que terminam a partir do início do período escolhido, inclusive as que vêm pela frente.",
       limited: (shown: number, total: number) => `Mostrando ${shown} de ${total} tarefas: as de entrega mais próxima.`,
       tableTask: "Tarefa",
+      tableBoard: "Quadro",
+      tableList: "Lista",
       tableStart: "Início",
       tableDue: "Entrega",
+      tableDone: "Concluído",
       tableStatus: "Situação",
     },
     treemap: {
@@ -458,7 +463,7 @@ export const chartsPtBR = {
       period: "Período",
       granularity: "Agrupar por",
       compare: "Comparar com",
-      ignoreFilters: "Ignorar os filtros de conta, fonte e produto do painel",
+      ignoreFilters: "Ignorar os filtros de conta, fonte, produto e campanha do painel",
       legend: "Legenda",
       legendOptions: { auto: "Automática", top: "Em cima", bottom: "Embaixo", none: "Escondida" },
       numbers: "Números",
@@ -471,6 +476,10 @@ export const chartsPtBR = {
       axisMin: "Mínimo do eixo",
       axisMax: "Máximo do eixo",
       axisAuto: "Automático",
+      axisScale: "Escala do eixo",
+      axisScaleOptions: { linear: "Linear", log: "Logarítmica" },
+      axisScaleHint:
+        "Na logarítmica, cada linha da grade vale 10 vezes a de baixo, e valores muito diferentes (R$ 50 e R$ 50.000) cabem no mesmo gráfico. Zero não aparece nessa escala.",
       grid: "Linhas de grade no fundo",
     },
     errors: {
@@ -520,6 +529,9 @@ export const chartsPtBR = {
     decimals: "Use de 0 a 4 casas decimais.",
     color: "Use uma cor no formato #rrggbb.",
     axisRange: "O máximo do eixo precisa ser maior que o mínimo.",
+    logMin: "Na escala logarítmica, o mínimo do eixo precisa ser maior que zero.",
+    logStacked: "A escala logarítmica não serve para colunas ou barras empilhadas: o tamanho das partes ficaria enganoso.",
+    logNegative: (metric: string) => `“${metric}” pode ficar negativo, e a escala logarítmica só mostra valores acima de zero.`,
   },
 
   /** Métricas que não estão no glossário. */
