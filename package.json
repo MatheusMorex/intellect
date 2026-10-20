@@ -18,7 +18,9 @@
     "db:push": "..\\tools\\supabase-cli\\supabase.exe db push --linked",
     "db:setup": "npm run db:login && npm run db:link && npm run db:push",
     "admin:criar": "node scripts/criar-admin.mjs",
-    "test:live": "node --env-file=.env.test.local --import ./tests/alias.mjs --test \"tests/live/**/*.test.ts\""
+    "test:live": "node --env-file=.env.test.local --import ./tests/alias.mjs --test \"tests/live/**/*.test.ts\"",
+    "dev:teste-real": "node scripts/dev-teste-real.mjs",
+    "test:e2e:live": "node --env-file=.env.test.local tests/e2e/live-kanban.mjs"
   },
   "dependencies": {
     "@date-fns/tz": "^1.5.0",

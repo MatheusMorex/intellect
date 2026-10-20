@@ -6,7 +6,10 @@ import { createHash } from "node:crypto";
 import { notFound } from "next/navigation";
 
 import { boardRole, requireBoard, requireWorkspace, workspaceRole, type BoardRole, type Ctx } from "@/server/access";
+import { adminClient } from "@/server/db/admin";
 import { getCardMetrics, listDashboardsFor, type CardMetric } from "@/server/data/tracking";
+import { touchLastActive } from "@/server/live/identity";
+import { withLiveRead } from "@/server/live/scope";
 import { homeHrefLive, inviteByTokenLive, profileViewLive, shellDataLive, workspaceMembersLive } from "@/server/live/shell";
 import { isLive } from "@/server/mode";
 import { fileUrl } from "@/server/files";
@@ -64,7 +67,18 @@ export type ShellData = {
 };
 
 export async function getShellData(ctx: Ctx): Promise<ShellData> {
-  if (isLive()) return shellDataLive(ctx.user.id);
+  if (isLive()) {
+    // Perfil e workspace pela etapa 1; quadros e notificações pelo retrato do kanban.
+    const base = await shellDataLive(ctx.user.id);
+    return withLiveRead(ctx.user.id, () => {
+      const boards = listBoardsFor(ctx);
+      return {
+        ...base,
+        boards: [...boards.filter((b) => b.starred), ...boards.filter((b) => !b.starred)],
+        unreadNotifications: readStore().notifications.filter((n) => n.userId === ctx.user.id && !n.readAt).length,
+      };
+    });
+  }
   const store = readStore();
   const membership = store.workspaceMembers.find((m) => m.userId === ctx.user.id);
   const workspace = membership ? store.workspaces.find((w) => w.id === membership.workspaceId) : undefined;
@@ -110,7 +124,7 @@ export function appearanceView(a: UserAppearance): ShellData["appearance"] {
   };
 }
 
-export async function getWorkspaceHome(ctx: Ctx, slug: string) {
+async function getWorkspaceHomeImpl(ctx: Ctx, slug: string) {
   const { workspace, role } = await requireWorkspace(ctx, slug);
   const store = readStore();
   const boards = listBoardsFor(ctx, true).filter((b) => b.workspaceSlug === workspace.slug);
@@ -216,7 +230,7 @@ function cardFront(store: Store, c: CardRow, metrics: Map<string, CardMetric>): 
   };
 }
 
-export async function getBoardView(ctx: Ctx, boardId: string): Promise<BoardView> {
+async function getBoardViewImpl(ctx: Ctx, boardId: string): Promise<BoardView> {
   const { board, role } = requireBoard(ctx, boardId);
   const store = readStore();
   const workspace = store.workspaces.find((w) => w.id === board.workspaceId)!;
@@ -268,8 +282,17 @@ export async function getBoardView(ctx: Ctx, boardId: string): Promise<BoardView
   };
 }
 
-/** Registra a visita (para "Vistos recentemente"). */
-export function recordBoardVisit(ctx: Ctx, boardId: string) {
+/** Registra a visita (para "Vistos recentemente"). Roda depois da resposta (after), com o acesso já conferido pela página. */
+export async function recordBoardVisit(ctx: Ctx, boardId: string) {
+  if (isLive()) {
+    // Duas gravações simples: não vale carregar o retrato inteiro.
+    const { error } = await adminClient()
+      .from("board_visits")
+      .upsert({ user_id: ctx.user.id, board_id: boardId, visited_at: nowIso() }, { onConflict: "user_id,board_id" });
+    if (error) console.error("[banco] registrar a visita ao quadro:", error.message);
+    await touchLastActive(ctx.user.id);
+    return;
+  }
   mutate((store) => {
     const visit = store.boardVisits.find((v) => v.userId === ctx.user.id && v.boardId === boardId);
     if (visit) visit.visitedAt = nowIso();
@@ -304,7 +327,7 @@ export function activityText(type: string, data: Record<string, unknown>) {
   return ACTIVITY_TEXT[type]?.(data) ?? type;
 }
 
-export async function getCardDetail(ctx: Ctx, cardId: string) {
+async function getCardDetailImpl(ctx: Ctx, cardId: string) {
   const store = readStore();
   const card = store.cards.find((c) => c.id === cardId);
   if (!card) notFound();
@@ -407,7 +430,11 @@ export async function getCardDetail(ctx: Ctx, cardId: string) {
 export type CardDetail = Awaited<ReturnType<typeof getCardDetail>>;
 
 /** Destinos para mover ou copiar um card: quadros onde o usuário edita, com as listas. */
-export function listWritableLists(ctx: Ctx) {
+export async function listWritableLists(ctx: Ctx) {
+  return withLiveRead(ctx.user.id, () => writableLists(ctx));
+}
+
+function writableLists(ctx: Ctx) {
   const store = readStore();
   return store.boards
     .filter((b) => !b.closedAt)
@@ -420,7 +447,7 @@ export function listWritableLists(ctx: Ctx) {
 
 // ---- menu do quadro (S08): arquivados e atividade --------------------------------------------------
 
-export async function getBoardArchive(ctx: Ctx, boardId: string) {
+async function getBoardArchiveImpl(ctx: Ctx, boardId: string) {
   const { board } = requireBoard(ctx, boardId);
   const store = readStore();
   return {
@@ -449,7 +476,7 @@ export async function getBoardArchive(ctx: Ctx, boardId: string) {
 
 // ---- compartilhar (S09) --------------------------------------------------------------------------
 
-export async function getBoardSharing(ctx: Ctx, boardId: string) {
+async function getBoardSharingImpl(ctx: Ctx, boardId: string) {
   const { board, role } = requireBoard(ctx, boardId);
   const store = readStore();
   const link = store.invites.find((i) => i.boardId === board.id && !i.email && !i.revokedAt && new Date(i.expiresAt).getTime() > Date.now());
@@ -470,7 +497,18 @@ export async function getBoardSharing(ctx: Ctx, boardId: string) {
 // ---- workspace (S12) --------------------------------------------------------------------------------
 
 export async function getWorkspaceMembers(ctx: Ctx, slug: string) {
-  if (isLive()) return workspaceMembersLive(ctx, slug);
+  if (isLive()) {
+    const data = await workspaceMembersLive(ctx, slug);
+    // Quantos quadros cada um participa, entre os que quem olha pode ver.
+    const counts = await withLiveRead(ctx.user.id, () => {
+      const store = readStore();
+      const boards = new Set(store.boards.filter((b) => b.workspaceId === data.workspace.id).map((b) => b.id));
+      const count = new Map<string, number>();
+      for (const m of store.boardMembers) if (boards.has(m.boardId)) count.set(m.userId, (count.get(m.userId) ?? 0) + 1);
+      return count;
+    });
+    return { ...data, members: data.members.map((m) => ({ ...m, boards: counts.get(m.id) ?? 0 })) };
+  }
   const { workspace, role } = await requireWorkspace(ctx, slug);
   const store = readStore();
   const boards = store.boards.filter((b) => b.workspaceId === workspace.id);
@@ -498,7 +536,7 @@ export async function getWorkspaceMembers(ctx: Ctx, slug: string) {
 
 // ---- meus cards (S30), busca (S10) e notificações (S11) ----------------------------------------------
 
-export async function getMyCards(ctx: Ctx) {
+async function getMyCardsImpl(ctx: Ctx) {
   const store = readStore();
   const mine = new Set(store.cardMembers.filter((m) => m.userId === ctx.user.id).map((m) => m.cardId));
   const visible = new Map(listBoardsFor(ctx).map((b) => [b.id, b]));
@@ -520,7 +558,7 @@ const fold = (s: string) =>
     .replace(/\p{Diacritic}/gu, "")
     .toLowerCase();
 
-export async function search(ctx: Ctx, q: string) {
+async function searchImpl(ctx: Ctx, q: string) {
   const term = fold(q.trim());
   if (term.length < 2) return { boards: [], cards: [], members: [], labels: [] };
   const store = readStore();
@@ -550,7 +588,7 @@ export async function search(ctx: Ctx, q: string) {
   };
 }
 
-export async function getNotifications(ctx: Ctx, onlyUnread = false) {
+async function getNotificationsImpl(ctx: Ctx, onlyUnread = false) {
   const store = readStore();
   return store.notifications
     .filter((n) => n.userId === ctx.user.id && (!onlyUnread || !n.readAt))
@@ -570,7 +608,10 @@ export async function getNotifications(ctx: Ctx, onlyUnread = false) {
 }
 
 export async function getProfile(ctx: Ctx) {
-  if (isLive()) return profileViewLive(ctx.user.id);
+  if (isLive()) {
+    const profile = await profileViewLive(ctx.user.id);
+    return { ...profile, activity: await withLiveRead(ctx.user.id, () => recentActivityOf(readStore(), ctx.user.id)) };
+  }
   const store = readStore();
   const user = store.users.find((u) => u.id === ctx.user.id)!;
   return {
@@ -585,21 +626,26 @@ export async function getProfile(ctx: Ctx) {
     avatarUrl: user.avatarFileId ? fileUrl(user.avatarFileId) : null,
     preferences: user.preferences,
     appearance: appearanceView(user.appearance),
-    activity: store.activities
-      .filter((a) => a.actorId === user.id)
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-      .slice(0, 20)
-      .map((a) => ({
-        id: a.id,
-        text: activityText(a.type, a.data),
-        cardName: a.cardId ? (store.cards.find((c) => c.id === a.cardId)?.name ?? null) : null,
-        cardId: a.cardId,
-        createdAt: a.createdAt,
-      })),
+    activity: recentActivityOf(store, user.id),
   };
 }
 
-export async function getCardPreview(ctx: Ctx, cardId: string) {
+/** As últimas 20 coisas que a pessoa fez (perfil). */
+function recentActivityOf(store: Store, userId: string) {
+  return store.activities
+    .filter((a) => a.actorId === userId)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .slice(0, 20)
+    .map((a) => ({
+      id: a.id,
+      text: activityText(a.type, a.data),
+      cardName: a.cardId ? (store.cards.find((c) => c.id === a.cardId)?.name ?? null) : null,
+      cardId: a.cardId,
+      createdAt: a.createdAt,
+    }));
+}
+
+async function getCardPreviewImpl(ctx: Ctx, cardId: string) {
   const store = readStore();
   const card = store.cards.find((c) => c.id === cardId);
   if (!card) return null;
@@ -637,4 +683,42 @@ export async function getInviteByToken(token: string, userId: string | null) {
   if (member) return { status: "member" as const, ...base };
   if (invite.maxUses != null && invite.usedCount >= invite.maxUses) return { status: "used" as const, ...base };
   return { status: "valid" as const, ...base };
+}
+
+// ---- modo real (AUTH_MODE=live): as leituras rodam sobre o retrato do Supabase (server/live/scope.ts) ----
+
+export async function getWorkspaceHome(...args: Parameters<typeof getWorkspaceHomeImpl>): ReturnType<typeof getWorkspaceHomeImpl> {
+  return withLiveRead(args[0].user.id, () => getWorkspaceHomeImpl(...args));
+}
+
+export async function getBoardView(...args: Parameters<typeof getBoardViewImpl>): ReturnType<typeof getBoardViewImpl> {
+  return withLiveRead(args[0].user.id, () => getBoardViewImpl(...args));
+}
+
+export async function getCardDetail(...args: Parameters<typeof getCardDetailImpl>): ReturnType<typeof getCardDetailImpl> {
+  return withLiveRead(args[0].user.id, () => getCardDetailImpl(...args));
+}
+
+export async function getBoardArchive(...args: Parameters<typeof getBoardArchiveImpl>): ReturnType<typeof getBoardArchiveImpl> {
+  return withLiveRead(args[0].user.id, () => getBoardArchiveImpl(...args));
+}
+
+export async function getBoardSharing(...args: Parameters<typeof getBoardSharingImpl>): ReturnType<typeof getBoardSharingImpl> {
+  return withLiveRead(args[0].user.id, () => getBoardSharingImpl(...args));
+}
+
+export async function getMyCards(...args: Parameters<typeof getMyCardsImpl>): ReturnType<typeof getMyCardsImpl> {
+  return withLiveRead(args[0].user.id, () => getMyCardsImpl(...args));
+}
+
+export async function search(...args: Parameters<typeof searchImpl>): ReturnType<typeof searchImpl> {
+  return withLiveRead(args[0].user.id, () => searchImpl(...args));
+}
+
+export async function getNotifications(...args: Parameters<typeof getNotificationsImpl>): ReturnType<typeof getNotificationsImpl> {
+  return withLiveRead(args[0].user.id, () => getNotificationsImpl(...args));
+}
+
+export async function getCardPreview(...args: Parameters<typeof getCardPreviewImpl>): ReturnType<typeof getCardPreviewImpl> {
+  return withLiveRead(args[0].user.id, () => getCardPreviewImpl(...args));
 }

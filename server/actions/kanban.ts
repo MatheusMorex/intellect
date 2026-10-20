@@ -9,6 +9,7 @@ import { z } from "zod";
 
 import { requireBoard, requireDashboard, requireWorkspace, type BoardRole } from "@/server/access";
 import { requireUser, type SessionUser } from "@/server/auth/session";
+import { liveAction } from "@/server/live/action";
 import { dropFile } from "@/server/files";
 import { BOARD_COLOR_KEYS } from "@/lib/board-backgrounds";
 import { bumpCard, cardsOfList, insertCard, listsOfBoard, logActivity, notify, plainJson, rankBetween, touchBoard } from "@/server/kanban/core";
@@ -63,7 +64,7 @@ const boardInput = z.object({
   visibility: z.enum(["private", "workspace"]),
 });
 
-export async function createBoard(input: z.input<typeof boardInput>): Promise<ActionResult<{ id: string }>> {
+async function createBoardImpl(input: z.input<typeof boardInput>): Promise<ActionResult<{ id: string }>> {
   const user = await requireUser();
   const parsed = boardInput.safeParse(input);
   if (!parsed.success) return fail(firstIssue(parsed.error));
@@ -113,7 +114,7 @@ const boardUpdate = z.object({
     .optional(),
 });
 
-export async function updateBoard(input: z.input<typeof boardUpdate>): Promise<ActionResult> {
+async function updateBoardImpl(input: z.input<typeof boardUpdate>): Promise<ActionResult> {
   const parsed = boardUpdate.safeParse(input);
   if (!parsed.success) return fail(firstIssue(parsed.error));
   const v = parsed.data;
@@ -141,7 +142,7 @@ export async function updateBoard(input: z.input<typeof boardUpdate>): Promise<A
   return ok(undefined);
 }
 
-export async function setBoardClosed(boardId: string, isClosed: boolean): Promise<ActionResult> {
+async function setBoardClosedImpl(boardId: string, isClosed: boolean): Promise<ActionResult> {
   const { user, board } = await onBoard(boardId, "admin");
   mutate((store) => {
     const b = store.boards.find((x) => x.id === board.id)!;
@@ -152,7 +153,7 @@ export async function setBoardClosed(boardId: string, isClosed: boolean): Promis
   return ok(undefined);
 }
 
-export async function deleteBoard(boardId: string): Promise<ActionResult> {
+async function deleteBoardImpl(boardId: string): Promise<ActionResult> {
   const { board } = await onBoard(boardId, "admin");
   if (!board.closedAt) return fail("Feche o quadro antes de excluir.");
   mutate((store) => {
@@ -180,7 +181,7 @@ export async function deleteBoard(boardId: string): Promise<ActionResult> {
   return ok(undefined);
 }
 
-export async function starBoard(boardId: string, on: boolean): Promise<ActionResult> {
+async function starBoardImpl(boardId: string, on: boolean): Promise<ActionResult> {
   const { user } = await onBoard(boardId, "observer");
   mutate((store) => {
     const existing = store.boardStars.find((s) => s.boardId === boardId && s.userId === user.id);
@@ -193,7 +194,7 @@ export async function starBoard(boardId: string, on: boolean): Promise<ActionRes
 
 // ---- listas ------------------------------------------------------------------------------------
 
-export async function createList(boardId: string, listName: string): Promise<ActionResult<{ id: string }>> {
+async function createListImpl(boardId: string, listName: string): Promise<ActionResult<{ id: string }>> {
   const parsed = name("à lista").safeParse(listName);
   if (!parsed.success) return fail(firstIssue(parsed.error));
   const { user, board } = await onBoard(boardId);
@@ -217,7 +218,7 @@ async function onList(listId: string, min: BoardRole = "normal") {
   return { ...ctx, list };
 }
 
-export async function renameList(listId: string, listName: string): Promise<ActionResult> {
+async function renameListImpl(listId: string, listName: string): Promise<ActionResult> {
   const parsed = name("à lista").safeParse(listName);
   if (!parsed.success) return fail(firstIssue(parsed.error));
   const ctx = await onList(listId);
@@ -233,7 +234,7 @@ export async function renameList(listId: string, listName: string): Promise<Acti
   return ok(undefined);
 }
 
-export async function setListArchived(listId: string, archived: boolean): Promise<ActionResult> {
+async function setListArchivedImpl(listId: string, archived: boolean): Promise<ActionResult> {
   const ctx = await onList(listId);
   if (!ctx) return fail("Esta lista não existe mais.");
   mutate((store) => {
@@ -253,7 +254,7 @@ export async function setListArchived(listId: string, archived: boolean): Promis
   return ok(undefined);
 }
 
-export async function setListColor(listId: string, color: string | null): Promise<ActionResult> {
+async function setListColorImpl(listId: string, color: string | null): Promise<ActionResult> {
   if (color && !LABEL_COLOR.test(color)) return fail("Cor inválida.");
   const ctx = await onList(listId);
   if (!ctx) return fail("Esta lista não existe mais.");
@@ -267,7 +268,7 @@ export async function setListColor(listId: string, color: string | null): Promis
 }
 
 /** Reordena listas: beforeId é a lista que fica antes, afterId a que fica depois. */
-export async function moveList(listId: string, beforeId: string | null, afterId: string | null): Promise<ActionResult<{ rank: string }>> {
+async function moveListImpl(listId: string, beforeId: string | null, afterId: string | null): Promise<ActionResult<{ rank: string }>> {
   const ctx = await onList(listId);
   if (!ctx) return fail("Esta lista não existe mais.");
   const blocked = closed(ctx.board);
@@ -284,7 +285,7 @@ export async function moveList(listId: string, beforeId: string | null, afterId:
   return ok({ rank });
 }
 
-export async function archiveAllCards(listId: string): Promise<ActionResult<{ count: number }>> {
+async function archiveAllCardsImpl(listId: string): Promise<ActionResult<{ count: number }>> {
   const ctx = await onList(listId);
   if (!ctx) return fail("Esta lista não existe mais.");
   const count = mutate((store) => {
@@ -299,7 +300,7 @@ export async function archiveAllCards(listId: string): Promise<ActionResult<{ co
   return ok({ count });
 }
 
-export async function moveAllCards(listId: string, toListId: string): Promise<ActionResult<{ count: number }>> {
+async function moveAllCardsImpl(listId: string, toListId: string): Promise<ActionResult<{ count: number }>> {
   const ctx = await onList(listId);
   if (!ctx) return fail("Esta lista não existe mais.");
   const count = mutate((store) => {
@@ -330,7 +331,7 @@ const moveInput = z.object({
   position: z.enum(["top", "bottom"]).optional(),
 });
 
-export async function moveCard(input: z.input<typeof moveInput>): Promise<ActionResult<{ rank: string; boardId: string }>> {
+async function moveCardImpl(input: z.input<typeof moveInput>): Promise<ActionResult<{ rank: string; boardId: string }>> {
   const parsed = moveInput.safeParse(input);
   if (!parsed.success) return fail(firstIssue(parsed.error));
   const v = parsed.data;
@@ -390,7 +391,7 @@ const cardUpdate = z.object({
     .optional(),
 });
 
-export async function updateCard(input: z.input<typeof cardUpdate>): Promise<ActionResult<{ version: number }> | { ok: false; error: string; conflict: true; current: { description: unknown; descriptionText: string; version: number } }> {
+async function updateCardImpl(input: z.input<typeof cardUpdate>): Promise<ActionResult<{ version: number }> | { ok: false; error: string; conflict: true; current: { description: unknown; descriptionText: string; version: number } }> {
   const parsed = cardUpdate.safeParse(input);
   if (!parsed.success) return fail(firstIssue(parsed.error));
   const v = parsed.data;
@@ -451,7 +452,7 @@ export async function updateCard(input: z.input<typeof cardUpdate>): Promise<Act
   return ok({ version: result.version });
 }
 
-export async function setCardArchived(cardId: string, archived: boolean): Promise<ActionResult> {
+async function setCardArchivedImpl(cardId: string, archived: boolean): Promise<ActionResult> {
   const ctx = await onCard(cardId);
   if (!ctx) return fail("Este card não existe mais.");
   mutate((store) => {
@@ -471,7 +472,7 @@ export async function setCardArchived(cardId: string, archived: boolean): Promis
   return ok(undefined);
 }
 
-export async function deleteCard(cardId: string): Promise<ActionResult> {
+async function deleteCardImpl(cardId: string): Promise<ActionResult> {
   const ctx = await onCard(cardId);
   if (!ctx) return fail("Este card não existe mais.");
   if (!ctx.card.archivedAt) return fail("Arquive o card antes de excluir.");
@@ -500,7 +501,7 @@ const copyInput = z.object({
   keep: z.object({ labels: z.boolean(), members: z.boolean(), checklists: z.boolean(), links: z.boolean() }),
 });
 
-export async function copyCard(input: z.input<typeof copyInput>): Promise<ActionResult<{ id: string; boardId: string }>> {
+async function copyCardImpl(input: z.input<typeof copyInput>): Promise<ActionResult<{ id: string; boardId: string }>> {
   const parsed = copyInput.safeParse(input);
   if (!parsed.success) return fail(firstIssue(parsed.error));
   const v = parsed.data;
@@ -550,7 +551,7 @@ export async function copyCard(input: z.input<typeof copyInput>): Promise<Action
 
 // ---- membros e etiquetas no card ------------------------------------------------------------------
 
-export async function toggleCardMember(cardId: string, userId: string, on: boolean): Promise<ActionResult> {
+async function toggleCardMemberImpl(cardId: string, userId: string, on: boolean): Promise<ActionResult> {
   const ctx = await onCard(cardId);
   if (!ctx) return fail("Este card não existe mais.");
   const blocked = closed(ctx.board);
@@ -578,7 +579,7 @@ export async function toggleCardMember(cardId: string, userId: string, on: boole
   return ok(undefined);
 }
 
-export async function toggleCardLabel(cardId: string, labelId: string, on: boolean): Promise<ActionResult> {
+async function toggleCardLabelImpl(cardId: string, labelId: string, on: boolean): Promise<ActionResult> {
   const ctx = await onCard(cardId);
   if (!ctx) return fail("Este card não existe mais.");
   const blocked = closed(ctx.board);
@@ -603,7 +604,7 @@ const labelInput = z.object({
   color: z.string().regex(LABEL_COLOR).nullable(),
 });
 
-export async function upsertLabel(input: z.input<typeof labelInput>): Promise<ActionResult<{ id: string }>> {
+async function upsertLabelImpl(input: z.input<typeof labelInput>): Promise<ActionResult<{ id: string }>> {
   const parsed = labelInput.safeParse(input);
   if (!parsed.success) return fail(firstIssue(parsed.error));
   const v = parsed.data;
@@ -628,7 +629,7 @@ export async function upsertLabel(input: z.input<typeof labelInput>): Promise<Ac
   return ok({ id });
 }
 
-export async function deleteLabel(labelId: string): Promise<ActionResult> {
+async function deleteLabelImpl(labelId: string): Promise<ActionResult> {
   const label = readStore().labels.find((l) => l.id === labelId);
   if (!label) return fail("Esta etiqueta não existe mais.");
   await onBoard(label.boardId);
@@ -643,7 +644,7 @@ export async function deleteLabel(labelId: string): Promise<ActionResult> {
 
 // ---- checklists --------------------------------------------------------------------------------
 
-export async function createChecklist(cardId: string, checklistName: string, copyFromId?: string | null): Promise<ActionResult<{ id: string }>> {
+async function createChecklistImpl(cardId: string, checklistName: string, copyFromId?: string | null): Promise<ActionResult<{ id: string }>> {
   const parsed = name("à checklist").safeParse(checklistName);
   if (!parsed.success) return fail(firstIssue(parsed.error));
   const ctx = await onCard(cardId);
@@ -673,7 +674,7 @@ async function onChecklist(checklistId: string) {
   return ctx ? { ...ctx, checklist } : null;
 }
 
-export async function updateChecklist(checklistId: string, patch: { name?: string; hideChecked?: boolean }): Promise<ActionResult> {
+async function updateChecklistImpl(checklistId: string, patch: { name?: string; hideChecked?: boolean }): Promise<ActionResult> {
   if (patch.name !== undefined) {
     const parsed = name("à checklist").safeParse(patch.name);
     if (!parsed.success) return fail(firstIssue(parsed.error));
@@ -691,7 +692,7 @@ export async function updateChecklist(checklistId: string, patch: { name?: strin
   return ok(undefined);
 }
 
-export async function deleteChecklist(checklistId: string): Promise<ActionResult> {
+async function deleteChecklistImpl(checklistId: string): Promise<ActionResult> {
   const ctx = await onChecklist(checklistId);
   if (!ctx) return fail("Esta checklist não existe mais.");
   mutate((store) => {
@@ -703,7 +704,7 @@ export async function deleteChecklist(checklistId: string): Promise<ActionResult
   return ok(undefined);
 }
 
-export async function addChecklistItem(checklistId: string, itemName: string): Promise<ActionResult<{ id: string }>> {
+async function addChecklistItemImpl(checklistId: string, itemName: string): Promise<ActionResult<{ id: string }>> {
   const parsed = name("ao item", 16384).safeParse(itemName);
   if (!parsed.success) return fail(firstIssue(parsed.error));
   const ctx = await onChecklist(checklistId);
@@ -737,7 +738,7 @@ const itemPatch = z.object({
   assigneeId: z.uuid().nullable().optional(),
 });
 
-export async function updateChecklistItem(itemId: string, input: z.input<typeof itemPatch>): Promise<ActionResult> {
+async function updateChecklistItemImpl(itemId: string, input: z.input<typeof itemPatch>): Promise<ActionResult> {
   const parsed = itemPatch.safeParse(input);
   if (!parsed.success) return fail(firstIssue(parsed.error));
   const v = parsed.data;
@@ -766,7 +767,7 @@ export async function updateChecklistItem(itemId: string, input: z.input<typeof 
   return ok(undefined);
 }
 
-export async function deleteChecklistItem(itemId: string): Promise<ActionResult> {
+async function deleteChecklistItemImpl(itemId: string): Promise<ActionResult> {
   const item = readStore().checklistItems.find((i) => i.id === itemId);
   if (!item) return fail("Este item não existe mais.");
   const ctx = await onChecklist(item.checklistId);
@@ -780,7 +781,7 @@ export async function deleteChecklistItem(itemId: string): Promise<ActionResult>
 }
 
 /** Converte um item de checklist em card, na mesma lista do card de origem. */
-export async function convertItemToCard(itemId: string): Promise<ActionResult<{ id: string }>> {
+async function convertItemToCardImpl(itemId: string): Promise<ActionResult<{ id: string }>> {
   const item = readStore().checklistItems.find((i) => i.id === itemId);
   if (!item) return fail("Este item não existe mais.");
   const ctx = await onChecklist(item.checklistId);
@@ -804,7 +805,7 @@ const commentInput = z.object({
   mentions: z.array(z.uuid()).max(50),
 });
 
-export async function addComment(cardId: string, input: z.input<typeof commentInput>): Promise<ActionResult<{ id: string }>> {
+async function addCommentImpl(cardId: string, input: z.input<typeof commentInput>): Promise<ActionResult<{ id: string }>> {
   const parsed = commentInput.safeParse(input);
   if (!parsed.success) return fail(firstIssue(parsed.error));
   const doc = plainJson(parsed.data.body);
@@ -832,7 +833,7 @@ export async function addComment(cardId: string, input: z.input<typeof commentIn
   return ok({ id });
 }
 
-export async function editComment(commentId: string, input: z.input<typeof commentInput>): Promise<ActionResult> {
+async function editCommentImpl(commentId: string, input: z.input<typeof commentInput>): Promise<ActionResult> {
   const parsed = commentInput.safeParse(input);
   if (!parsed.success) return fail(firstIssue(parsed.error));
   const doc = plainJson(parsed.data.body);
@@ -855,7 +856,7 @@ export async function editComment(commentId: string, input: z.input<typeof comme
   return ok(undefined);
 }
 
-export async function deleteComment(commentId: string): Promise<ActionResult> {
+async function deleteCommentImpl(commentId: string): Promise<ActionResult> {
   const comment = readStore().comments.find((c) => c.id === commentId);
   if (!comment) return fail("Este comentário não existe mais.");
   const ctx = await onCard(comment.cardId, "observer");
@@ -878,7 +879,7 @@ const linkInput = z.object({
   targetId: z.uuid().nullable(),
 });
 
-export async function linkCard(input: z.input<typeof linkInput>): Promise<ActionResult> {
+async function linkCardImpl(input: z.input<typeof linkInput>): Promise<ActionResult> {
   const parsed = linkInput.safeParse(input);
   if (!parsed.success) return fail(firstIssue(parsed.error));
   const v = parsed.data;
@@ -927,7 +928,7 @@ export async function linkCard(input: z.input<typeof linkInput>): Promise<Action
   return ok(undefined);
 }
 
-export async function unlinkCard(linkId: string): Promise<ActionResult> {
+async function unlinkCardImpl(linkId: string): Promise<ActionResult> {
   const link = readStore().cardLinks.find((l) => l.id === linkId);
   if (!link) return fail("Este vínculo não existe mais.");
   const ctx = await onCard(link.cardId);
@@ -941,7 +942,7 @@ export async function unlinkCard(linkId: string): Promise<ActionResult> {
 }
 
 /** Busca para o vínculo (GET /api/link-targets no backend real): campanhas, conjuntos, anúncios e produtos. */
-export async function searchLinkTargets(dashboardId: string, q: string) {
+async function searchLinkTargetsImpl(dashboardId: string, q: string) {
   const user = await requireUser();
   requireDashboard({ user }, dashboardId);
   const store = readStore();
@@ -979,4 +980,142 @@ export async function searchLinkTargets(dashboardId: string, q: string) {
       .slice(0, 8)
       .map((p) => ({ id: p.id, name: p.name, provider: null, parent: null })),
   };
+}
+
+// ---- modo real (AUTH_MODE=live): cada action roda sobre o retrato do Supabase (server/live/action.ts) ----
+
+export async function createBoard(...args: Parameters<typeof createBoardImpl>): ReturnType<typeof createBoardImpl> {
+  return liveAction(() => createBoardImpl(...args));
+}
+
+export async function updateBoard(...args: Parameters<typeof updateBoardImpl>): ReturnType<typeof updateBoardImpl> {
+  return liveAction(() => updateBoardImpl(...args));
+}
+
+export async function setBoardClosed(...args: Parameters<typeof setBoardClosedImpl>): ReturnType<typeof setBoardClosedImpl> {
+  return liveAction(() => setBoardClosedImpl(...args));
+}
+
+export async function deleteBoard(...args: Parameters<typeof deleteBoardImpl>): ReturnType<typeof deleteBoardImpl> {
+  return liveAction(() => deleteBoardImpl(...args));
+}
+
+export async function starBoard(...args: Parameters<typeof starBoardImpl>): ReturnType<typeof starBoardImpl> {
+  return liveAction(() => starBoardImpl(...args));
+}
+
+export async function createList(...args: Parameters<typeof createListImpl>): ReturnType<typeof createListImpl> {
+  return liveAction(() => createListImpl(...args));
+}
+
+export async function renameList(...args: Parameters<typeof renameListImpl>): ReturnType<typeof renameListImpl> {
+  return liveAction(() => renameListImpl(...args));
+}
+
+export async function setListArchived(...args: Parameters<typeof setListArchivedImpl>): ReturnType<typeof setListArchivedImpl> {
+  return liveAction(() => setListArchivedImpl(...args));
+}
+
+export async function setListColor(...args: Parameters<typeof setListColorImpl>): ReturnType<typeof setListColorImpl> {
+  return liveAction(() => setListColorImpl(...args));
+}
+
+export async function moveList(...args: Parameters<typeof moveListImpl>): ReturnType<typeof moveListImpl> {
+  return liveAction(() => moveListImpl(...args));
+}
+
+export async function archiveAllCards(...args: Parameters<typeof archiveAllCardsImpl>): ReturnType<typeof archiveAllCardsImpl> {
+  return liveAction(() => archiveAllCardsImpl(...args));
+}
+
+export async function moveAllCards(...args: Parameters<typeof moveAllCardsImpl>): ReturnType<typeof moveAllCardsImpl> {
+  return liveAction(() => moveAllCardsImpl(...args));
+}
+
+export async function moveCard(...args: Parameters<typeof moveCardImpl>): ReturnType<typeof moveCardImpl> {
+  return liveAction(() => moveCardImpl(...args));
+}
+
+export async function updateCard(...args: Parameters<typeof updateCardImpl>): ReturnType<typeof updateCardImpl> {
+  return liveAction(() => updateCardImpl(...args));
+}
+
+export async function setCardArchived(...args: Parameters<typeof setCardArchivedImpl>): ReturnType<typeof setCardArchivedImpl> {
+  return liveAction(() => setCardArchivedImpl(...args));
+}
+
+export async function deleteCard(...args: Parameters<typeof deleteCardImpl>): ReturnType<typeof deleteCardImpl> {
+  return liveAction(() => deleteCardImpl(...args));
+}
+
+export async function copyCard(...args: Parameters<typeof copyCardImpl>): ReturnType<typeof copyCardImpl> {
+  return liveAction(() => copyCardImpl(...args));
+}
+
+export async function toggleCardMember(...args: Parameters<typeof toggleCardMemberImpl>): ReturnType<typeof toggleCardMemberImpl> {
+  return liveAction(() => toggleCardMemberImpl(...args));
+}
+
+export async function toggleCardLabel(...args: Parameters<typeof toggleCardLabelImpl>): ReturnType<typeof toggleCardLabelImpl> {
+  return liveAction(() => toggleCardLabelImpl(...args));
+}
+
+export async function upsertLabel(...args: Parameters<typeof upsertLabelImpl>): ReturnType<typeof upsertLabelImpl> {
+  return liveAction(() => upsertLabelImpl(...args));
+}
+
+export async function deleteLabel(...args: Parameters<typeof deleteLabelImpl>): ReturnType<typeof deleteLabelImpl> {
+  return liveAction(() => deleteLabelImpl(...args));
+}
+
+export async function createChecklist(...args: Parameters<typeof createChecklistImpl>): ReturnType<typeof createChecklistImpl> {
+  return liveAction(() => createChecklistImpl(...args));
+}
+
+export async function updateChecklist(...args: Parameters<typeof updateChecklistImpl>): ReturnType<typeof updateChecklistImpl> {
+  return liveAction(() => updateChecklistImpl(...args));
+}
+
+export async function deleteChecklist(...args: Parameters<typeof deleteChecklistImpl>): ReturnType<typeof deleteChecklistImpl> {
+  return liveAction(() => deleteChecklistImpl(...args));
+}
+
+export async function addChecklistItem(...args: Parameters<typeof addChecklistItemImpl>): ReturnType<typeof addChecklistItemImpl> {
+  return liveAction(() => addChecklistItemImpl(...args));
+}
+
+export async function updateChecklistItem(...args: Parameters<typeof updateChecklistItemImpl>): ReturnType<typeof updateChecklistItemImpl> {
+  return liveAction(() => updateChecklistItemImpl(...args));
+}
+
+export async function deleteChecklistItem(...args: Parameters<typeof deleteChecklistItemImpl>): ReturnType<typeof deleteChecklistItemImpl> {
+  return liveAction(() => deleteChecklistItemImpl(...args));
+}
+
+export async function convertItemToCard(...args: Parameters<typeof convertItemToCardImpl>): ReturnType<typeof convertItemToCardImpl> {
+  return liveAction(() => convertItemToCardImpl(...args));
+}
+
+export async function addComment(...args: Parameters<typeof addCommentImpl>): ReturnType<typeof addCommentImpl> {
+  return liveAction(() => addCommentImpl(...args));
+}
+
+export async function editComment(...args: Parameters<typeof editCommentImpl>): ReturnType<typeof editCommentImpl> {
+  return liveAction(() => editCommentImpl(...args));
+}
+
+export async function deleteComment(...args: Parameters<typeof deleteCommentImpl>): ReturnType<typeof deleteCommentImpl> {
+  return liveAction(() => deleteCommentImpl(...args));
+}
+
+export async function linkCard(...args: Parameters<typeof linkCardImpl>): ReturnType<typeof linkCardImpl> {
+  return liveAction(() => linkCardImpl(...args));
+}
+
+export async function unlinkCard(...args: Parameters<typeof unlinkCardImpl>): ReturnType<typeof unlinkCardImpl> {
+  return liveAction(() => unlinkCardImpl(...args));
+}
+
+export async function searchLinkTargets(...args: Parameters<typeof searchLinkTargetsImpl>): ReturnType<typeof searchLinkTargetsImpl> {
+  return liveAction(() => searchLinkTargetsImpl(...args));
 }

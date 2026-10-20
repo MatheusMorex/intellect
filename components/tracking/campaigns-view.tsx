@@ -85,7 +85,7 @@ const STATUS_OPTIONS = [
 export async function CampaignsView({ dashboardId, provider, sp }: { dashboardId: string; provider: Provider; sp: SearchParams }) {
   const user = await requireUser();
   const report = await getTrafficReport({ user }, dashboardId, provider, sp);
-  const lists = listWritableLists({ user });
+  const lists = await listWritableLists({ user });
   const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
   const base = `/d/${report.dashboard.id}/${provider}`;
 

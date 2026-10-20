@@ -11,6 +11,7 @@ import { panelSource } from "@/server/charts/source";
 import { floorToLocalHour } from "@/server/charts/time-buckets";
 import { earliestDay, lastSyncedAt, type SearchParams } from "@/server/data/tracking";
 import { prepareDashboardFx } from "@/server/fx/rates";
+import { isLive } from "@/server/mode";
 import { readStore, storeVersion } from "@/server/store/db";
 import type { BoardRow, DashboardRow } from "@/server/store/types";
 import type { WeekStart } from "@/lib/charts/options";
@@ -33,6 +34,8 @@ export async function loadPanels(ctx: Ctx, dashboardId: string, sp: SearchParams
   const version = storeVersion();
   // Funil do kanban e Gantt: só os quadros que esta pessoa pode ver (por isso entram na chave).
   const boards = visibleBoards(readStore(), dashboard.workspaceId, (board) => boardRole(ctx, board) != null);
+  // Modo real: a versão dos dados ainda não vem do banco (etapa 4 da troca), então sem cache.
+  if (isLive()) return buildPanelPage(dashboard, boards, sp, now);
   const key = [dashboard.id, boards.map((b) => b.id).join(","), panelQueryKey(sp), floorToLocalHour(now.getTime(), dashboard.timezone)].join("|");
   return pageCache.get(key, version, () => buildPanelPage(dashboard, boards, sp, now), now.getTime());
 }

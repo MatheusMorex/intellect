@@ -51,6 +51,8 @@ export default async function BoardPage({ params, searchParams }: Props) {
     else if (preview.boardId !== boardId) redirect(`/b/${preview.boardId}?card=${cardId}`);
     else detail = await getCardDetail(ctx, cardId);
   }
+  // Destinos de "mover" e "copiar" do card aberto.
+  const writableLists = detail ? await listWritableLists(ctx) : [];
   const now = Date.parse(nowIso());
 
   return (
@@ -68,7 +70,7 @@ export default async function BoardPage({ params, searchParams }: Props) {
           detail={detail}
           labels={view.labels}
           members={view.members}
-          lists={listWritableLists(ctx)}
+          lists={writableLists}
           dashboards={listDashboardsFor(ctx).map((d) => ({ id: d.id, name: d.name }))}
           buttons={view.buttons.card}
           now={now}

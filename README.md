@@ -1,36 +1,41 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# INtellect
 
-## Getting Started
+Kanban (estilo Trello) + rastreamento de vendas e anúncios (estilo UTMify) num app só.
 
-First, run the development server:
+## Abrir o app
 
-```bash
+```
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Espere aparecer `Ready` e abra http://localhost:3000. A primeira abertura de cada tela demora alguns minutos neste notebook.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Dois modos
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- **Simulado** (`AUTH_MODE=fake` no `.env.local`, o padrão): login e dados de exemplo no arquivo `.data/store.json`. `npm run seed` apaga os dados de exemplo (o app recria na próxima abertura).
+- **Real** (`AUTH_MODE=live`): login pelo Supabase Auth e dados no Supabase. Já ligados: login, perfil, workspace e convites (etapa 1) e o kanban inteiro (etapa 2: quadros, listas, cards, etiquetas, checklists, comentários, notificações, compartilhar e fundo com imagem). Os dashboards entram na etapa 4; até lá aparecem zerados.
 
-## Learn More
+Como o modo real funciona por dentro: a cada tela ou ação, o app carrega do Supabase um "retrato" do que a pessoa pode ver, no mesmo formato do modo simulado (`server/live/snapshot.ts`). As mesmas regras rodam sobre ele, e no fim só o que mudou é gravado (`server/live/scope.ts`).
 
-To learn more about Next.js, take a look at the following resources:
+## Testes
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| Comando | O que faz |
+| --- | --- |
+| `npm test` | testes de unidade (sem banco) |
+| `npm run test:e2e` | percorre o app no navegador (Edge), no modo simulado, com `npm run dev` ligado e dados de exemplo limpos |
+| `npm run test:live` | regras de acesso (RLS) e o kanban contra o projeto de TESTE do Supabase (chaves no `.env.test.local`) |
+| `npm run test:e2e:live` | o kanban no navegador, no modo real (veja abaixo) |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### Testar o modo real
 
-## Deploy on Vercel
+1. Num terminal: `npm run dev:teste-real`. Ele liga o app no modo real, apontado para o projeto de **teste** (`intellect-teste`), sem mexer no `.env.local`.
+2. Em outro terminal: `npm run test:e2e:live`. Ele cria duas pessoas temporárias, percorre o kanban e apaga tudo no fim.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Nada disso toca o projeto principal.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Supabase
+
+- Projeto principal: `dxtytutmrsbeuwaiqlxi` (o CLI fica ligado nele).
+- Projeto de teste: `aqaijwpnudhftlxwsfdm`.
+- Migrações em `supabase/migrations/`.
+- Primeira conta de admin no projeto principal: `npm run admin:criar` (a senha é pedida no terminal).

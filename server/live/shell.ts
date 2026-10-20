@@ -1,6 +1,6 @@
 // Leituras do modo real (AUTH_MODE=live) para o menu, o perfil, os membros e o
-// convite. As telas de quadros e dashboards entram nas próximas etapas: até lá
-// elas mostram tudo vazio (R$ 0,00 nos números).
+// convite. Os quadros vêm do retrato do kanban (server/live/snapshot.ts, etapa 2);
+// os dashboards entram na etapa 4: até lá mostram tudo vazio (R$ 0,00 nos números).
 
 import { requireWorkspace, type Ctx } from "@/server/access";
 import { adminClient, dbError } from "@/server/db/admin";
@@ -96,18 +96,24 @@ export async function inviteByTokenLive(token: string, userId: string | null) {
   const { data: workspace, error } = await adminClient().from("workspaces").select("name, slug").eq("id", invite.workspaceId).maybeSingle();
   if (error) dbError("carregar o convite", error);
   const inviter = invite.createdBy ? (await getLiveProfiles([invite.createdBy])).get(invite.createdBy) : null;
+  const board = invite.boardId ? (await adminClient().from("boards").select("id, name").eq("id", invite.boardId).maybeSingle()).data : null;
   const base = {
     workspaceName: workspace?.name ?? "",
     workspaceSlug: workspace?.slug ?? "",
     boardId: invite.boardId,
-    boardName: null as string | null,
+    boardName: (board?.name as string | undefined) ?? null,
     inviter: inviter?.name ?? "Usuário removido",
     email: invite.email,
     role: invite.role,
   };
   if (invite.revokedAt) return { status: "revoked" as const, ...base };
   if (new Date(invite.expiresAt).getTime() < Date.now()) return { status: "expired" as const, ...base };
-  const member = userId ? (await membershipsOf(userId)).some((m) => m.workspace.id === invite.workspaceId) : false;
+  // Convite de quadro: "já participa" é ser do quadro; de workspace, ser do workspace.
+  const member = !userId
+    ? false
+    : invite.boardId
+      ? Boolean((await adminClient().from("board_members").select("id").eq("board_id", invite.boardId).eq("user_id", userId).maybeSingle()).data)
+      : (await membershipsOf(userId)).some((m) => m.workspace.id === invite.workspaceId);
   if (member) return { status: "member" as const, ...base };
   if (invite.maxUses != null && invite.usedCount >= invite.maxUses) return { status: "used" as const, ...base };
   return { status: "valid" as const, ...base };

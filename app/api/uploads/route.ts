@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { boardRole } from "@/server/access";
 import { getCurrentUser } from "@/server/auth/session";
 import { detectImageType, dropFile, fileUrl, MAX_UPLOAD_BYTES, storageFileUrl, writeFileData } from "@/server/files";
+import { saveBoardBackgroundLive } from "@/server/live/board-files";
 import { saveUploadLive } from "@/server/live/settings";
 import { isLive } from "@/server/mode";
 import { logActivity } from "@/server/kanban/core";
@@ -42,10 +43,14 @@ export async function POST(request: Request) {
 
   const boardId = kind === "board_background" ? String(form.get("boardId") ?? "") : null;
   if (isLive()) {
-    // O fundo de quadro entra junto com os quadros, na próxima etapa.
-    if (kind === "board_background") return fail("Quadro não encontrado.", 404);
     const live = detectImageType(new Uint8Array(await file.arrayBuffer()));
     if (!live) return fail("Use uma imagem JPG, PNG ou WebP.");
+    if (kind === "board_background") {
+      const saved = await saveBoardBackgroundLive(user, boardId ?? "", new Uint8Array(await file.arrayBuffer()), live);
+      if (!saved.ok) return fail(saved.error, saved.status);
+      revalidatePath("/", "layout");
+      return NextResponse.json({ ok: true, url: storageFileUrl(saved.path) });
+    }
     const saved = await saveUploadLive(user.id, kind, new Uint8Array(await file.arrayBuffer()), live);
     if (!saved.ok) return fail(saved.error, 500);
     revalidatePath("/", "layout");

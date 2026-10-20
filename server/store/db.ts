@@ -1,12 +1,15 @@
 // Armazenamento simulado: um arquivo JSON em .data/store.json, criado pelo seed
-// na primeira leitura. Serve para construir e testar as telas sem banco; o
-// /replica-backend troca isto por Postgres + Prisma com as mesmas funções em
-// server/data.
+// na primeira leitura. Serve para construir e testar as telas sem banco.
+//
+// No modo real (AUTH_MODE=live), readStore() e mutate() usam o retrato do
+// Supabase do pedido em andamento (server/live/scope.ts): as mesmas regras do
+// app rodam sobre ele, e o que mudou é gravado no fim do pedido.
 
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
+import { currentLiveStore } from "../live/scope";
 import { isLive } from "../mode";
 import { createSeed, emptyStore, STORE_VERSION, upgradeStore } from "./seed";
 import type { Store } from "./types";
@@ -36,7 +39,7 @@ function writeFile(store: Store) {
   generation++;
 }
 
-/** No modo real não há arquivo: o que ainda não foi ligado ao banco aparece vazio (tudo zerado). */
+/** No modo real, fora de um retrato (partes ainda não ligadas ao banco), tudo aparece vazio (zerado). */
 let liveEmpty: Store | null = null;
 
 export class NotInLiveModeError extends Error {
@@ -46,7 +49,7 @@ export class NotInLiveModeError extends Error {
 }
 
 export function readStore(): Store {
-  if (isLive()) return (liveEmpty ??= emptyStore());
+  if (isLive()) return currentLiveStore() ?? (liveEmpty ??= emptyStore());
   let stat: fs.Stats | null = null;
   try {
     stat = fs.statSync(FILE);
@@ -89,10 +92,20 @@ export function afterMutate(hook: (store: Store) => void) {
   if (!afterHooks.includes(hook)) afterHooks.push(hook);
 }
 
-/** Muda o armazenamento e grava. Tudo dentro de fn acontece de uma vez (como uma transação). */
+/**
+ * Muda o armazenamento e grava. Tudo dentro de fn acontece de uma vez (como uma
+ * transação). No modo real muda o retrato; a gravação no Supabase acontece no
+ * fim do pedido (server/live/scope.ts).
+ */
 export function mutate<T>(fn: (store: Store) => T): T {
-  // Gravar numa loja vazia perderia o dado em silêncio: melhor avisar.
-  if (isLive()) throw new NotInLiveModeError();
+  if (isLive()) {
+    const live = currentLiveStore();
+    // Fora de um retrato, gravar numa loja vazia perderia o dado em silêncio: melhor avisar.
+    if (!live) throw new NotInLiveModeError();
+    const result = fn(live);
+    for (const hook of afterHooks) hook(live);
+    return result;
+  }
   const store = readStore();
   const result = fn(store);
   for (const hook of afterHooks) hook(store);

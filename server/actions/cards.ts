@@ -8,6 +8,7 @@ import { z } from "zod";
 
 import { requireBoard, requireDashboard } from "@/server/access";
 import { requireUser } from "@/server/auth/session";
+import { liveAction } from "@/server/live/action";
 import { insertCard, touchBoard } from "@/server/kanban/core";
 import { mutate, newId, nowIso } from "@/server/store/db";
 
@@ -21,7 +22,7 @@ const cardName = z
 
 const createCardInput = z.object({ boardId: z.uuid(), listId: z.uuid(), name: cardName });
 
-export async function createCard(input: { boardId: string; listId: string; name: string }): Promise<ActionResult<{ id: string }>> {
+async function createCardImpl(input: { boardId: string; listId: string; name: string }): Promise<ActionResult<{ id: string }>> {
   const user = await requireUser();
   const parsed = createCardInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
@@ -46,7 +47,7 @@ const fromRowInput = z.object({
 });
 
 /** "Criar card" numa linha do relatório (F16): o card nasce ligado à campanha. */
-export async function createCardFromRow(input: {
+async function createCardFromRowImpl(input: {
   dashboardId: string;
   level?: "campanhas" | "conjuntos" | "anuncios";
   targetId: string;
@@ -92,4 +93,14 @@ export async function createCardFromRow(input: {
   if (!result) return { ok: false, error: "A campanha ou a lista não existe mais. Recarregue a página." };
   revalidatePath(`/b/${result.boardId}`);
   return { ok: true, data: result };
+}
+
+// ---- modo real (AUTH_MODE=live): cada action roda sobre o retrato do Supabase (server/live/action.ts) ----
+
+export async function createCard(...args: Parameters<typeof createCardImpl>): ReturnType<typeof createCardImpl> {
+  return liveAction(() => createCardImpl(...args));
+}
+
+export async function createCardFromRow(...args: Parameters<typeof createCardFromRowImpl>): ReturnType<typeof createCardFromRowImpl> {
+  return liveAction(() => createCardFromRowImpl(...args));
 }

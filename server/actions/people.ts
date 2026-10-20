@@ -11,6 +11,7 @@ import { z } from "zod";
 
 import { requireBoard, requireWorkspace } from "@/server/access";
 import { requireUser, startSession, getCurrentUser } from "@/server/auth/session";
+import { liveAction } from "@/server/live/action";
 import {
   acceptInviteLive,
   changeWorkspaceRoleLive,
@@ -56,7 +57,7 @@ const boardInvite = z.object({
 });
 
 /** Convida para o quadro: quem já é do workspace entra direto; e-mail de fora recebe convite. */
-export async function inviteToBoard(input: z.input<typeof boardInvite>): Promise<ActionResult<{ added: boolean; link: string | null }>> {
+async function inviteToBoardImpl(input: z.input<typeof boardInvite>): Promise<ActionResult<{ added: boolean; link: string | null }>> {
   const parsed = boardInvite.safeParse(input);
   if (!parsed.success) return fail(firstIssue(parsed.error));
   const v = parsed.data;
@@ -95,7 +96,7 @@ export async function inviteToBoard(input: z.input<typeof boardInvite>): Promise
 }
 
 /** Link de convite do quadro: role define o papel de quem entra; null desativa. */
-export async function setBoardInviteLink(boardId: string, role: "normal" | "observer" | null): Promise<ActionResult<{ link: string | null }>> {
+async function setBoardInviteLinkImpl(boardId: string, role: "normal" | "observer" | null): Promise<ActionResult<{ link: string | null }>> {
   const user = await requireUser();
   const { board } = requireBoard({ user }, boardId, "admin");
   const link = mutate((store) => {
@@ -115,7 +116,7 @@ export async function setBoardInviteLink(boardId: string, role: "normal" | "obse
   return ok({ link });
 }
 
-export async function changeBoardMemberRole(boardId: string, userId: string, role: "admin" | "normal" | "observer"): Promise<ActionResult> {
+async function changeBoardMemberRoleImpl(boardId: string, userId: string, role: "admin" | "normal" | "observer"): Promise<ActionResult> {
   const user = await requireUser();
   requireBoard({ user }, boardId, "admin");
   const error = mutate((store) => {
@@ -132,7 +133,7 @@ export async function changeBoardMemberRole(boardId: string, userId: string, rol
 }
 
 /** Tira alguém do quadro (admin) ou sai do quadro (a própria pessoa). Nunca deixa o quadro sem admin. */
-export async function removeBoardMember(boardId: string, userId: string): Promise<ActionResult> {
+async function removeBoardMemberImpl(boardId: string, userId: string): Promise<ActionResult> {
   const user = await requireUser();
   requireBoard({ user }, boardId, userId === user.id ? "observer" : "admin");
   const error = mutate((store) => {
@@ -152,12 +153,17 @@ export async function removeBoardMember(boardId: string, userId: string): Promis
 
 export async function revokeInvite(inviteId: string): Promise<ActionResult> {
   const user = await requireUser();
-  if (isLive()) {
+  // Modo real: convite de workspace pelo caminho da etapa 1; de quadro, pelo retrato (abaixo).
+  if (isLive() && !(await liveAction(async () => readStore().invites.find((i) => i.id === inviteId)?.boardId ?? null))) {
     const result = await revokeInviteLive({ user }, inviteId);
     if (!result.ok) return fail(result.error);
     revalidatePath("/", "layout");
     return ok(undefined);
   }
+  return liveAction(() => revokeInviteImpl(user, inviteId));
+}
+
+async function revokeInviteImpl(user: Awaited<ReturnType<typeof requireUser>>, inviteId: string): Promise<ActionResult> {
   const invite = readStore().invites.find((i) => i.id === inviteId);
   if (!invite) return fail("Este convite não existe mais.");
   if (invite.boardId) requireBoard({ user }, invite.boardId, "admin");
@@ -437,9 +443,8 @@ export async function updateProfile(input: z.input<typeof profileInput>): Promis
   return ok(undefined);
 }
 
-export async function markNotificationsRead(ids: string[] | "all"): Promise<ActionResult> {
+async function markNotificationsReadImpl(ids: string[] | "all"): Promise<ActionResult> {
   const user = await requireUser();
-  if (isLive()) return ok(undefined);
   mutate((store) => {
     for (const n of store.notifications) {
       if (n.userId === user.id && !n.readAt && (ids === "all" || ids.includes(n.id))) n.readAt = nowIso();
@@ -447,4 +452,26 @@ export async function markNotificationsRead(ids: string[] | "all"): Promise<Acti
   });
   revalidatePath("/", "layout");
   return ok(undefined);
+}
+
+// ---- modo real (AUTH_MODE=live): cada action roda sobre o retrato do Supabase (server/live/action.ts) ----
+
+export async function inviteToBoard(...args: Parameters<typeof inviteToBoardImpl>): ReturnType<typeof inviteToBoardImpl> {
+  return liveAction(() => inviteToBoardImpl(...args));
+}
+
+export async function setBoardInviteLink(...args: Parameters<typeof setBoardInviteLinkImpl>): ReturnType<typeof setBoardInviteLinkImpl> {
+  return liveAction(() => setBoardInviteLinkImpl(...args));
+}
+
+export async function changeBoardMemberRole(...args: Parameters<typeof changeBoardMemberRoleImpl>): ReturnType<typeof changeBoardMemberRoleImpl> {
+  return liveAction(() => changeBoardMemberRoleImpl(...args));
+}
+
+export async function removeBoardMember(...args: Parameters<typeof removeBoardMemberImpl>): ReturnType<typeof removeBoardMemberImpl> {
+  return liveAction(() => removeBoardMemberImpl(...args));
+}
+
+export async function markNotificationsRead(...args: Parameters<typeof markNotificationsReadImpl>): ReturnType<typeof markNotificationsReadImpl> {
+  return liveAction(() => markNotificationsReadImpl(...args));
 }
