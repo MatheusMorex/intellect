@@ -8,6 +8,11 @@ const nextConfig: NextConfig = {
   // "Compiling…"/"Rendering…" que aparecem só no modo de desenvolvimento).
   // Erros de compilação e de execução continuam aparecendo.
   devIndicators: false,
+  experimental: {
+    // O proxy (proxy.ts) passa por todo pedido e, por padrão, corta o corpo em 10 MB.
+    // Anexos vão até 25 MB (server/attachments.ts): um pouco de folga para o envio.
+    proxyClientMaxBodySize: "26mb",
+  },
   turbopack: {
     rules: {
       "*.css": {

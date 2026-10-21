@@ -9,6 +9,7 @@ import { cachedConverter, prepareDashboardFx } from "@/server/fx/rates";
 import { expensesInRange, metaAdsTaxCents, orderCosts, type ConvertCents, type OrderCosts } from "@/server/metrics/costs";
 import { change, ratio, summarize, type Summary } from "@/server/metrics/formulas";
 import { dayKeyIn, inRange, resolvePeriod, type DateRange, type ResolvedPeriod } from "@/server/period";
+import { withLiveRead } from "@/server/live/scope";
 import { readStore } from "@/server/store/db";
 import type {
   AdStatus,
@@ -68,7 +69,10 @@ export function buildScope(store: Store, dashboard: DashboardRow, filters: Track
   const linkedAccounts = new Set(
     store.dashboardAdAccounts.filter((l) => l.dashboardId === dashboard.id).map((l) => l.adAccountId),
   );
-  const accounts = store.adAccounts.filter((a) => linkedAccounts.has(a.id));
+  // Meta antes do Google e, dentro de cada um, pelo nome (a ordem não depende de como os dados foram guardados).
+  const accounts = store.adAccounts
+    .filter((a) => linkedAccounts.has(a.id))
+    .sort((a, b) => (a.provider === b.provider ? 0 : a.provider === "meta" ? -1 : 1) || a.name.localeCompare(b.name, "pt-BR") || a.id.localeCompare(b.id));
   const storeIds = new Set(store.dashboardStores.filter((l) => l.dashboardId === dashboard.id).map((l) => l.storeId));
   const campaignAccount = new Map(store.campaigns.map((c) => [c.id, c.adAccountId]));
   const accountProvider = new Map(accounts.map((a) => [a.id, a.provider]));
@@ -332,7 +336,7 @@ export type DashboardSummary = {
   fxUnavailable: boolean;
 };
 
-export async function getDashboardSummary(ctx: Ctx, dashboardId: string, sp: SearchParams = {}): Promise<DashboardSummary> {
+async function getDashboardSummaryImpl(ctx: Ctx, dashboardId: string, sp: SearchParams = {}): Promise<DashboardSummary> {
   const { dashboard } = requireDashboard(ctx, dashboardId);
   const fx = await prepareDashboardFx(dashboard);
   const store = fx.store;
@@ -378,7 +382,7 @@ export async function getDashboardSummary(ctx: Ctx, dashboardId: string, sp: Sea
   };
 }
 
-export async function getFilterOptions(ctx: Ctx, dashboardId: string) {
+async function getFilterOptionsImpl(ctx: Ctx, dashboardId: string) {
   const { dashboard } = requireDashboard(ctx, dashboardId);
   const store = readStore();
   const scope = buildScope(store, dashboard, NO_FILTERS);
@@ -560,7 +564,7 @@ const STATUS_FILTERS: Record<string, AdStatus[]> = {
   restricoes: ["rejected", "with_issues", "in_review"],
 };
 
-export async function getTrafficReport(
+async function getTrafficReportImpl(
   ctx: Ctx,
   dashboardId: string,
   provider: Provider,
@@ -923,4 +927,23 @@ export function listDashboardsFor(ctx: Ctx) {
   return store.dashboards
     .filter((d) => workspaceIds.has(d.workspaceId))
     .map((d) => ({ id: d.id, name: d.name, workspaceId: d.workspaceId, currency: d.currency, adPlatforms: d.adPlatforms }));
+}
+
+// ---- modo real (AUTH_MODE=live): as leituras rodam sobre o retrato do Supabase, com vendas e anúncios (server/live/scope.ts) ----
+
+export async function getDashboardSummary(...args: Parameters<typeof getDashboardSummaryImpl>): ReturnType<typeof getDashboardSummaryImpl> {
+  return withLiveRead(args[0].user.id, () => getDashboardSummaryImpl(...args), { tracking: true });
+}
+
+export async function getFilterOptions(...args: Parameters<typeof getFilterOptionsImpl>): ReturnType<typeof getFilterOptionsImpl> {
+  return withLiveRead(args[0].user.id, () => getFilterOptionsImpl(...args), { tracking: true });
+}
+
+export async function getTrafficReport(...args: Parameters<typeof getTrafficReportImpl>): ReturnType<typeof getTrafficReportImpl> {
+  return withLiveRead(args[0].user.id, () => getTrafficReportImpl(...args), { tracking: true });
+}
+
+/** Para as páginas: os dashboards de quem está logado, esperando o retrato no modo real. */
+export async function listDashboards(ctx: Ctx) {
+  return withLiveRead(ctx.user.id, () => listDashboardsFor(ctx));
 }

@@ -6,7 +6,7 @@ import { z } from "zod";
 import { automationInput, type AutomationInput, type MetricTrigger, type ScheduleTrigger } from "@/lib/automation/schema";
 import { requireBoard, requireDashboard, workspaceRole } from "@/server/access";
 import { requireUser, type SessionUser } from "@/server/auth/session";
-import { liveAction } from "@/server/live/action";
+import { liveAction, liveTrackingAction } from "@/server/live/action";
 import { conditionsMet, metricObjects, nextScheduleRun, runButton, runMetricAutomation } from "@/server/automation/engine";
 import { mutate, newId, nowIso, readStore } from "@/server/store/db";
 import type { AutomationRow, Store } from "@/server/store/types";
@@ -256,9 +256,9 @@ export async function pressButton(...args: Parameters<typeof pressButtonImpl>): 
 }
 
 export async function runMetricNow(...args: Parameters<typeof runMetricNowImpl>): ReturnType<typeof runMetricNowImpl> {
-  return liveAction(() => runMetricNowImpl(...args));
+  return liveTrackingAction(() => runMetricNowImpl(...args));
 }
 
 export async function previewMetric(...args: Parameters<typeof previewMetricImpl>): ReturnType<typeof previewMetricImpl> {
-  return liveAction(() => previewMetricImpl(...args));
+  return liveTrackingAction(() => previewMetricImpl(...args));
 }

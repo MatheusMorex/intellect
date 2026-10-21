@@ -12,11 +12,12 @@ import { touchLastActive } from "@/server/live/identity";
 import { withLiveRead } from "@/server/live/scope";
 import { homeHrefLive, inviteByTokenLive, profileViewLive, shellDataLive, workspaceMembersLive } from "@/server/live/shell";
 import { isLive } from "@/server/mode";
+import { attachmentUrl, isImageAttachment } from "@/server/attachments";
 import { fileUrl } from "@/server/files";
 import { cardsOfList, listsOfBoard } from "@/server/kanban/core";
 import { mutate, newId, nowIso, readStore } from "@/server/store/db";
 import { DEFAULT_APPEARANCE } from "@/server/store/seed";
-import type { BoardBackground, BoardPrefs, BoardRow, CardRow, Store, UserAppearance, UserPreferences } from "@/server/store/types";
+import type { BoardBackground, BoardPrefs, BoardRow, CardCover, CardRow, Store, UserAppearance, UserPreferences } from "@/server/store/types";
 import type { BoardBackgroundView } from "@/lib/board-backgrounds";
 
 /** Pessoa como as telas recebem. avatarUrl nulo: aparecem as iniciais na cor de avatarColor. */
@@ -68,13 +69,14 @@ export type ShellData = {
 
 export async function getShellData(ctx: Ctx): Promise<ShellData> {
   if (isLive()) {
-    // Perfil e workspace pela etapa 1; quadros e notificações pelo retrato do kanban.
+    // Perfil e workspace pela etapa 1; quadros, dashboards e notificações pelo retrato.
     const base = await shellDataLive(ctx.user.id);
     return withLiveRead(ctx.user.id, () => {
       const boards = listBoardsFor(ctx);
       return {
         ...base,
         boards: [...boards.filter((b) => b.starred), ...boards.filter((b) => !b.starred)],
+        dashboards: listDashboardsFor(ctx).map(({ id, name, adPlatforms }) => ({ id, name, adPlatforms })),
         unreadNotifications: readStore().notifications.filter((n) => n.userId === ctx.user.id && !n.readAt).length,
       };
     });
@@ -159,6 +161,15 @@ async function getWorkspaceHomeImpl(ctx: Ctx, slug: string) {
 
 export type LabelView = { id: string; name: string; color: string | null };
 
+/** Capa como a tela usa: cor de etiqueta ou imagem anexada (com o endereço da imagem). */
+export type CoverView = { size: "strip" | "full"; color: string | null; attachmentId: string | null; imageUrl: string | null };
+
+function coverView(cover: CardCover | null): CoverView | null {
+  if (!cover) return null;
+  if (cover.attachmentId) return { size: cover.size, color: null, attachmentId: cover.attachmentId, imageUrl: attachmentUrl(cover.attachmentId) };
+  return { size: cover.size, color: cover.color ?? null, attachmentId: null, imageUrl: null };
+}
+
 export type CardFront = {
   id: string;
   number: number;
@@ -168,11 +179,13 @@ export type CardFront = {
   dueAt: string | null;
   dueComplete: boolean;
   startAt: string | null;
-  cover: { color: string; size: "strip" | "full" } | null;
+  cover: CoverView | null;
   labelIds: string[];
   memberIds: string[];
   hasDescription: boolean;
   comments: number;
+  /** Quantos anexos (arquivos e links). */
+  attachments: number;
   checklist: { done: number; total: number } | null;
   lastActivityAt: string;
   metric: CardMetric | null;
@@ -219,11 +232,12 @@ function cardFront(store: Store, c: CardRow, metrics: Map<string, CardMetric>): 
     dueAt: c.dueAt,
     dueComplete: c.dueComplete,
     startAt: c.startAt,
-    cover: c.cover,
+    cover: coverView(c.cover),
     labelIds: store.cardLabels.filter((l) => l.cardId === c.id).map((l) => l.labelId),
     memberIds: store.cardMembers.filter((m) => m.cardId === c.id).map((m) => m.userId),
     hasDescription: c.descriptionText.trim().length > 0,
     comments: store.comments.filter((x) => x.cardId === c.id).length,
+    attachments: store.attachments.filter((x) => x.cardId === c.id).length,
     checklist: items.length ? { done: items.filter((i) => i.completedAt).length, total: items.length } : null,
     lastActivityAt: c.lastActivityAt,
     metric: metrics.get(c.id) ?? null,
@@ -321,6 +335,7 @@ const ACTIVITY_TEXT: Record<string, (d: Record<string, unknown>) => string> = {
   "card.linked": (d) => `ligou este card a ${d.name}`,
   "card.unlinked": (d) => `desligou este card de ${d.name}`,
   "card.comment": () => "comentou",
+  "card.attachment": (d) => (d.added ? `anexou ${d.name}` : `tirou o anexo ${d.name}`),
 };
 
 export function activityText(type: string, data: Record<string, unknown>) {
@@ -409,7 +424,7 @@ async function getCardDetailImpl(ctx: Ctx, cardId: string) {
       dueComplete: card.dueComplete,
       dueReminderMinutes: card.dueReminderMinutes,
       dueRecurrence: card.dueRecurrence,
-      cover: card.cover,
+      cover: coverView(card.cover),
       archived: !!card.archivedAt,
       createdAt: card.createdAt,
       labelIds: store.cardLabels.filter((l) => l.cardId === card.id).map((l) => l.labelId),
@@ -421,6 +436,22 @@ async function getCardDetailImpl(ctx: Ctx, cardId: string) {
     comments,
     activity,
     links,
+    // Mais novos primeiro. Arquivo abre pela rota com conferência de acesso; link, direto.
+    attachments: store.attachments
+      .filter((a) => a.cardId === card.id)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id))
+      .map((a) => ({
+        id: a.id,
+        kind: a.kind,
+        name: a.name,
+        href: a.kind === "link" ? a.url! : attachmentUrl(a.id),
+        downloadHref: a.kind === "file" ? `${attachmentUrl(a.id)}?baixar=1` : null,
+        bytes: a.bytes,
+        isImage: isImageAttachment(a),
+        isCover: card.cover?.attachmentId === a.id,
+        createdAt: a.createdAt,
+        uploader: a.uploaderId ? person(store, a.uploaderId) : null,
+      })),
     metric,
     canEdit: !readOnly,
     canComment: !board.closedAt && (role !== "observer" || board.prefs.comments === "observers"),
@@ -692,11 +723,11 @@ export async function getWorkspaceHome(...args: Parameters<typeof getWorkspaceHo
 }
 
 export async function getBoardView(...args: Parameters<typeof getBoardViewImpl>): ReturnType<typeof getBoardViewImpl> {
-  return withLiveRead(args[0].user.id, () => getBoardViewImpl(...args));
+  return withLiveRead(args[0].user.id, () => getBoardViewImpl(...args), { tracking: true });
 }
 
 export async function getCardDetail(...args: Parameters<typeof getCardDetailImpl>): ReturnType<typeof getCardDetailImpl> {
-  return withLiveRead(args[0].user.id, () => getCardDetailImpl(...args));
+  return withLiveRead(args[0].user.id, () => getCardDetailImpl(...args), { tracking: true });
 }
 
 export async function getBoardArchive(...args: Parameters<typeof getBoardArchiveImpl>): ReturnType<typeof getBoardArchiveImpl> {
@@ -708,7 +739,7 @@ export async function getBoardSharing(...args: Parameters<typeof getBoardSharing
 }
 
 export async function getMyCards(...args: Parameters<typeof getMyCardsImpl>): ReturnType<typeof getMyCardsImpl> {
-  return withLiveRead(args[0].user.id, () => getMyCardsImpl(...args));
+  return withLiveRead(args[0].user.id, () => getMyCardsImpl(...args), { tracking: true });
 }
 
 export async function search(...args: Parameters<typeof searchImpl>): ReturnType<typeof searchImpl> {

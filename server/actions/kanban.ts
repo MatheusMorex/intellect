@@ -9,7 +9,8 @@ import { z } from "zod";
 
 import { requireBoard, requireDashboard, requireWorkspace, type BoardRole } from "@/server/access";
 import { requireUser, type SessionUser } from "@/server/auth/session";
-import { liveAction } from "@/server/live/action";
+import { liveAction, liveTrackingAction } from "@/server/live/action";
+import { copyStoredFiles, dropAttachments, isImageAttachment } from "@/server/attachments";
 import { dropFile } from "@/server/files";
 import { BOARD_COLOR_KEYS } from "@/lib/board-backgrounds";
 import { bumpCard, cardsOfList, insertCard, listsOfBoard, logActivity, notify, plainJson, rankBetween, touchBoard } from "@/server/kanban/core";
@@ -165,6 +166,7 @@ async function deleteBoardImpl(boardId: string): Promise<ActionResult> {
     store.cardLabels = store.cardLabels.filter((l) => !cardIds.has(l.cardId));
     store.cardMembers = store.cardMembers.filter((m) => !cardIds.has(m.cardId));
     store.cardLinks = store.cardLinks.filter((l) => !cardIds.has(l.cardId));
+    dropAttachments(store, (a) => cardIds.has(a.cardId));
     store.cards = store.cards.filter((c) => c.boardId !== boardId);
     store.lists = store.lists.filter((l) => l.boardId !== boardId);
     store.labels = store.labels.filter((l) => l.boardId !== boardId);
@@ -386,7 +388,7 @@ const cardUpdate = z.object({
   dueReminderMinutes: z.union([z.literal(0), z.literal(5), z.literal(10), z.literal(15), z.literal(60), z.literal(120), z.literal(1440), z.literal(2880)]).nullable().optional(),
   dueRecurrence: z.enum(["daily", "weekly", "monthly"]).nullable().optional(),
   cover: z
-    .object({ color: z.string().regex(LABEL_COLOR), size: z.enum(["strip", "full"]) })
+    .union([z.object({ color: z.string().regex(LABEL_COLOR), size: z.enum(["strip", "full"]) }), z.object({ attachmentId: z.uuid(), size: z.enum(["strip", "full"]) })])
     .nullable()
     .optional(),
 });
@@ -407,6 +409,11 @@ async function updateCardImpl(input: z.input<typeof cardUpdate>): Promise<Action
   const start = v.startAt !== undefined ? v.startAt : ctx.card.startAt;
   const due = v.dueAt !== undefined ? v.dueAt : ctx.card.dueAt;
   if (start && due && start > due) return fail("O início precisa ser antes da entrega.");
+  // Capa de imagem: só uma imagem anexada a este card.
+  if (v.cover && "attachmentId" in v.cover) {
+    const image = readStore().attachments.find((a) => a.id === (v.cover as { attachmentId: string }).attachmentId && a.cardId === v.cardId);
+    if (!image || !isImageAttachment(image)) return fail("Só imagens anexadas a este card podem ser capa.");
+  }
 
   const result = mutate((store) => {
     const card = store.cards.find((c) => c.id === v.cardId)!;
@@ -484,6 +491,7 @@ async function deleteCardImpl(cardId: string): Promise<ActionResult> {
     store.cardLabels = store.cardLabels.filter((l) => l.cardId !== cardId);
     store.cardMembers = store.cardMembers.filter((m) => m.cardId !== cardId);
     store.cardLinks = store.cardLinks.filter((l) => l.cardId !== cardId);
+    dropAttachments(store, (a) => a.cardId === cardId);
     store.notifications = store.notifications.filter((n) => n.cardId !== cardId);
     // A atividade fica, com o nome do card guardado (architecture.md).
     for (const a of store.activities) if (a.cardId === cardId) a.data = { ...a.data, name: ctx.card.name };
@@ -498,7 +506,7 @@ const copyInput = z.object({
   cardId: z.uuid(),
   toListId: z.uuid(),
   name: name("ao card"),
-  keep: z.object({ labels: z.boolean(), members: z.boolean(), checklists: z.boolean(), links: z.boolean() }),
+  keep: z.object({ labels: z.boolean(), members: z.boolean(), checklists: z.boolean(), links: z.boolean(), attachments: z.boolean().optional() }),
 });
 
 async function copyCardImpl(input: z.input<typeof copyInput>): Promise<ActionResult<{ id: string; boardId: string }>> {
@@ -511,6 +519,7 @@ async function copyCardImpl(input: z.input<typeof copyInput>): Promise<ActionRes
   if (!target) return fail("A lista de destino não existe mais.");
   const { board: destination } = requireBoard({ user: ctx.user }, target.boardId, "normal");
   if (destination.closedAt) return fail("O quadro de destino está fechado.");
+  const files: { from: string; to: string }[] = [];
   const result = mutate((store) => {
     const source = store.cards.find((c) => c.id === v.cardId)!;
     const copy = insertCard(store, target.boardId, target.id, v.name, ctx.user.id);
@@ -541,9 +550,25 @@ async function copyCardImpl(input: z.input<typeof copyInput>): Promise<ActionRes
         store.cardLinks.push({ ...link, id: newId(), cardId: copy.id, createdBy: ctx.user.id, createdAt: nowIso() });
       }
     }
+    // Anexos: cada arquivo ganha uma cópia na pasta do card novo (logo abaixo, fora daqui).
+    const ids = new Map<string, string>();
+    if (v.keep.attachments) {
+      for (const a of store.attachments.filter((x) => x.cardId === source.id)) {
+        const id = newId();
+        ids.set(a.id, id);
+        const storageKey = a.storageKey ? `cards/${copy.id}/${newId()}` : null;
+        if (a.storageKey && storageKey) files.push({ from: a.storageKey, to: storageKey });
+        store.attachments.push({ ...a, id, cardId: copy.id, storageKey, createdAt: nowIso() });
+      }
+    }
+    // Capa de imagem só vai junto se o anexo dela foi copiado.
+    if (source.cover?.attachmentId) copy.cover = ids.has(source.cover.attachmentId) ? { attachmentId: ids.get(source.cover.attachmentId)!, size: source.cover.size } : null;
     activity(store, ctx.user, copy, "card.copied", { from: source.name });
     return { id: copy.id, boardId: target.boardId };
   });
+  // Arquivo que não deu para copiar: o anexo dele sai da cópia (nada aponta para arquivo que não existe).
+  const failed = new Set(await copyStoredFiles(files));
+  if (failed.size) mutate((store) => dropAttachments(store, (a) => a.storageKey != null && failed.has(a.storageKey)));
   refresh(ctx.board.id);
   if (result.boardId !== ctx.board.id) refresh(result.boardId);
   return ok(result);
@@ -1109,13 +1134,13 @@ export async function deleteComment(...args: Parameters<typeof deleteCommentImpl
 }
 
 export async function linkCard(...args: Parameters<typeof linkCardImpl>): ReturnType<typeof linkCardImpl> {
-  return liveAction(() => linkCardImpl(...args));
+  return liveTrackingAction(() => linkCardImpl(...args));
 }
 
 export async function unlinkCard(...args: Parameters<typeof unlinkCardImpl>): ReturnType<typeof unlinkCardImpl> {
-  return liveAction(() => unlinkCardImpl(...args));
+  return liveTrackingAction(() => unlinkCardImpl(...args));
 }
 
 export async function searchLinkTargets(...args: Parameters<typeof searchLinkTargetsImpl>): ReturnType<typeof searchLinkTargetsImpl> {
-  return liveAction(() => searchLinkTargetsImpl(...args));
+  return liveTrackingAction(() => searchLinkTargetsImpl(...args));
 }

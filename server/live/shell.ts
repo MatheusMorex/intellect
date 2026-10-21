@@ -36,6 +36,19 @@ export async function homeHrefLive(userId: string): Promise<string> {
   const workspace = memberships[0]?.workspace;
   const page = profile?.appearance.homePage ?? "inicio";
   if (page === "meus-cards") return "/me/cards";
+  if (page === "resumo" && memberships.length) {
+    // O primeiro dashboard dos workspaces da pessoa, como no modo simulado.
+    const { data } = await adminClient()
+      .from("dashboards")
+      .select("id")
+      .in(
+        "workspace_id",
+        memberships.map((m) => m.workspace.id),
+      )
+      .order("created_at", { ascending: true })
+      .limit(1);
+    if (data?.[0]) return `/d/${data[0].id as string}`;
+  }
   return workspace ? `/w/${workspace.slug}` : "/me";
 }
 

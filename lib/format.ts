@@ -53,6 +53,20 @@ export function relative(date: Date) {
 
 export const EMPTY = "—";
 
+/** Tamanho de arquivo: "830 KB", "1,2 MB" (base 1024, como o sistema mostra). */
+export function fileSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ["KB", "MB", "GB"];
+  let value = bytes / 1024;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit++;
+  }
+  const digits = value < 10 ? 1 : 0;
+  return `${value.toLocaleString("pt-BR", { maximumFractionDigits: digits })} ${units[unit]}`;
+}
+
 /** Data e hora no fuso indicado (o do dashboard, no tracking). */
 export function dateTimeIn(isoUtc: string, timezone: string, pattern = "dd/MM HH:mm") {
   return formatDate(new TZDate(new Date(isoUtc).getTime(), timezone), pattern, { locale: ptBR });

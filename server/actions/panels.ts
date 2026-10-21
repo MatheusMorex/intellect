@@ -13,6 +13,7 @@ import { msg } from "@/lib/charts/messages";
 import { MAX_PANELS, MAX_WIDGETS, normalizeLayout, PANEL_LAYOUT, PANEL_TEMPLATES, placeWidgets, templatePanel } from "@/lib/charts/templates";
 import { PANEL_WIDGET, type PanelWidget } from "@/lib/charts/widgets";
 import { workspaceRole, type Ctx } from "@/server/access";
+import { liveTrackingAction } from "@/server/live/action";
 import { requireUser } from "@/server/auth/session";
 import { renderWidget, type RenderedWidget } from "@/server/charts/render";
 import { dashboardPanels, parseWidgets, pickFilters, widgetParams } from "@/server/data/panel-config";
@@ -61,7 +62,7 @@ function renumber(store: Store, dashboardId: string) {
 
 const createInput = z.object({ dashboardId: id, name, template: z.enum(PANEL_TEMPLATES).default("em-branco") });
 
-export async function createPanel(input: z.input<typeof createInput>): Promise<ActionResult<{ id: string }>> {
+async function createPanelImpl(input: z.input<typeof createInput>): Promise<ActionResult<{ id: string }>> {
   const parsed = createInput.safeParse(input);
   if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? t.invalid);
   const admin = await adminOf(parsed.data.dashboardId);
@@ -103,7 +104,7 @@ const updateInput = z.object({
 });
 
 /** Nome, quem vê e se os membros podem mudar os filtros. */
-export async function updatePanel(input: z.input<typeof updateInput>): Promise<ActionResult> {
+async function updatePanelImpl(input: z.input<typeof updateInput>): Promise<ActionResult> {
   const parsed = updateInput.safeParse(input);
   if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? t.invalid);
   const found = await adminPanel(parsed.data.panelId);
@@ -127,7 +128,7 @@ export async function updatePanel(input: z.input<typeof updateInput>): Promise<A
 
 const panelInput = z.object({ panelId: id });
 
-export async function duplicatePanel(input: z.input<typeof panelInput>): Promise<ActionResult<{ id: string }>> {
+async function duplicatePanelImpl(input: z.input<typeof panelInput>): Promise<ActionResult<{ id: string }>> {
   const parsed = panelInput.safeParse(input);
   if (!parsed.success) return fail(t.invalid);
   const found = await adminPanel(parsed.data.panelId);
@@ -153,7 +154,7 @@ export async function duplicatePanel(input: z.input<typeof panelInput>): Promise
   return { ok: true, data: { id: copyId } };
 }
 
-export async function deletePanel(input: z.input<typeof panelInput>): Promise<ActionResult> {
+async function deletePanelImpl(input: z.input<typeof panelInput>): Promise<ActionResult> {
   const parsed = panelInput.safeParse(input);
   if (!parsed.success) return fail(t.invalid);
   const found = await adminPanel(parsed.data.panelId);
@@ -171,7 +172,7 @@ export async function deletePanel(input: z.input<typeof panelInput>): Promise<Ac
   return { ok: true, data: undefined };
 }
 
-export async function setDefaultPanel(input: z.input<typeof panelInput>): Promise<ActionResult> {
+async function setDefaultPanelImpl(input: z.input<typeof panelInput>): Promise<ActionResult> {
   const parsed = panelInput.safeParse(input);
   if (!parsed.success) return fail(t.invalid);
   const found = await adminPanel(parsed.data.panelId);
@@ -186,7 +187,7 @@ export async function setDefaultPanel(input: z.input<typeof panelInput>): Promis
 const moveInput = z.object({ panelId: id, direction: z.union([z.literal(-1), z.literal(1)]) });
 
 /** Uma posição para a esquerda (-1) ou para a direita (1) nas abas. */
-export async function movePanel(input: z.input<typeof moveInput>): Promise<ActionResult> {
+async function movePanelImpl(input: z.input<typeof moveInput>): Promise<ActionResult> {
   const parsed = moveInput.safeParse(input);
   if (!parsed.success) return fail(t.invalid);
   const found = await adminPanel(parsed.data.panelId);
@@ -206,7 +207,7 @@ export async function movePanel(input: z.input<typeof moveInput>): Promise<Actio
 const defaultsInput = z.object({ panelId: id, params: z.record(z.string(), z.string().max(2000)) });
 
 /** Os filtros atuais da tela viram os filtros com que o painel abre (vazio = sem filtro padrão). */
-export async function savePanelDefaults(input: z.input<typeof defaultsInput>): Promise<ActionResult> {
+async function savePanelDefaultsImpl(input: z.input<typeof defaultsInput>): Promise<ActionResult> {
   const parsed = defaultsInput.safeParse(input);
   if (!parsed.success) return fail(t.invalid);
   const found = await adminPanel(parsed.data.panelId);
@@ -225,7 +226,7 @@ export async function savePanelDefaults(input: z.input<typeof defaultsInput>): P
 const layoutInput = z.object({ panelId: id, layout: PANEL_LAYOUT });
 
 /** A grade depois de arrastar ou redimensionar (salva sozinha, sem botão). */
-export async function savePanelLayout(input: z.input<typeof layoutInput>): Promise<ActionResult> {
+async function savePanelLayoutImpl(input: z.input<typeof layoutInput>): Promise<ActionResult> {
   const parsed = layoutInput.safeParse(input);
   if (!parsed.success) return fail(t.invalidLayout);
   const found = await adminPanel(parsed.data.panelId);
@@ -242,7 +243,7 @@ export async function savePanelLayout(input: z.input<typeof layoutInput>): Promi
 const widgetInput = z.object({ panelId: id, widget: z.unknown() });
 
 /** Gráfico novo (vai para o fim da grade) ou mudado (fica onde estava). */
-export async function saveWidget(input: z.input<typeof widgetInput>): Promise<ActionResult<{ id: string }>> {
+async function saveWidgetImpl(input: z.input<typeof widgetInput>): Promise<ActionResult<{ id: string }>> {
   const parsed = widgetInput.safeParse(input);
   if (!parsed.success) return fail(t.invalid);
   const widget = PANEL_WIDGET.safeParse(parsed.data.widget);
@@ -266,7 +267,7 @@ export async function saveWidget(input: z.input<typeof widgetInput>): Promise<Ac
 
 const widgetIdInput = z.object({ panelId: id, widgetId: id });
 
-export async function deleteWidget(input: z.input<typeof widgetIdInput>): Promise<ActionResult> {
+async function deleteWidgetImpl(input: z.input<typeof widgetIdInput>): Promise<ActionResult> {
   const parsed = widgetIdInput.safeParse(input);
   if (!parsed.success) return fail(t.invalid);
   const found = await adminPanel(parsed.data.panelId);
@@ -283,7 +284,7 @@ export async function deleteWidget(input: z.input<typeof widgetIdInput>): Promis
 }
 
 /** Cópia do gráfico, logo abaixo dos outros. */
-export async function duplicateWidget(input: z.input<typeof widgetIdInput>): Promise<ActionResult<{ id: string }>> {
+async function duplicateWidgetImpl(input: z.input<typeof widgetIdInput>): Promise<ActionResult<{ id: string }>> {
   const parsed = widgetIdInput.safeParse(input);
   if (!parsed.success) return fail(t.invalid);
   const found = await adminPanel(parsed.data.panelId);
@@ -319,7 +320,7 @@ export type PreviewResult = { ok: true; data: RenderedWidget } | { ok: false; er
  * O gráfico como vai ficar, com os filtros da tela, sem gravar nada. Os erros
  * de configuração voltam todos, em português, para o editor mostrar.
  */
-export async function previewWidget(input: z.input<typeof previewInput>): Promise<PreviewResult> {
+async function previewWidgetImpl(input: z.input<typeof previewInput>): Promise<PreviewResult> {
   const parsed = previewInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: t.invalid, issues: [] };
   const admin = await adminOf(parsed.data.dashboardId);
@@ -332,4 +333,54 @@ export async function previewWidget(input: z.input<typeof previewInput>): Promis
   const page = await loadPanels(admin.ctx, admin.dashboardId, widgetParams(pickFilters(parsed.data.params), widget.data));
   if (page.fxUnavailable) return { ok: false, error: msg.panel.fx.title, issues: [] };
   return { ok: true, data: renderWidget(page.computer, widget.data) };
+}
+
+// ---- modo real (AUTH_MODE=live): cada action roda sobre o retrato do Supabase, com vendas e anúncios (server/live/action.ts) ----
+
+export async function createPanel(...args: Parameters<typeof createPanelImpl>): ReturnType<typeof createPanelImpl> {
+  return liveTrackingAction(() => createPanelImpl(...args));
+}
+
+export async function updatePanel(...args: Parameters<typeof updatePanelImpl>): ReturnType<typeof updatePanelImpl> {
+  return liveTrackingAction(() => updatePanelImpl(...args));
+}
+
+export async function duplicatePanel(...args: Parameters<typeof duplicatePanelImpl>): ReturnType<typeof duplicatePanelImpl> {
+  return liveTrackingAction(() => duplicatePanelImpl(...args));
+}
+
+export async function deletePanel(...args: Parameters<typeof deletePanelImpl>): ReturnType<typeof deletePanelImpl> {
+  return liveTrackingAction(() => deletePanelImpl(...args));
+}
+
+export async function setDefaultPanel(...args: Parameters<typeof setDefaultPanelImpl>): ReturnType<typeof setDefaultPanelImpl> {
+  return liveTrackingAction(() => setDefaultPanelImpl(...args));
+}
+
+export async function movePanel(...args: Parameters<typeof movePanelImpl>): ReturnType<typeof movePanelImpl> {
+  return liveTrackingAction(() => movePanelImpl(...args));
+}
+
+export async function savePanelDefaults(...args: Parameters<typeof savePanelDefaultsImpl>): ReturnType<typeof savePanelDefaultsImpl> {
+  return liveTrackingAction(() => savePanelDefaultsImpl(...args));
+}
+
+export async function savePanelLayout(...args: Parameters<typeof savePanelLayoutImpl>): ReturnType<typeof savePanelLayoutImpl> {
+  return liveTrackingAction(() => savePanelLayoutImpl(...args));
+}
+
+export async function saveWidget(...args: Parameters<typeof saveWidgetImpl>): ReturnType<typeof saveWidgetImpl> {
+  return liveTrackingAction(() => saveWidgetImpl(...args));
+}
+
+export async function deleteWidget(...args: Parameters<typeof deleteWidgetImpl>): ReturnType<typeof deleteWidgetImpl> {
+  return liveTrackingAction(() => deleteWidgetImpl(...args));
+}
+
+export async function duplicateWidget(...args: Parameters<typeof duplicateWidgetImpl>): ReturnType<typeof duplicateWidgetImpl> {
+  return liveTrackingAction(() => duplicateWidgetImpl(...args));
+}
+
+export async function previewWidget(...args: Parameters<typeof previewWidgetImpl>): ReturnType<typeof previewWidgetImpl> {
+  return liveTrackingAction(() => previewWidgetImpl(...args));
 }

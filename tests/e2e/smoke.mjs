@@ -17,6 +17,8 @@ const env = Object.fromEntries(
     .map((l) => [l.slice(0, l.indexOf("=")), l.slice(l.indexOf("=") + 1)]),
 );
 const store = () => JSON.parse(fs.readFileSync(".data/store.json", "utf8"));
+/** Um PNG de 1×1 pixel de verdade (os primeiros bytes dizem que é imagem). */
+const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
 
 const browser = await chromium.launch({ channel: process.env.E2E_BROWSER ?? "msedge", headless: true });
 const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, locale: "pt-BR", reducedMotion: "reduce" });
@@ -124,6 +126,65 @@ await step("card: checklist com item concluído", async () => {
   await dialog.getByRole("textbox", { name: "Novo item" }).press("Enter");
   await dialog.getByRole("checkbox", { name: "Primeiro passo" }).click();
   await dialog.getByText("100%").waitFor();
+});
+
+await step("card: anexos — imagem vira capa, arquivo de 12 MB, link, renomear e excluir", async () => {
+  const dialog = page.getByRole("dialog");
+  const card = cardByName(FRETE);
+  const attach = async (file) => {
+    await dialog.getByRole("button", { name: "Anexo", exact: true }).click();
+    await page.getByLabel("Arquivo do computador").setInputFiles(file);
+    await page.getByText(`${file.name} anexado`).waitFor();
+    return store().attachments.find((a) => a.cardId === card.id && a.name === file.name);
+  };
+
+  const image = await attach({ name: "vitrine.png", mimeType: "image/png", buffer: PNG });
+  assert.ok(image && fs.existsSync(`.data/attachments/${image.storageKey}`), "a imagem não foi guardada");
+  await dialog.getByRole("heading", { name: "Anexos" }).waitFor();
+  const shown = await page.request.get(`${BASE}/api/attachments/${image.id}`);
+  assert.equal(shown.status(), 200);
+  assert.equal(shown.headers()["content-type"], "image/png");
+
+  await dialog.getByRole("button", { name: "Ações do anexo vitrine.png" }).click();
+  await page.getByRole("menuitem", { name: "Usar como capa" }).click();
+  await dialog.locator("li", { hasText: "vitrine.png" }).getByText("Capa", { exact: true }).waitFor();
+  assert.equal(cardByName(FRETE).cover?.attachmentId, image.id);
+
+  // 12 MB: passa do limite padrão de 10 MB do proxy do Next (next.config.ts sobe para 26 MB).
+  const big = await attach({ name: "planilha grande.csv", mimeType: "text/csv", buffer: Buffer.alloc(12 * 1024 * 1024, 65) });
+  assert.equal(big?.bytes, 12 * 1024 * 1024);
+  const download = await page.request.get(`${BASE}/api/attachments/${big.id}?baixar=1`);
+  assert.equal(download.headers()["content-type"], "application/octet-stream");
+  assert.match(download.headers()["content-disposition"], /^attachment; /);
+
+  await dialog.getByRole("button", { name: "Anexo", exact: true }).click();
+  await page.getByLabel("Link", { exact: true }).fill("https://exemplo.com.br/briefing");
+  await page.getByLabel("Texto para mostrar (opcional)").fill("Briefing da campanha");
+  await page.getByRole("button", { name: "Anexar link" }).click();
+  await dialog.getByRole("link", { name: "Briefing da campanha" }).waitFor();
+
+  await dialog.getByRole("button", { name: "Ações do anexo planilha grande.csv" }).click();
+  await page.getByRole("menuitem", { name: "Renomear" }).click();
+  const field = dialog.getByRole("textbox", { name: "Nome do anexo" });
+  await field.fill("Planilha de custos.csv");
+  await field.press("Enter");
+  await dialog.getByRole("link", { name: "Planilha de custos.csv" }).waitFor();
+
+  await dialog.getByRole("button", { name: "Ações do anexo Planilha de custos.csv" }).click();
+  await page.getByRole("menuitem", { name: "Excluir" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Excluir" }).click();
+  // A confirmação esconde a lista enquanto está aberta: espera o anexo sair dos dados de verdade.
+  await page.getByRole("alertdialog").waitFor({ state: "detached" });
+  for (let i = 0; i < 40 && store().attachments.some((x) => x.id === big.id); i++) await page.waitForTimeout(500);
+  await dialog.getByRole("link", { name: "Planilha de custos.csv" }).waitFor({ state: "detached" });
+  assert.ok(!fs.existsSync(`.data/attachments/${big.storageKey}`), "o arquivo excluído ficou no disco");
+  assert.deepEqual(
+    store()
+      .attachments.filter((a) => a.cardId === card.id)
+      .map((a) => a.name)
+      .sort(),
+    ["Briefing da campanha", "vitrine.png"],
+  );
 });
 
 await step("card: comentário com @menção avisa o Bruno", async () => {
@@ -510,9 +571,14 @@ await step("Painéis: treemap com legenda de cor, clique desce de nível e a tab
   await page.mouse.move(box.x + 40, box.y + 40);
   await chart.getByText(/^Clique para ver por campanha$/).waitFor({ timeout: 10_000 });
   await page.mouse.click(box.x + 40, box.y + 40);
-  // Dentro da plataforma, a dica mostra o caminho "Plataforma › Campanha".
-  await page.mouse.move(box.x + 60, box.y + 60);
-  await chart.getByText(/^(Meta|Google) › /).first().waitFor({ timeout: 10_000 });
+  // Dentro da plataforma, a dica mostra o caminho "Plataforma › Campanha". A dica só aparece
+  // com o mouse andando depois da animação de descer: passa de novo algumas vezes.
+  const path = chart.getByText(/^(Meta|Google) › /).first();
+  for (let i = 0; i < 8 && !(await path.isVisible()); i++) {
+    await page.mouse.move(box.x + 60 + i * 6, box.y + 60 + i * 4);
+    await page.waitForTimeout(1_000);
+  }
+  await path.waitFor({ timeout: 10_000 });
   await chart.getByRole("button", { name: "Ver como tabela" }).click();
   await chart.getByRole("columnheader", { name: "Plataforma › Campanha › Anúncio" }).waitFor();
   assert.ok((await chart.getByRole("row").count()) >= 4, "a tabela deveria ter plataforma, campanha e anúncio");

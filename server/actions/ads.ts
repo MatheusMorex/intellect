@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import { parseMoneyToCents } from "@/lib/parse";
 import { requireDashboard } from "@/server/access";
+import { liveTrackingAction } from "@/server/live/action";
 import { requireUser } from "@/server/auth/session";
 import { mutate, nowIso } from "@/server/store/db";
 import type { Store } from "@/server/store/types";
@@ -26,7 +27,7 @@ function findObject(store: Store, dashboardId: string, lvl: z.infer<typeof level
 
 const statusInput = z.object({ dashboardId: z.uuid(), level, id: z.uuid(), active: z.boolean() });
 
-export async function setAdObjectStatus(input: z.input<typeof statusInput>): Promise<ActionResult<{ status: string }>> {
+async function setAdObjectStatusImpl(input: z.input<typeof statusInput>): Promise<ActionResult<{ status: string }>> {
   const user = await requireUser();
   const parsed = statusInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Dados inválidos." };
@@ -50,7 +51,7 @@ export async function setAdObjectStatus(input: z.input<typeof statusInput>): Pro
 
 const budgetInput = z.object({ dashboardId: z.uuid(), level: z.enum(["campanhas", "conjuntos"]), id: z.uuid(), value: z.string() });
 
-export async function setAdObjectBudget(input: z.input<typeof budgetInput>): Promise<ActionResult<{ cents: number }>> {
+async function setAdObjectBudgetImpl(input: z.input<typeof budgetInput>): Promise<ActionResult<{ cents: number }>> {
   const user = await requireUser();
   const parsed = budgetInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Dados inválidos." };
@@ -73,4 +74,14 @@ export async function setAdObjectBudget(input: z.input<typeof budgetInput>): Pro
   if (!ok) return { ok: false, error: "Esse item não tem orçamento próprio." };
   revalidatePath(`/d/${dashboardId}`, "layout");
   return { ok: true, data: { cents } };
+}
+
+// ---- modo real (AUTH_MODE=live): cada action roda sobre o retrato do Supabase, com vendas e anúncios (server/live/action.ts) ----
+
+export async function setAdObjectStatus(...args: Parameters<typeof setAdObjectStatusImpl>): ReturnType<typeof setAdObjectStatusImpl> {
+  return liveTrackingAction(() => setAdObjectStatusImpl(...args));
+}
+
+export async function setAdObjectBudget(...args: Parameters<typeof setAdObjectBudgetImpl>): ReturnType<typeof setAdObjectBudgetImpl> {
+  return liveTrackingAction(() => setAdObjectBudgetImpl(...args));
 }

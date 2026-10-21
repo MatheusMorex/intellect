@@ -8,6 +8,8 @@ import { getLiveProfile, updateLiveProfile, type LiveAppearance } from "@/server
 import { createClient } from "@/utils/supabase/server";
 
 export const UPLOADS_BUCKET = "uploads";
+/** Arquivos anexados aos cards (cards/<id do card>/<arquivo>), qualquer tipo, até 25 MB. */
+export const ATTACHMENTS_BUCKET = "attachments";
 const EXT: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
 
 /** Plano de fundo novo começa com a imagem visível, mas coberta o bastante para os números continuarem fáceis de ler. */

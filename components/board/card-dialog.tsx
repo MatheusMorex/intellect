@@ -15,6 +15,7 @@ import {
   MessageSquare,
   MoreHorizontal,
   PaintBucket,
+  Paperclip,
   Plus,
   Tag,
   Trash2,
@@ -40,6 +41,7 @@ import {
   PersonAvatar,
   type ListOption,
 } from "@/components/board/card-popovers";
+import { AttachPopover, AttachmentsSection } from "@/components/board/card-attachments";
 import { RichEditor, type EditorValue } from "@/components/editor/rich-editor";
 import { RichTextView } from "@/components/editor/rich-text-view";
 import { DueBadge, MetricBadge } from "@/components/ds/badges";
@@ -104,7 +106,8 @@ function useRun() {
 
 function SectionTitle({ icon: Icon, id, help, children, actions }: { icon: React.ElementType; id: string; help?: HelpTopic; children: React.ReactNode; actions?: React.ReactNode }) {
   return (
-    <div className="flex items-center gap-3">
+    // Na tela estreita os botões descem para a linha de baixo (não empurram a coluna para fora).
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
       <Icon aria-hidden="true" className="size-5 shrink-0 text-muted-foreground" />
       <div className="flex flex-1 items-center gap-1">
         <h3 id={id} className="text-base font-semibold">
@@ -162,7 +165,12 @@ export function CardDialog({
   return (
     <Dialog open onOpenChange={(o) => !o && close()}>
       <DialogContent className="max-h-[calc(100dvh-2rem)] gap-0 overflow-y-auto p-0 sm:max-w-card-modal" onOpenAutoFocus={(e) => e.preventDefault()}>
-        {card.cover && <div aria-hidden="true" className={cn("rounded-t-lg", card.cover.size === "full" ? "h-28" : "h-14")} style={{ background: `var(--ds-label-${card.cover.color})` }} />}
+        {card.cover?.imageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element -- imagem do anexo, servida pela rota com conferência de acesso
+          <img src={card.cover.imageUrl} alt="" aria-hidden="true" className={cn("w-full rounded-t-lg bg-muted object-contain", card.cover.size === "full" ? "h-56" : "h-40")} />
+        ) : (
+          card.cover && <div aria-hidden="true" className={cn("rounded-t-lg", card.cover.size === "full" ? "h-28" : "h-14")} style={{ background: `var(--ds-label-${card.cover.color})` }} />
+        )}
         <div className="grid gap-6 p-4 sm:p-6">
           <CardTitle detail={detail} />
 
@@ -227,6 +235,8 @@ export function CardDialog({
 
               <Description detail={detail} members={members} />
 
+              <AttachmentsSection detail={detail} />
+
               {detail.checklists.map((c) => (
                 <ChecklistBlock key={c.id} checklist={c} canEdit={edit} members={members} />
               ))}
@@ -242,7 +252,8 @@ export function CardDialog({
                   <LabelsPopover card={card} boardId={detail.board.id} labels={labels} trigger={side(Tag, "Etiquetas")} />
                   <ChecklistPopover card={card} checklists={detail.checklists} trigger={side(CheckSquare, "Checklist")} />
                   <DatesPopover card={card} trigger={side(CalendarClock, "Datas")} />
-                  <CoverPopover card={card} trigger={side(PaintBucket, "Capa")} />
+                  <AttachPopover cardId={card.id} trigger={side(Paperclip, "Anexo")} />
+                  <CoverPopover card={card} images={detail.attachments.filter((a) => a.isImage)} trigger={side(PaintBucket, "Capa")} />
                   <LinkPopover cardId={card.id} dashboards={dashboards} trigger={side(Link2, "Vincular métrica")} />
                 </div>
               )}
@@ -540,7 +551,7 @@ function ChecklistBlock({ checklist, canEdit, members }: { checklist: Checklist;
         id={titleId}
         help="card-checklist"
         actions={
-          <div className="flex gap-1">
+          <div className="flex flex-wrap gap-1">
             {done > 0 && (
               <Button variant="secondary" size="sm" onClick={() => run(() => updateChecklist(checklist.id, { hideChecked: !checklist.hideChecked }))}>
                 {checklist.hideChecked ? <Eye aria-hidden="true" /> : <EyeOff aria-hidden="true" />}

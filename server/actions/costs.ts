@@ -6,6 +6,7 @@ import { z } from "zod";
 import { DATE_KEY } from "@/lib/periods";
 import { parseMoneyToCents, parsePercentToBp } from "@/lib/parse";
 import { requireDashboard } from "@/server/access";
+import { liveTrackingAction } from "@/server/live/action";
 import { requireUser } from "@/server/auth/session";
 import { mutate, newId, nowIso } from "@/server/store/db";
 import type { ExpenseCategory, PaymentMethod } from "@/server/store/types";
@@ -54,7 +55,7 @@ const costSettingsInput = z.object({
     .max(10),
 });
 
-export async function saveCostSettings(input: z.input<typeof costSettingsInput>): Promise<ActionResult> {
+async function saveCostSettingsImpl(input: z.input<typeof costSettingsInput>): Promise<ActionResult> {
   const user = await requireUser();
   const parsed = costSettingsInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
@@ -87,7 +88,7 @@ const productCostInput = z.object({
   validFrom: dateKey,
 });
 
-export async function setProductCost(input: z.input<typeof productCostInput>): Promise<ActionResult> {
+async function setProductCostImpl(input: z.input<typeof productCostInput>): Promise<ActionResult> {
   const user = await requireUser();
   const parsed = productCostInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
@@ -139,7 +140,7 @@ const feeInput = z
     }
   });
 
-export async function upsertAdditionalFee(input: z.input<typeof feeInput>): Promise<ActionResult> {
+async function upsertAdditionalFeeImpl(input: z.input<typeof feeInput>): Promise<ActionResult> {
   const user = await requireUser();
   const parsed = feeInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
@@ -171,7 +172,7 @@ export async function upsertAdditionalFee(input: z.input<typeof feeInput>): Prom
   return { ok: true, data: undefined };
 }
 
-export async function deleteAdditionalFee(dashboardId: string, feeId: string): Promise<ActionResult> {
+async function deleteAdditionalFeeImpl(dashboardId: string, feeId: string): Promise<ActionResult> {
   const user = await requireUser();
   requireDashboard({ user }, dashboardId, "admin");
   mutate((store) => {
@@ -199,7 +200,7 @@ const expenseInput = z
     if (v.endDate && v.endDate < v.date) ctx.addIssue({ code: "custom", message: "A data final vem depois da data de início." });
   });
 
-export async function saveExpense(input: z.input<typeof expenseInput>): Promise<ActionResult> {
+async function saveExpenseImpl(input: z.input<typeof expenseInput>): Promise<ActionResult> {
   const user = await requireUser();
   const parsed = expenseInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
@@ -228,7 +229,7 @@ export async function saveExpense(input: z.input<typeof expenseInput>): Promise<
   return { ok: true, data: undefined };
 }
 
-export async function deleteExpense(dashboardId: string, expenseId: string): Promise<ActionResult> {
+async function deleteExpenseImpl(dashboardId: string, expenseId: string): Promise<ActionResult> {
   const user = await requireUser();
   requireDashboard({ user }, dashboardId, "admin");
   mutate((store) => {
@@ -236,4 +237,30 @@ export async function deleteExpense(dashboardId: string, expenseId: string): Pro
   });
   done(dashboardId);
   return { ok: true, data: undefined };
+}
+
+// ---- modo real (AUTH_MODE=live): cada action roda sobre o retrato do Supabase, com vendas e anúncios (server/live/action.ts) ----
+
+export async function saveCostSettings(...args: Parameters<typeof saveCostSettingsImpl>): ReturnType<typeof saveCostSettingsImpl> {
+  return liveTrackingAction(() => saveCostSettingsImpl(...args));
+}
+
+export async function setProductCost(...args: Parameters<typeof setProductCostImpl>): ReturnType<typeof setProductCostImpl> {
+  return liveTrackingAction(() => setProductCostImpl(...args));
+}
+
+export async function upsertAdditionalFee(...args: Parameters<typeof upsertAdditionalFeeImpl>): ReturnType<typeof upsertAdditionalFeeImpl> {
+  return liveTrackingAction(() => upsertAdditionalFeeImpl(...args));
+}
+
+export async function deleteAdditionalFee(...args: Parameters<typeof deleteAdditionalFeeImpl>): ReturnType<typeof deleteAdditionalFeeImpl> {
+  return liveTrackingAction(() => deleteAdditionalFeeImpl(...args));
+}
+
+export async function saveExpense(...args: Parameters<typeof saveExpenseImpl>): ReturnType<typeof saveExpenseImpl> {
+  return liveTrackingAction(() => saveExpenseImpl(...args));
+}
+
+export async function deleteExpense(...args: Parameters<typeof deleteExpenseImpl>): ReturnType<typeof deleteExpenseImpl> {
+  return liveTrackingAction(() => deleteExpenseImpl(...args));
 }

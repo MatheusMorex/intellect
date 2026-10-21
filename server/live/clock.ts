@@ -52,12 +52,13 @@ export async function tickLive(now = new Date()): Promise<number> {
   let worked = 0;
   for (const workspaceId of await workspacesWithWork(now)) {
     try {
-      const ran = await withLiveWorkspace(workspaceId, async () => {
+      // Com vendas e anúncios: as regras por métrica fazem as contas sobre eles.
+      const work = async () => {
         if (!hasWork(dueWork(readStore(), now))) return false;
         mutate((store) => runDueWork(store, now));
         return true;
-      });
-      if (ran) worked++;
+      };
+      if (await withLiveWorkspace(workspaceId, work, { tracking: true })) worked++;
     } catch (error) {
       // Um workspace com problema não segura os outros; tenta de novo no próximo minuto.
       console.error(`[relógio da automação] workspace ${workspaceId}:`, error);

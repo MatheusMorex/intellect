@@ -43,14 +43,14 @@ export default async function PanelsPage({
   const { dashboardId } = await params;
   const sp = await searchParams;
   const user = await requireUser();
-  const config = loadPanelConfig({ user }, dashboardId, sp);
+  const config = await loadPanelConfig({ user }, dashboardId, sp);
   const queryKey = panelQueryKey(config.params);
   const [panel, options] = await Promise.all([
     getPanels(dashboardId, queryKey),
     config.canFilter ? getFilterOptions({ user }, dashboardId) : Promise.resolve(null),
   ]);
   const { query, dashboard } = panel;
-  const editorData = config.canEdit ? loadPanelEditorData({ user }, dashboardId) : null;
+  const editorData = config.canEdit ? await loadPanelEditorData({ user }, dashboardId) : null;
   const editing = config.canEdit && config.panel != null && one(sp.editar) === "1";
   const timezoneLabel = TIMEZONES.find(([value]) => value === dashboard.timezone)?.[1] ?? dashboard.timezone;
 

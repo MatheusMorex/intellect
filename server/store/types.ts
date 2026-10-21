@@ -304,6 +304,9 @@ export type BoardMemberRow = { id: Id; boardId: Id; userId: Id; role: "admin" | 
 
 export type ListRow = { id: Id; boardId: Id; name: string; rank: string; color: string | null; archivedAt: IsoDateTime | null };
 
+/** Capa do card: uma cor de etiqueta ou uma imagem anexada ao próprio card. */
+export type CardCover = { size: "strip" | "full" } & ({ color: string; attachmentId?: undefined } | { attachmentId: Id; color?: undefined });
+
 export type CardRow = {
   id: Id;
   boardId: Id;
@@ -319,7 +322,7 @@ export type CardRow = {
   dueComplete: boolean;
   dueReminderMinutes: number | null;
   dueRecurrence: "daily" | "weekly" | "monthly" | null;
-  cover: { color: string; size: "strip" | "full" } | null;
+  cover: CardCover | null;
   createdBy: Id | null;
   lastActivityAt: IsoDateTime;
   archivedAt: IsoDateTime | null;
@@ -556,6 +559,27 @@ export type AutomationRunRow = {
   finishedAt: IsoDateTime | null;
 };
 
+/**
+ * Anexo de um card: arquivo do computador (até 25 MB) ou link. O arquivo fica em
+ * .data/attachments/<storageKey> (no Supabase, no bucket "attachments"); a chave é
+ * cards/<id do card>/<id novo>, e o nome original fica só aqui.
+ */
+export type AttachmentRow = {
+  id: Id;
+  cardId: Id;
+  uploaderId: Id | null;
+  kind: "file" | "link";
+  name: string;
+  /** Só no link (http ou https). */
+  url: string | null;
+  /** Só no arquivo. */
+  storageKey: string | null;
+  bytes: number | null;
+  /** Tipo do arquivo: imagem conferida pelos primeiros bytes; nos outros, o que o navegador informou. */
+  mimeType: string | null;
+  createdAt: IsoDateTime;
+};
+
 /** Imagem enviada do computador da pessoa. O arquivo fica em .data/uploads/<id>.<ext> (no Supabase, no Storage). */
 export type FileRow = {
   id: Id;
@@ -624,6 +648,7 @@ export type Store = {
   boardStamps: Record<Id, string>;
   cardLinks: CardLinkRow[];
   activities: ActivityRow[];
+  attachments: AttachmentRow[];
   files: FileRow[];
   fxRates: FxRateRow[];
   fxCoverage: Record<string, FxCoverage>;

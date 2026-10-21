@@ -1,5 +1,7 @@
 import { after } from "next/server";
 
+import { processDeliveryLive, recordDeliveryLive } from "@/server/live/webhooks";
+import { isLive } from "@/server/mode";
 import { processDelivery, recordDelivery, verifyShopifyHmac } from "@/server/shopify/webhooks";
 
 // POST /api/webhooks/shopify (architecture.md, F11): valida o HMAC sobre o corpo
@@ -24,7 +26,9 @@ export async function POST(request: Request) {
     return new Response("Corpo não é JSON.", { status: 400 });
   }
 
-  const { id, duplicate } = recordDelivery({ deliveryId, topic, shopDomain, payload });
-  if (!duplicate) after(() => processDelivery(id));
+  // Modo real: a entrega vai para o Supabase (server/live/webhooks.ts); as regras são as mesmas.
+  const delivery = { deliveryId, topic, shopDomain, payload };
+  const { id, duplicate } = isLive() ? await recordDeliveryLive(delivery) : recordDelivery(delivery);
+  if (!duplicate) after(() => (isLive() ? processDeliveryLive(id) : processDelivery(id)));
   return new Response(null, { status: 200 });
 }

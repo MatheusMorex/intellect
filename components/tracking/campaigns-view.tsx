@@ -2,7 +2,6 @@ import { Plug, Search, X } from "lucide-react";
 import Link from "next/link";
 
 import { Banner } from "@/components/ds/banner";
-import { EmptyState } from "@/components/ds/empty-state";
 import { HelpTip } from "@/components/ds/help-tip";
 import { KpiCard } from "@/components/ds/kpi-card";
 import { AdInsightBalloons } from "@/components/tracking/ad-insights";
@@ -110,12 +109,10 @@ export async function CampaignsView({ dashboardId, provider, sp }: { dashboardId
         help={provider === "meta" ? "trafego-meta" : "trafego-google"}
         description={report.dashboard.name}
         actions={
-          report.connected ? (
-            <>
-              <PeriodFilter period={report.period} />
-              <DashboardRefresh dashboardId={report.dashboard.id} lastSyncedAt={report.lastSyncedAt} stale={isStale(report.lastSyncedAt)} />
-            </>
-          ) : undefined
+          <>
+            <PeriodFilter period={report.period} />
+            {report.connected && <DashboardRefresh dashboardId={report.dashboard.id} lastSyncedAt={report.lastSyncedAt} stale={isStale(report.lastSyncedAt)} />}
+          </>
         }
       />
       {report.fxUnavailable ? (
@@ -123,21 +120,24 @@ export async function CampaignsView({ dashboardId, provider, sp }: { dashboardId
           Este dashboard mostra os valores em {report.dashboard.currency}, e parte dos gastos ou das vendas está em outra moeda. Sem a cotação, os números
           ficariam errados, então eles não aparecem. Confira a internet e recarregue a página em alguns minutos.
         </Banner>
-      ) : !report.connected ? (
-        <div className="rounded-lg border bg-card">
-          <EmptyState
-            icon={Plug}
-            title={`Nenhuma conta do ${NAMES[provider]} neste dashboard`}
-            description="Conecte uma conta de anúncios para ver gasto, vendas e ROAS por campanha."
-            action={
-              <Button asChild>
-                <Link href={`/d/${report.dashboard.id}/integrations`}>Ir para Integrações</Link>
-              </Button>
-            }
-          />
-        </div>
       ) : (
         <>
+          {/* Sem conta ligada: a tela aparece zerada (R$ 0,00), com o caminho para conectar. */}
+          {!report.connected && (
+            <Banner
+              title={`Conecte sua conta do ${NAMES[provider]} para os números da sua operação aparecerem aqui`}
+              action={
+                <Button asChild size="sm">
+                  <Link href={`/d/${report.dashboard.id}/integrations`}>
+                    <Plug aria-hidden="true" />
+                    Ir para Integrações
+                  </Link>
+                </Button>
+              }
+            >
+              Gasto, vendas, ROAS e a leitura dos anúncios de cada campanha aparecem assim que a conta estiver ligada a este dashboard.
+            </Banner>
+          )}
           <nav aria-label="Nível" className="flex flex-wrap items-end gap-1 border-b">
             {report.levels.map((level) => {
               const active = level === report.level;

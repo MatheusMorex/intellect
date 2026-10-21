@@ -7,8 +7,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, test } from "node:test";
 
-import { diffSnapshot, unmappedChanges } from "../server/live/snapshot.ts";
-import { rowFromDb, rowToDb, TABLES, tableOf } from "../server/live/tables.ts";
+import { diffSnapshot, landedBefore, retryOnNetwork, unmappedChanges } from "../server/live/snapshot.ts";
+import { LEAF_TABLES, rowFromDb, rowToDb, TABLES, tableOf } from "../server/live/tables.ts";
 import { createSeed } from "../server/store/seed.ts";
 import type { Store } from "../server/store/types.ts";
 
@@ -29,14 +29,16 @@ for (const m of SQL.matchAll(/create table public\.(\w+) \(([\s\S]*?)\n\);/g)) {
   const columns: Column[] = [];
   for (const line of m[2].split("\n")) {
     const t = line.trim();
-    const c = t.match(/^([a-z_][a-z0-9_]*)\s+(uuid|text|integer|bigint|boolean|jsonb|timestamptz|date|smallint|char|numeric)/);
+    const c = t.match(/^([a-z_][a-z0-9_]*)\s+(uuid|text|integer|bigint|boolean|jsonb|timestamptz|date|smallint|char|numeric|bytea)/);
     if (!c || ["constraint", "unique", "primary"].includes(c[1])) continue;
     columns.push({ name: c[1], notNull: /not null|primary key/.test(t), hasDefault: /default /.test(t) || /primary key/.test(t) });
   }
   SCHEMA.set(m[1], columns);
 }
-
-const camel = (s: string) => s.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
+// Colunas acrescentadas depois (alter table ... add column).
+for (const m of SQL.matchAll(/alter table public\.(\w+)\s+add column (\w+) ([^;]*);/g)) {
+  SCHEMA.get(m[1])?.push({ name: m[2], notNull: /not null/.test(m[3]), hasDefault: /default /.test(m[3]) });
+}
 const NOW = new Date("2026-10-20T15:00:00Z");
 const seed = createSeed(NOW);
 // Os dados de exemplo nascem sem atividades nem execuções: uma de cada, completa, para o mapa ser conferido.
@@ -83,7 +85,10 @@ describe("mapa do retrato × migrações", () => {
     for (const spec of TABLES) {
       if (spec.readOnly || spec.writable) continue;
       for (const column of SCHEMA.get(spec.table)!) {
-        if (column.notNull && !column.hasDefault) assert.ok(spec.columns.includes(column.name), `${spec.table}.${column.name} é obrigatória e não está no mapa`);
+        if (column.notNull && !column.hasDefault) {
+          const covered = spec.columns.includes(column.name) || (spec.insertDefaults && column.name in spec.insertDefaults);
+          assert.ok(covered, `${spec.table}.${column.name} é obrigatória e não está no mapa`);
+        }
       }
     }
   });
@@ -92,17 +97,29 @@ describe("mapa do retrato × migrações", () => {
     for (const spec of TABLES) {
       if (spec.readOnly || spec.writable) continue;
       // Os dados de exemplo não têm convites: os testes com o banco (tests/live) criam e conferem.
-      const rows = seed[spec.key] as unknown as Row[];
-      const fields = new Set(rows.flatMap((r) => Object.keys(r)));
-      const mapped = new Set([...spec.columns.map(camel), ...(spec.appOnly ?? [])]);
-      for (const field of fields) assert.ok(mapped.has(field), `${String(spec.key)}.${field} não tem coluna em ${spec.table}`);
+      const value = seed[spec.key] as unknown;
+      const rows = spec.recordKey
+        ? Object.entries(value as Record<string, Row>).map(([k, v]) => ({ [spec.recordKey!]: k, ...v }))
+        : (value as Row[]);
+      for (const row of rows.slice(0, 50)) {
+        for (const [field, fieldValue] of Object.entries(row)) {
+          if (spec.appOnly?.includes(field) || fieldValue === undefined) continue;
+          // O campo sozinho tem que virar alguma coluna (com os ajustes de nome do mapa).
+          const columns = Object.keys(rowToDb(spec, { [field]: fieldValue }));
+          assert.ok(columns.length > 0, `${String(spec.key)}.${field} não tem coluna em ${spec.table}`);
+        }
+      }
     }
   });
 
   test("ida e volta (app → banco → app) devolve a mesma linha", () => {
     for (const spec of TABLES) {
       if (spec.key === "users") continue; // o perfil não tem senha no banco
-      for (const row of (seed[spec.key] as unknown as Row[]).slice(0, 30)) {
+      const value = seed[spec.key] as unknown;
+      const rows = spec.recordKey
+        ? Object.entries(value as Record<string, Row>).map(([k, v]) => ({ [spec.recordKey!]: k, ...v }))
+        : (value as Row[]);
+      for (const row of rows.slice(0, 30)) {
         const back = rowFromDb(spec, rowToDb(spec, row));
         const expected = Object.fromEntries(Object.entries(row).filter(([k, v]) => v !== undefined && !spec.appOnly?.includes(k)));
         assert.deepEqual(back, expected, `${spec.table} ${row.id}`);
@@ -219,14 +236,29 @@ describe("diferença entre o retrato lido e o retrato depois das regras", () => 
     assert.equal(profiles.inserts.length + profiles.deletes.length, 0);
   });
 
-  test("mudança numa parte fora do mapa (vínculo com campanha, despesa) é acusada, não some em silêncio", () => {
+  test("mudança numa parte fora do mapa (arquivos, que entram na etapa 5) é acusada, não some em silêncio", () => {
     const current = clone(seed);
     assert.deepEqual(unmappedChanges(seed, current), []);
-    current.cardLinks.pop();
-    current.expenses.pop();
+    current.files.push({ id: "f", ownerId: seed.users[0].id, kind: "avatar", boardId: null, mime: "image/png", size: 10, createdAt: NOW.toISOString() });
     current.outbox.push({ id: "x", to: "a@b.c", subject: "s", text: "t", link: null, createdAt: NOW.toISOString() });
     current.boardStamps[seed.boards[0].id] = "outro";
-    assert.deepEqual(unmappedChanges(seed, current).sort(), ["cardLinks", "expenses"]);
+    assert.deepEqual(unmappedChanges(seed, current), ["files"]);
+  });
+
+  test("câmbio: cotação sem id vai inteira, com a moeda base; a cobertura vira linha por moeda", () => {
+    const base = clone(seed);
+    base.fxRates = [{ date: "2026-10-19", quote: "USD", rate: 0.18 }];
+    base.fxCoverage = {};
+    const current = clone(base);
+    current.fxRates[0].rate = 0.181;
+    current.fxRates.push({ date: "2026-10-20", quote: "USD", rate: 0.182 });
+    current.fxCoverage.USD = { from: "2026-09-01", to: "2026-10-20", fetchedAt: NOW.toISOString() };
+    const rates = changesOf(base, current, "fx_rates")!;
+    assert.deepEqual(rates.upserts, [
+      { date: "2026-10-19", base: "BRL", quote: "USD", rate: 0.181 },
+      { date: "2026-10-20", base: "BRL", quote: "USD", rate: 0.182 },
+    ]);
+    assert.deepEqual(changesOf(base, current, "fx_coverage")!.upserts, [{ quote: "USD", from_date: "2026-09-01", to_date: "2026-10-20", fetched_at: NOW.toISOString() }]);
   });
 
   test("execução nova: o card e a atividade de origem entram numa segunda passada (referência circular)", () => {
@@ -261,5 +293,62 @@ describe("diferença entre o retrato lido e o retrato depois das regras", () => 
     // A execução entra antes dos cards: a chave única recusa a repetida antes de qualquer card novo.
     before("automation_runs", "cards");
     before("automation_runs", "activities");
+  });
+
+  test("tabelas que nada referencia (remoção antes das linhas novas) batem com as migrações", () => {
+    const referenced = new Set([...SQL.matchAll(/references public\.(\w+)/g)].map((m) => m[1]));
+    const leaves = TABLES.filter((t) => !t.readOnly && !t.upsertOn && !referenced.has(t.table)).map((t) => t.table);
+    assert.deepEqual([...LEAF_TABLES].sort(), leaves.sort());
+  });
+
+  test("painel padrão: o antigo deixa de ser padrão antes de o novo virar (um só por dashboard no banco)", () => {
+    const base = structuredClone(seed);
+    base.panels.push({ ...base.panels[0], id: "55555555-5555-4555-8555-555555555555", isDefault: false, position: 1 });
+    const current = structuredClone(base);
+    current.panels[0].isDefault = false;
+    current.panels[1].isDefault = true;
+    const spec = tableOf("panels");
+    const updates = diffSnapshot(base, current).find((c) => c.spec === spec)!.updates;
+    assert.deepEqual(
+      updates.filter((u) => spec.updateFirst!(u.patch)).map((u) => u.id),
+      [current.panels[0].id],
+    );
+  });
+});
+
+describe("gravação com a internet instável", () => {
+  test("falha de rede (sem código do banco, como o tempo-limite) tenta de novo, até 3 vezes", async () => {
+    let calls = 0;
+    const { result, attempts } = await retryOnNetwork(async () => {
+      calls++;
+      return calls < 3 ? { error: { message: "TimeoutError: The operation was aborted due to timeout", code: "" } } : { error: null };
+    }, 1);
+    assert.equal(attempts, 3);
+    assert.equal(result.error, null);
+  });
+
+  test("depois da 3ª falha de rede, devolve o erro; erro do banco não se repete", async () => {
+    let calls = 0;
+    const network = await retryOnNetwork(async () => {
+      calls++;
+      return { error: { message: "TypeError: fetch failed" } };
+    }, 1);
+    assert.equal(calls, 3);
+    assert.equal(network.result.error?.message, "TypeError: fetch failed");
+    calls = 0;
+    const database = await retryOnNetwork(async () => {
+      calls++;
+      return { error: { message: 'duplicate key value violates unique constraint "cards_board_id_number_key"', code: "23505" } };
+    }, 1);
+    assert.equal(calls, 1);
+    assert.equal(database.attempts, 1);
+  });
+
+  test("linha nova que entrou na tentativa sem resposta conta como gravada (só id repetido, só em nova tentativa)", () => {
+    const pkey = { message: 'duplicate key value violates unique constraint "cards_pkey"', code: "23505" };
+    assert.equal(landedBefore(2, pkey), true);
+    assert.equal(landedBefore(1, pkey), false);
+    assert.equal(landedBefore(2, { message: 'duplicate key value violates unique constraint "cards_board_id_number_key"', code: "23505" }), false);
+    assert.equal(landedBefore(2, { message: "violates foreign key constraint", code: "23503" }), false);
   });
 });

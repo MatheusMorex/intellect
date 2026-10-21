@@ -2,8 +2,12 @@
 
 import { requireDashboard, type Ctx } from "@/server/access";
 import { dayKeyIn, inRange, resolvePeriod, type ResolvedPeriod } from "@/server/period";
+import { withLiveRead } from "@/server/live/scope";
 import { readStore } from "@/server/store/db";
-import type { AttributionStatus, OrderStatus, PaymentMethod } from "@/server/store/types";
+import type { AttributionStatus, OrderItemRow, OrderStatus, PaymentMethod } from "@/server/store/types";
+
+/** Itens na ordem das linhas do pedido (o banco não guarda a ordem em que chegaram). */
+export const byLine = (a: OrderItemRow, b: OrderItemRow) => a.externalLineId.localeCompare(b.externalLineId, "en", { numeric: true });
 
 export type OrderLine = {
   id: string;
@@ -47,7 +51,7 @@ export type OrderList = {
   q: string;
 };
 
-export async function listOrders(
+async function listOrdersImpl(
   ctx: Ctx,
   dashboardId: string,
   {
@@ -89,7 +93,7 @@ export async function listOrders(
   const ads = new Map(store.ads.map((a) => [a.id, a.name]));
 
   const rows = filtered.slice(0, limit).map((o): OrderLine => {
-    const items = store.orderItems.filter((i) => i.orderId === o.id);
+    const items = store.orderItems.filter((i) => i.orderId === o.id).sort(byLine);
     return {
       id: o.id,
       name: o.name,
@@ -122,4 +126,10 @@ export async function listOrders(
     counts,
     q: q ?? "",
   };
+}
+
+// ---- modo real (AUTH_MODE=live): as leituras rodam sobre o retrato do Supabase, com vendas e anúncios (server/live/scope.ts) ----
+
+export async function listOrders(...args: Parameters<typeof listOrdersImpl>): ReturnType<typeof listOrdersImpl> {
+  return withLiveRead(args[0].user.id, () => listOrdersImpl(...args), { tracking: true });
 }

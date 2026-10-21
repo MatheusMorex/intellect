@@ -317,9 +317,12 @@ export function ChecklistPopover({ card, checklists, trigger }: { card: CardDeta
   );
 }
 
-export function CoverPopover({ card, trigger }: { card: CardDetail["card"]; trigger: React.ReactNode }) {
+export function CoverPopover({ card, images = [], trigger }: { card: CardDetail["card"]; images?: { id: string; name: string; href: string }[]; trigger: React.ReactNode }) {
   const { run } = useRun();
   const size = card.cover?.size ?? "strip";
+  /** A capa atual com outro tamanho (cor ou imagem, o que estiver). */
+  const resized = (next: "strip" | "full") =>
+    card.cover?.attachmentId ? { attachmentId: card.cover.attachmentId, size: next } : { color: card.cover?.color ?? "purple", size: next };
   return (
     <Popover>
       <PopoverTrigger asChild>{trigger}</PopoverTrigger>
@@ -330,7 +333,7 @@ export function CoverPopover({ card, trigger }: { card: CardDetail["card"]; trig
           <RadioGroup
             value={size}
             className="flex gap-4"
-            onValueChange={(v) => card.cover && run(() => updateCard({ cardId: card.id, cover: { color: card.cover!.color, size: v as "strip" | "full" } }))}
+            onValueChange={(v) => card.cover && run(() => updateCard({ cardId: card.id, cover: resized(v as "strip" | "full") }))}
           >
             <Label className="font-normal">
               <RadioGroupItem value="strip" disabled={!card.cover} /> Faixa no topo
@@ -354,6 +357,30 @@ export function CoverPopover({ card, trigger }: { card: CardDetail["card"]; trig
             />
           ))}
         </div>
+        {images.length > 0 && (
+          <div role="radiogroup" aria-label="Imagem da capa" className="mt-3 grid gap-1.5">
+            <p className="text-xs font-semibold text-muted-foreground">Imagens anexadas</p>
+            <div className="grid grid-cols-3 gap-1.5">
+              {images.map((image) => (
+                <button
+                  key={image.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={card.cover?.attachmentId === image.id}
+                  aria-label={image.name}
+                  onClick={() => run(() => updateCard({ cardId: card.id, cover: { attachmentId: image.id, size } }))}
+                  className={cn(
+                    "h-12 overflow-hidden rounded-sm bg-muted outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    card.cover?.attachmentId === image.id && "ring-2 ring-ring ring-offset-2 ring-offset-popover",
+                  )}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element -- imagem do anexo, servida pela rota com conferência de acesso */}
+                  <img src={image.href} alt="" className="size-full object-cover" />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         {card.cover && (
           <Button variant="ghost" className="mt-3 w-full" onClick={() => run(() => updateCard({ cardId: card.id, cover: null }))}>
             Remover capa
@@ -448,7 +475,7 @@ export function CopyDialog({ card, lists, open, onOpenChange }: { card: CardDeta
   const [pending, startTransition] = useTransition();
   const [name, setName] = useState(card.name);
   const [listId, setListId] = useState(card.listId);
-  const [keep, setKeep] = useState({ labels: true, members: true, checklists: true, links: true });
+  const [keep, setKeep] = useState({ labels: true, members: true, checklists: true, links: true, attachments: true });
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[440px]">
@@ -468,6 +495,7 @@ export function CopyDialog({ card, lists, open, onOpenChange }: { card: CardDeta
               ["members", "Membros"],
               ["checklists", "Checklists"],
               ["links", "Vínculos com campanhas"],
+              ["attachments", "Anexos"],
             ] as const
           ).map(([k, t]) => (
             <Label key={k} className="font-normal">

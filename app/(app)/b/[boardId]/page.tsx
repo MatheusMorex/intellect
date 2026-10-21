@@ -18,7 +18,7 @@ import {
   listWritableLists,
   recordBoardVisit,
 } from "@/server/data/boards";
-import { listDashboardsFor } from "@/server/data/tracking";
+import { listDashboards } from "@/server/data/tracking";
 import { nowIso } from "@/server/store/db";
 
 type Props = { params: Promise<{ boardId: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> };
@@ -51,8 +51,8 @@ export default async function BoardPage({ params, searchParams }: Props) {
     else if (preview.boardId !== boardId) redirect(`/b/${preview.boardId}?card=${cardId}`);
     else detail = await getCardDetail(ctx, cardId);
   }
-  // Destinos de "mover" e "copiar" do card aberto.
-  const writableLists = detail ? await listWritableLists(ctx) : [];
+  // Destinos de "mover" e "copiar" do card aberto, e os dashboards para ligar o card a uma campanha.
+  const [writableLists, dashboards] = detail ? await Promise.all([listWritableLists(ctx), listDashboards(ctx)]) : [[], []];
   const now = Date.parse(nowIso());
 
   return (
@@ -71,7 +71,7 @@ export default async function BoardPage({ params, searchParams }: Props) {
           labels={view.labels}
           members={view.members}
           lists={writableLists}
-          dashboards={listDashboardsFor(ctx).map((d) => ({ id: d.id, name: d.name }))}
+          dashboards={dashboards.map((d) => ({ id: d.id, name: d.name }))}
           buttons={view.buttons.card}
           now={now}
         />

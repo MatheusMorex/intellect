@@ -12,6 +12,7 @@ import { floorToLocalHour } from "@/server/charts/time-buckets";
 import { earliestDay, lastSyncedAt, type SearchParams } from "@/server/data/tracking";
 import { prepareDashboardFx } from "@/server/fx/rates";
 import { isLive } from "@/server/mode";
+import { withLiveRead } from "@/server/live/scope";
 import { readStore, storeVersion } from "@/server/store/db";
 import type { BoardRow, DashboardRow } from "@/server/store/types";
 import type { WeekStart } from "@/lib/charts/options";
@@ -28,13 +29,14 @@ export type PanelPage = {
 /** Telas prontas guardadas entre acessos (server/charts/cache.ts). */
 const pageCache = versionedCache<PanelPage>({ max: 60, ttlMs: 5 * 60_000 });
 
-export async function loadPanels(ctx: Ctx, dashboardId: string, sp: SearchParams = {}, now = new Date()): Promise<PanelPage> {
+async function loadPanelsImpl(ctx: Ctx, dashboardId: string, sp: SearchParams = {}, now = new Date()): Promise<PanelPage> {
   // O acesso é conferido em todo pedido; só as contas vêm do cache.
   const { dashboard } = requireDashboard(ctx, dashboardId);
   const version = storeVersion();
   // Funil do kanban e Gantt: só os quadros que esta pessoa pode ver (por isso entram na chave).
   const boards = visibleBoards(readStore(), dashboard.workspaceId, (board) => boardRole(ctx, board) != null);
-  // Modo real: a versão dos dados ainda não vem do banco (etapa 4 da troca), então sem cache.
+  // Modo real: sem cache (cada leitura já vem do banco). Guardar telas prontas exigiria uma versão por
+  // dashboard no banco, que suba quando chegam pedidos ou gastos: fica para quando o volume pedir.
   if (isLive()) return buildPanelPage(dashboard, boards, sp, now);
   const key = [dashboard.id, boards.map((b) => b.id).join(","), panelQueryKey(sp), floorToLocalHour(now.getTime(), dashboard.timezone)].join("|");
   return pageCache.get(key, version, () => buildPanelPage(dashboard, boards, sp, now), now.getTime());
@@ -66,4 +68,10 @@ export function panelQueryKey(sp: SearchParams): string {
     query.set(key, Array.isArray(value) ? value.join(",") : value);
   }
   return query.toString();
+}
+
+// ---- modo real (AUTH_MODE=live): as leituras rodam sobre o retrato do Supabase, com vendas e anúncios (server/live/scope.ts) ----
+
+export async function loadPanels(...args: Parameters<typeof loadPanelsImpl>): ReturnType<typeof loadPanelsImpl> {
+  return withLiveRead(args[0].user.id, () => loadPanelsImpl(...args), { tracking: true });
 }

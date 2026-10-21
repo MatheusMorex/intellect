@@ -8,6 +8,7 @@ import { z } from "zod";
 
 import { DASHBOARD_CURRENCIES } from "@/lib/currency";
 import { requireDashboard } from "@/server/access";
+import { liveTrackingAction } from "@/server/live/action";
 import { requireUser } from "@/server/auth/session";
 import { removeAvatarLive, removeWallpaperLive, updateAppearanceLive } from "@/server/live/settings";
 import { isLive } from "@/server/mode";
@@ -97,7 +98,7 @@ const dashboardInput = z.object({
   weekStart: z.enum(["monday", "sunday"], { error: "Escolha o dia em que a semana começa." }),
 });
 
-export async function updateDashboardSettings(input: z.input<typeof dashboardInput>): Promise<ActionResult> {
+async function updateDashboardSettingsImpl(input: z.input<typeof dashboardInput>): Promise<ActionResult> {
   const parsed = dashboardInput.safeParse(input);
   if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "Dados inválidos.");
   const v = parsed.data;
@@ -120,4 +121,10 @@ export async function updateDashboardSettings(input: z.input<typeof dashboardInp
   });
   revalidatePath("/", "layout");
   return ok();
+}
+
+// ---- modo real (AUTH_MODE=live): cada action roda sobre o retrato do Supabase, com vendas e anúncios (server/live/action.ts) ----
+
+export async function updateDashboardSettings(...args: Parameters<typeof updateDashboardSettingsImpl>): ReturnType<typeof updateDashboardSettingsImpl> {
+  return liveTrackingAction(() => updateDashboardSettingsImpl(...args));
 }

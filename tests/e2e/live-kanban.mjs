@@ -1,7 +1,8 @@
 // npm run test:e2e:live — o kanban no modo real (AUTH_MODE=live), num navegador
 // de verdade, com o app ligado ao projeto de TESTE do Supabase (nunca o
 // principal). Cria duas pessoas temporárias (Ana e Bia) num workspace novo,
-// percorre o kanban e confere cada passo direto no banco. No fim, apaga tudo.
+// percorre o kanban (com anexos no Storage) e confere cada passo direto no banco.
+// No fim, apaga tudo.
 //
 // O servidor precisa estar rodando no modo real com as chaves do projeto de
 // teste (veja o README, "Testar o modo real").
@@ -21,6 +22,8 @@ if (!url.includes("aqaijwpnudhftlxwsfdm") || !process.env.SUPABASE_SECRET_KEY) {
 }
 const admin = createClient(url, process.env.SUPABASE_SECRET_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
 const run = crypto.randomUUID().slice(0, 8);
+/** Um PNG de 1×1 pixel de verdade (os primeiros bytes dizem que é imagem). */
+const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
 const PASSWORD = "Teste-Segura-123";
 const slug = `e2e-${run}`;
 const created = { users: [], workspace: null };
@@ -188,6 +191,33 @@ try {
     const [checklist] = await db("checklists", (q) => q.eq("card_id", card.id));
     const [item] = await db("checklist_items", (q) => q.eq("checklist_id", checklist.id));
     assert.ok(item.completed_at, "o item deveria estar concluído");
+  });
+
+  await step("anexos: a imagem vai para o Storage pelo navegador, vira capa, e excluir apaga o arquivo", async () => {
+    const dialog = page.getByRole("dialog");
+    const [card] = await db("cards", (q) => q.eq("board_id", boardId));
+    await dialog.getByRole("button", { name: "Anexo", exact: true }).click();
+    await page.getByLabel("Arquivo do computador").setInputFiles({ name: "vitrine.png", mimeType: "image/png", buffer: PNG });
+    await page.getByText("vitrine.png anexado").waitFor();
+    const [row] = await db("attachments", (q) => q.eq("card_id", card.id));
+    assert.equal(row?.name, "vitrine.png");
+    const [folder, cardFolder, file] = row.storage_key.split("/");
+    const inStorage = async () => ((await admin.storage.from("attachments").list(`${folder}/${cardFolder}`, { search: file })).data ?? []).some((f) => f.name === file);
+    assert.ok(await inStorage(), "o arquivo não chegou ao Storage");
+    const shown = await page.request.get(`${BASE}/api/attachments/${row.id}`);
+    assert.equal(shown.status(), 200);
+    assert.equal(shown.headers()["content-type"], "image/png");
+
+    await dialog.getByRole("button", { name: "Ações do anexo vitrine.png" }).click();
+    await page.getByRole("menuitem", { name: "Usar como capa" }).click();
+    await until(async () => (await db("cards", (q) => q.eq("id", card.id)))[0].cover?.attachmentId === row.id, "a imagem como capa");
+
+    await dialog.getByRole("button", { name: "Ações do anexo vitrine.png" }).click();
+    await page.getByRole("menuitem", { name: "Excluir" }).click();
+    await page.getByRole("alertdialog").getByRole("button", { name: "Excluir" }).click();
+    await until(async () => (await db("attachments", (q) => q.eq("id", row.id))).length === 0, "o anexo apagado");
+    await until(async () => !(await inStorage()), "o arquivo apagado do Storage");
+    assert.equal((await db("cards", (q) => q.eq("id", card.id)))[0].cover, null);
   });
 
   await step("tempo real: a Bia, com o quadro aberto, vê o card mudar de lista sem recarregar", async () => {

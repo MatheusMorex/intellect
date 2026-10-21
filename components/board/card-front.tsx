@@ -1,6 +1,6 @@
 "use client";
 
-import { AlignLeft, Check, MessageSquare } from "lucide-react";
+import { AlignLeft, Check, MessageSquare, Paperclip } from "lucide-react";
 
 import { ChecklistBadge, DueBadge, MetricBadge } from "@/components/ds/badges";
 import { LabelChip } from "@/components/ds/label-chip";
@@ -38,15 +38,28 @@ export function CardFrontView({
 }) {
   const cardLabels = card.labelIds.map((id) => labels.find((l) => l.id === id)).filter((l): l is LabelView => !!l && !!l.color);
   const members = card.memberIds.map((id) => people.get(id)).filter((p): p is Person => !!p);
-  const full = showCovers && card.cover?.size === "full";
-  const strip = showCovers && card.cover?.size === "strip";
-  const hasBadges = card.dueAt || card.hasDescription || card.comments > 0 || card.checklist || card.metric || members.length;
+  // Capa de imagem fica no topo (maior no "card inteiro"); capa de cor pinta a faixa ou o card.
+  const image = showCovers ? (card.cover?.imageUrl ?? null) : null;
+  const full = showCovers && !image && card.cover?.size === "full";
+  const strip = showCovers && !image && card.cover?.size === "strip";
+  const hasBadges = card.dueAt || card.hasDescription || card.comments > 0 || card.attachments > 0 || card.checklist || card.metric || members.length;
 
   return (
     <div
       className={cn("grid gap-1.5 rounded-md bg-card px-3 py-2 text-left shadow-card", full && "pt-3 pb-2.5", className)}
       style={full && card.cover ? { background: `var(--ds-label-${card.cover.color})`, color: "var(--ds-label-text)" } : undefined}
     >
+      {image && (
+        // eslint-disable-next-line @next/next/no-img-element -- imagem do anexo, servida pela rota com conferência de acesso
+        <img
+          src={image}
+          alt=""
+          aria-hidden="true"
+          loading="lazy"
+          draggable={false}
+          className={cn("-mx-3 -mt-2 mb-0.5 w-[calc(100%+1.5rem)] max-w-none rounded-t-md object-cover", card.cover?.size === "full" ? "h-44" : "h-32")}
+        />
+      )}
       {strip && card.cover && (
         <div aria-hidden="true" className="-mx-3 -mt-2 mb-0.5 h-8 rounded-t-md" style={{ background: `var(--ds-label-${card.cover.color})` }} />
       )}
@@ -107,6 +120,12 @@ export function CardFrontView({
             <span className="inline-flex h-5 items-center gap-0.5 text-xs text-muted-foreground tabular" aria-label={`${card.comments} comentários`}>
               <MessageSquare aria-hidden="true" className="size-3.5" />
               {card.comments}
+            </span>
+          )}
+          {card.attachments > 0 && (
+            <span className="inline-flex h-5 items-center gap-0.5 text-xs text-muted-foreground tabular" aria-label={`${card.attachments} ${card.attachments === 1 ? "anexo" : "anexos"}`}>
+              <Paperclip aria-hidden="true" className="size-3.5" />
+              {card.attachments}
             </span>
           )}
           {card.checklist && <ChecklistBadge done={card.checklist.done} total={card.checklist.total} />}

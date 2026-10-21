@@ -8,10 +8,10 @@ import { DashboardSettingsForm } from "@/components/settings/dashboard-settings"
 import { PageBody, PageHeader } from "@/components/shell/page-header";
 import { WorkspaceSettingsForm } from "@/components/workspace/settings-form";
 import { cn } from "@/lib/utils";
-import { requireDashboard } from "@/server/access";
 import { requireUser } from "@/server/auth/session";
 import { getProfile, getShellData, getWorkspaceMembers } from "@/server/data/boards";
-import { listDashboardsFor } from "@/server/data/tracking";
+import { getDashboardSettings } from "@/server/data/settings";
+import { listDashboards } from "@/server/data/tracking";
 
 export const metadata: Metadata = { title: "Configurações" };
 
@@ -29,8 +29,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const tab: Tab = TABS.some((t) => t.id === sp.aba) ? (sp.aba as Tab) : "aparencia";
   const user = await requireUser();
   const ctx = { user };
-  const [shell, profile] = await Promise.all([getShellData(ctx), getProfile(ctx)]);
-  const dashboards = listDashboardsFor(ctx);
+  const [shell, profile, dashboards] = await Promise.all([getShellData(ctx), getProfile(ctx), listDashboards(ctx)]);
   const selected = dashboards.find((d) => d.id === sp.dashboard) ?? dashboards[0];
 
   return (
@@ -86,7 +85,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
 }
 
 async function DashboardTab({ dashboardId, all, user }: { dashboardId: string; all: { id: string; name: string }[]; user: Awaited<ReturnType<typeof requireUser>> }) {
-  const { dashboard, role } = requireDashboard({ user }, dashboardId);
+  const { dashboard, role } = await getDashboardSettings({ user }, dashboardId);
   return (
     <div className="grid gap-4">
       {all.length > 1 && (

@@ -6,9 +6,11 @@ import { requireDashboard, type Ctx } from "@/server/access";
 import { prepareDashboardFx } from "@/server/fx/rates";
 import { expenseOccurrences, settingOn } from "@/server/metrics/costs";
 import { dayKeyIn, resolvePeriod, todayIn } from "@/server/period";
+import { withLiveRead } from "@/server/live/scope";
 import { readStore } from "@/server/store/db";
 import type { ExpenseCategory, ExpenseRow } from "@/server/store/types";
 
+import { byLine } from "./orders";
 import type { SearchParams } from "./tracking";
 
 export const META_URL_PARAMS =
@@ -18,7 +20,7 @@ export const GOOGLE_URL_SUFFIX =
 
 const DAY = 86_400_000;
 
-export async function getIntegrations(ctx: Ctx, dashboardId: string) {
+async function getIntegrationsImpl(ctx: Ctx, dashboardId: string) {
   const { dashboard, role } = requireDashboard(ctx, dashboardId);
   const store = readStore();
   const linked = new Set(store.dashboardAdAccounts.filter((l) => l.dashboardId === dashboard.id).map((l) => l.adAccountId));
@@ -94,7 +96,7 @@ export async function getIntegrations(ctx: Ctx, dashboardId: string) {
   };
 }
 
-export async function getCostSettings(ctx: Ctx, dashboardId: string) {
+async function getCostSettingsImpl(ctx: Ctx, dashboardId: string) {
   const { dashboard, role } = requireDashboard(ctx, dashboardId);
   const store = readStore();
   const today = format(todayIn(dashboard.timezone), "yyyy-MM-dd");
@@ -142,7 +144,7 @@ export const EXPENSE_CATEGORY: Record<ExpenseCategory, string> = {
   other: "Outros",
 };
 
-export async function listExpenses(ctx: Ctx, dashboardId: string, sp: SearchParams) {
+async function listExpensesImpl(ctx: Ctx, dashboardId: string, sp: SearchParams) {
   const { dashboard, role } = requireDashboard(ctx, dashboardId);
   // Cada despesa aparece na moeda em que foi lançada; os totais, na do dashboard, pela cotação de cada ocorrência.
   const fx = await prepareDashboardFx(dashboard);
@@ -164,7 +166,8 @@ export async function listExpenses(ctx: Ctx, dashboardId: string, sp: SearchPara
       return { ...e, occurrences, totalInPeriodCents: occurrences.reduce((sum, day) => sum + convert(e.amountCents, e.currency, day), 0) };
     })
     .filter((e) => e.occurrences.length > 0)
-    .sort((a, b) => (b.occurrences.at(-1) ?? "").localeCompare(a.occurrences.at(-1) ?? ""));
+    // Mais recente primeiro; no empate, pela descrição (a ordem não depende de como os dados foram guardados).
+    .sort((a, b) => (b.occurrences.at(-1) ?? "").localeCompare(a.occurrences.at(-1) ?? "") || a.description.localeCompare(b.description, "pt-BR") || a.id.localeCompare(b.id));
 
   const byCategory = Object.fromEntries(
     (Object.keys(EXPENSE_CATEGORY) as ExpenseCategory[]).map((c) => [c, rows.filter((r) => r.category === c).reduce((s, r) => s + r.totalInPeriodCents, 0)]),
@@ -182,7 +185,7 @@ export async function listExpenses(ctx: Ctx, dashboardId: string, sp: SearchPara
   };
 }
 
-export async function getOrderDetail(ctx: Ctx, dashboardId: string, orderId: string) {
+async function getOrderDetailImpl(ctx: Ctx, dashboardId: string, orderId: string) {
   const { dashboard } = requireDashboard(ctx, dashboardId);
   const store = readStore();
   const storeIds = new Set(store.dashboardStores.filter((l) => l.dashboardId === dashboard.id).map((l) => l.storeId));
@@ -194,11 +197,34 @@ export async function getOrderDetail(ctx: Ctx, dashboardId: string, orderId: str
     dashboard: { id: dashboard.id, name: dashboard.name, timezone: dashboard.timezone },
     order,
     day: dayKeyIn(order.placedAt, dashboard.timezone),
-    items: store.orderItems.filter((i) => i.orderId === order.id),
+    items: store.orderItems.filter((i) => i.orderId === order.id).sort(byLine),
     events: store.orderEvents.filter((e) => e.orderId === order.id).sort((a, b) => a.occurredAt.localeCompare(b.occurredAt)),
     campaign: order.campaignId ? (store.campaigns.find((c) => c.id === order.campaignId)?.name ?? null) : null,
     adSet: order.adSetId ? (store.adSets.find((s) => s.id === order.adSetId)?.name ?? null) : null,
     ad: order.adId ? (store.ads.find((a) => a.id === order.adId)?.name ?? null) : null,
     shopifyAdminUrl: shop && numericId ? `https://${shop.shopDomain}/admin/orders/${numericId}` : null,
   };
+}
+
+// ---- modo real (AUTH_MODE=live): as leituras rodam sobre o retrato do Supabase, com vendas e anúncios (server/live/scope.ts) ----
+
+export async function getIntegrations(...args: Parameters<typeof getIntegrationsImpl>): ReturnType<typeof getIntegrationsImpl> {
+  return withLiveRead(args[0].user.id, () => getIntegrationsImpl(...args), { tracking: true });
+}
+
+export async function getCostSettings(...args: Parameters<typeof getCostSettingsImpl>): ReturnType<typeof getCostSettingsImpl> {
+  return withLiveRead(args[0].user.id, () => getCostSettingsImpl(...args), { tracking: true });
+}
+
+export async function listExpenses(...args: Parameters<typeof listExpensesImpl>): ReturnType<typeof listExpensesImpl> {
+  return withLiveRead(args[0].user.id, () => listExpensesImpl(...args), { tracking: true });
+}
+
+export async function getOrderDetail(...args: Parameters<typeof getOrderDetailImpl>): ReturnType<typeof getOrderDetailImpl> {
+  return withLiveRead(args[0].user.id, () => getOrderDetailImpl(...args), { tracking: true });
+}
+
+/** Configurações > Vendas e moeda: o dashboard e o papel de quem olha (esperando o retrato no modo real). */
+export async function getDashboardSettings(ctx: Ctx, dashboardId: string) {
+  return withLiveRead(ctx.user.id, () => requireDashboard(ctx, dashboardId));
 }

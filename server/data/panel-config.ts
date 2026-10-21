@@ -13,6 +13,7 @@ import { PANEL_WIDGET, type PanelWidget } from "@/lib/charts/widgets";
 import { boardRole, requireDashboard, type Ctx, type WorkspaceRole } from "@/server/access";
 import { boardLists, visibleBoards } from "@/server/charts/kanban";
 import type { SearchParams } from "@/server/data/tracking";
+import { withLiveRead } from "@/server/live/scope";
 import { mutate, nowIso, readStore } from "@/server/store/db";
 import { defaultPanel } from "@/server/store/seed";
 import type { PanelRow, Store } from "@/server/store/types";
@@ -128,7 +129,7 @@ export type PanelConfig = {
   params: Record<string, string>;
 };
 
-export function loadPanelConfig(ctx: Ctx, dashboardId: string, sp: SearchParams): PanelConfig {
+function loadPanelConfigImpl(ctx: Ctx, dashboardId: string, sp: SearchParams): PanelConfig {
   const { dashboard, role } = requireDashboard(ctx, dashboardId);
   ensurePanels(dashboard.id, ctx.user.id);
   const store = readStore();
@@ -171,7 +172,7 @@ export type PanelEditorData = {
 };
 
 /** O que o editor precisa (só para quem edita). */
-export function loadPanelEditorData(ctx: Ctx, dashboardId: string): PanelEditorData {
+function loadPanelEditorDataImpl(ctx: Ctx, dashboardId: string): PanelEditorData {
   const { dashboard } = requireDashboard(ctx, dashboardId, "admin");
   const store = readStore();
   const users = new Map(store.users.map((u) => [u.id, u]));
@@ -185,4 +186,14 @@ export function loadPanelEditorData(ctx: Ctx, dashboardId: string): PanelEditorD
     lists: boardLists(store, b.id).map((l) => ({ id: l.id, name: l.name })),
   }));
   return { members, boards };
+}
+
+// ---- modo real (AUTH_MODE=live): rodam sobre o retrato do Supabase, com vendas e anúncios (server/live/scope.ts) ----
+
+export async function loadPanelConfig(ctx: Ctx, dashboardId: string, sp: SearchParams): Promise<PanelConfig> {
+  return withLiveRead(ctx.user.id, () => loadPanelConfigImpl(ctx, dashboardId, sp), { tracking: true });
+}
+
+export async function loadPanelEditorData(ctx: Ctx, dashboardId: string): Promise<PanelEditorData> {
+  return withLiveRead(ctx.user.id, () => loadPanelEditorDataImpl(ctx, dashboardId), { tracking: true });
 }

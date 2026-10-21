@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { requireDashboard } from "@/server/access";
+import { liveTrackingAction } from "@/server/live/action";
 import { requireUser } from "@/server/auth/session";
 import { mutate, newId, nowIso } from "@/server/store/db";
 
@@ -22,7 +23,7 @@ function refresh(dashboardId: string) {
   revalidatePath(`/d/${dashboardId}`, "layout");
 }
 
-export async function simulateConnect(input: z.input<typeof providerInput>): Promise<ActionResult> {
+async function simulateConnectImpl(input: z.input<typeof providerInput>): Promise<ActionResult> {
   const user = await requireUser();
   const parsed = providerInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Dados inválidos." };
@@ -68,7 +69,7 @@ export async function simulateConnect(input: z.input<typeof providerInput>): Pro
   return { ok: true, data: undefined };
 }
 
-export async function disconnectProvider(input: z.input<typeof providerInput>): Promise<ActionResult> {
+async function disconnectProviderImpl(input: z.input<typeof providerInput>): Promise<ActionResult> {
   const user = await requireUser();
   const parsed = providerInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Dados inválidos." };
@@ -90,7 +91,7 @@ export async function disconnectProvider(input: z.input<typeof providerInput>): 
 const accountInput = z.object({ dashboardId: z.uuid(), accountId: z.uuid(), enabled: z.boolean() });
 
 /** Liga ou tira uma conta de anúncios deste dashboard (selectAdAccounts). */
-export async function setDashboardAccount(input: z.input<typeof accountInput>): Promise<ActionResult> {
+async function setDashboardAccountImpl(input: z.input<typeof accountInput>): Promise<ActionResult> {
   const user = await requireUser();
   const parsed = accountInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Dados inválidos." };
@@ -111,7 +112,7 @@ export async function setDashboardAccount(input: z.input<typeof accountInput>): 
 }
 
 /** Link de 24 h para outra pessoa conectar a conta dela (createConnectLink). */
-export async function createConnectLink(input: z.input<typeof providerInput>): Promise<ActionResult<{ url: string; expiresAt: string }>> {
+async function createConnectLinkImpl(input: z.input<typeof providerInput>): Promise<ActionResult<{ url: string; expiresAt: string }>> {
   const user = await requireUser();
   const parsed = providerInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Dados inválidos." };
@@ -134,7 +135,7 @@ const testInput = z.object({
 });
 
 /** Teste de integração (F19): gera o link com itl_test e as UTMs da fonte. */
-export async function createIntegrationTest(input: z.input<typeof testInput>): Promise<ActionResult<{ url: string; code: string }>> {
+async function createIntegrationTestImpl(input: z.input<typeof testInput>): Promise<ActionResult<{ url: string; code: string }>> {
   const user = await requireUser();
   const parsed = testInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
@@ -165,4 +166,26 @@ export async function createIntegrationTest(input: z.input<typeof testInput>): P
   });
   refresh(dashboardId);
   return { ok: true, data: { url: link.toString(), code } };
+}
+
+// ---- modo real (AUTH_MODE=live): cada action roda sobre o retrato do Supabase, com vendas e anúncios (server/live/action.ts) ----
+
+export async function simulateConnect(...args: Parameters<typeof simulateConnectImpl>): ReturnType<typeof simulateConnectImpl> {
+  return liveTrackingAction(() => simulateConnectImpl(...args));
+}
+
+export async function disconnectProvider(...args: Parameters<typeof disconnectProviderImpl>): ReturnType<typeof disconnectProviderImpl> {
+  return liveTrackingAction(() => disconnectProviderImpl(...args));
+}
+
+export async function setDashboardAccount(...args: Parameters<typeof setDashboardAccountImpl>): ReturnType<typeof setDashboardAccountImpl> {
+  return liveTrackingAction(() => setDashboardAccountImpl(...args));
+}
+
+export async function createConnectLink(...args: Parameters<typeof createConnectLinkImpl>): ReturnType<typeof createConnectLinkImpl> {
+  return liveTrackingAction(() => createConnectLinkImpl(...args));
+}
+
+export async function createIntegrationTest(...args: Parameters<typeof createIntegrationTestImpl>): ReturnType<typeof createIntegrationTestImpl> {
+  return liveTrackingAction(() => createIntegrationTestImpl(...args));
 }

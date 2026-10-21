@@ -8,7 +8,7 @@ import { z } from "zod";
 
 import { requireBoard, requireDashboard } from "@/server/access";
 import { requireUser } from "@/server/auth/session";
-import { liveAction } from "@/server/live/action";
+import { liveAction, liveTrackingAction } from "@/server/live/action";
 import { insertCard, touchBoard } from "@/server/kanban/core";
 import { mutate, newId, nowIso } from "@/server/store/db";
 
@@ -102,5 +102,5 @@ export async function createCard(...args: Parameters<typeof createCardImpl>): Re
 }
 
 export async function createCardFromRow(...args: Parameters<typeof createCardFromRowImpl>): ReturnType<typeof createCardFromRowImpl> {
-  return liveAction(() => createCardFromRowImpl(...args));
+  return liveTrackingAction(() => createCardFromRowImpl(...args));
 }

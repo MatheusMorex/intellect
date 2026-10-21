@@ -7,6 +7,20 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 let cached: SupabaseClient | null = null;
 
+/**
+ * Tempo máximo de cada pedido ao Supabase. De vez em quando um pedido fica
+ * pendurado ~90 s (medido em 2026-10-21: 1 em 30 cargas); com o limite ele
+ * desiste antes, e a leitura tenta de novo (o supabase-js repete leituras que
+ * falham, e server/live/snapshot.ts também). Gravação que passa do limite vira
+ * erro na tela, em vez de deixar a pessoa esperando.
+ */
+const REQUEST_TIMEOUT_MS = 25_000;
+
+const fetchWithTimeout: typeof fetch = (input, init) => {
+  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+  return fetch(input, { ...init, signal: init?.signal ? AbortSignal.any([init.signal, timeout]) : timeout });
+};
+
 export function adminClient(): SupabaseClient {
   if (cached) return cached;
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -14,7 +28,7 @@ export function adminClient(): SupabaseClient {
   if (!url || !key) {
     throw new Error("Falta NEXT_PUBLIC_SUPABASE_URL ou SUPABASE_SECRET_KEY no .env.local (modo AUTH_MODE=live).");
   }
-  cached = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+  cached = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false }, global: { fetch: fetchWithTimeout } });
   return cached;
 }
 
