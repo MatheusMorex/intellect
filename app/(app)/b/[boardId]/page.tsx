@@ -63,7 +63,7 @@ export default async function BoardPage({ params, searchParams }: Props) {
           Ele pode ter sido excluído por alguém do quadro.
         </Banner>
       )}
-      <BoardCanvas view={view} now={now} />
+      <BoardCanvas view={view} now={now} shortcuts={shell.preferences.singleKeyShortcuts} />
       {detail && (
         <CardDialog
           key={detail.card.id}

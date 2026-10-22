@@ -1,21 +1,24 @@
 "use client";
 
 import { Plus, X } from "lucide-react";
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 
+import { useBoardKeys } from "@/components/board/board-keys";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { createCard } from "@/server/actions/cards";
 
 // Compositor de card no rodapé da lista (components.md, "Coluna de lista"):
-// Enter adiciona e mantém aberto; Esc fecha.
+// Enter adiciona e mantém aberto; Esc fecha. O atalho N abre o da lista sob o mouse.
 export function AddCard({ boardId, listId, listName }: { boardId: string; listId: string; listName: string }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [pending, startTransition] = useTransition();
   const field = useRef<HTMLTextAreaElement>(null);
   const opener = useRef<HTMLButtonElement>(null);
+  const keys = useBoardKeys();
+  useEffect(() => keys?.list(listId, () => setOpen(true)), [keys, listId]);
 
   function close() {
     setOpen(false);

@@ -242,7 +242,7 @@ await step("quadro: Esc fecha o card e o teclado move o card de lista", async ()
   assert.equal(listOf(cardByName(FRETE)), "A fazer");
 });
 
-await step("lista: ordenar os cards por nome; edição rápida põe etiqueta sem abrir o card", async () => {
+await step("lista: ordenar os cards por nome; edição rápida e atalhos de teclado no card", async () => {
   const LIST = "A fazer";
   const ordered = () => {
     const s = store();
@@ -294,6 +294,26 @@ await step("lista: ordenar os cards por nome; edição rápida põe etiqueta sem
   await quickMenu("Capa");
   await page.getByRole("menuitem", { name: "Tirar a capa" }).click();
   await until(() => cardByName(first).cover == null, "a capa não saiu");
+
+  // Atalhos de uma tecla no card sob o mouse: L abre as etiquetas, N cria card na lista, C arquiva.
+  await page.waitForFunction(() => !document.querySelector('[role="menu"]'));
+  await page.getByRole("button", { name: first, exact: true }).hover();
+  await page.keyboard.press("l");
+  await page.getByRole("menuitemcheckbox", { name: "Urgente" }).waitFor();
+  await page.keyboard.press("Escape");
+  await page.waitForFunction(() => !document.querySelector('[role="menu"]'));
+  const NEW = "Card criado pelo atalho N";
+  await page.getByRole("button", { name: first, exact: true }).hover();
+  await page.keyboard.press("n");
+  const composer = page.getByRole("textbox", { name: `Nome do novo card em ${LIST}` });
+  await composer.fill(NEW);
+  await composer.press("Enter");
+  await until(() => cardByName(NEW) != null, "o atalho N não criou o card");
+  await composer.press("Escape");
+  await page.getByRole("button", { name: NEW, exact: true }).hover();
+  await page.keyboard.press("c");
+  await until(() => cardByName(NEW)?.archivedAt != null, "o atalho C não arquivou o card");
+  await page.getByRole("button", { name: NEW, exact: true }).waitFor({ state: "detached" });
 });
 
 await step("compartilhar: e-mail de fora recebe convite", async () => {

@@ -20,10 +20,11 @@ import { CSS } from "@dnd-kit/utilities";
 import { generateKeyBetween } from "fractional-indexing";
 import { Archive, ArrowDownUp, ArrowRightLeft, CalendarClock, Copy, GripVertical, MoreHorizontal, Palette, Pencil, Plus, Tag, Users, X } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useId, useMemo, useOptimistic, useRef, useState, useTransition } from "react";
+import { useEffect, useId, useMemo, useOptimistic, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { AddCard } from "@/components/board/add-card";
+import { BoardKeys, useBoardKeys } from "@/components/board/board-keys";
 import { matches, readFilter, filterCount } from "@/components/board/board-filters";
 import { CardFrontView } from "@/components/board/card-front";
 import { useBoardLive } from "@/components/board/use-board-live";
@@ -81,6 +82,9 @@ const QUICK_DUES = [
   [7, "Daqui a uma semana"],
 ] as const;
 
+/** Submenus da edição rápida que os atalhos L, M e D abrem direto. */
+type QuickSub = "labels" | "members" | "due";
+
 function dueInDays(days: number) {
   const d = new Date();
   return new Date(d.getFullYear(), d.getMonth(), d.getDate() + days, 18, 0).toISOString();
@@ -104,7 +108,16 @@ function between(before?: string | null, after?: string | null) {
   }
 }
 
-export function BoardCanvas({ view, now }: { view: BoardView; now: number }) {
+/** O quadro com os atalhos de uma tecla (N, E, L, M, D, C) ligados conforme o perfil. */
+export function BoardCanvas({ view, now, shortcuts }: { view: BoardView; now: number; shortcuts: boolean }) {
+  return (
+    <BoardKeys enabled={shortcuts}>
+      <Canvas view={view} now={now} />
+    </BoardKeys>
+  );
+}
+
+function Canvas({ view, now }: { view: BoardView; now: number }) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -439,6 +452,7 @@ function SortableList({
       style={{ transform: CSS.Translate.toString(transform), transition, background: list.color ? `var(--ds-label-${list.color}-subtle)` : undefined }}
       aria-label={`Lista ${list.name}`}
       className={cn("flex max-h-full w-list shrink-0 flex-col gap-2 rounded-lg bg-muted p-2", dimmed && "opacity-40")}
+      data-list-id={list.id}
     >
       <header className="flex items-center gap-1 px-1 pt-1">
         {!disabled && (
@@ -670,6 +684,31 @@ function SortableCard({
     disabled,
     attributes: { roleDescription: "card arrastável" },
   });
+  // Menu de edição rápida aberto pelo lápis ou pelos atalhos E, L, M e D (C arquiva direto).
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [sub, setSub] = useState<QuickSub | null>(null);
+  const subProps = (name: QuickSub) => ({ open: sub === name, onOpenChange: (on: boolean) => setSub((s) => (on ? name : s === name ? null : s)) });
+  // O submenu só abre depois do menu principal montado e com o foco (aberto junto, ele fecha na hora).
+  const [pendingSub, setPendingSub] = useState<QuickSub | null>(null);
+  useEffect(() => {
+    if (!menuOpen || !pendingSub) return;
+    const frame = requestAnimationFrame(() => {
+      setSub(pendingSub);
+      setPendingSub(null);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [menuOpen, pendingSub]);
+  const keys = useBoardKeys();
+  const canEdit = view.canEdit;
+  useEffect(() => {
+    if (!keys || !canEdit) return;
+    return keys.card(card.id, (key) => {
+      if (key === "c") return onArchive();
+      setSub(null);
+      setPendingSub(key === "l" ? "labels" : key === "m" ? "members" : key === "d" ? "due" : null);
+      setMenuOpen(true);
+    });
+  }, [keys, canEdit, card.id, onArchive]);
   return (
     <div
       ref={setNodeRef}
@@ -680,8 +719,12 @@ function SortableCard({
       role="button"
       tabIndex={0}
       aria-label={card.name}
+      aria-keyshortcuts={canEdit ? "E L M D C" : undefined}
+      data-card-id={card.id}
       onClick={onOpen}
       onKeyDown={(event) => {
+        // Teclas no menu de edição rápida ou nos botões da frente do card são deles.
+        if (event.target !== event.currentTarget) return;
         if (event.key === "Enter") {
           event.preventDefault();
           onOpen();
@@ -703,8 +746,21 @@ function SortableCard({
         className="transition-shadow group-hover:shadow-[var(--ds-shadow-card),0_0_0_1px_var(--ds-border-input)]"
       />
       {view.canEdit && (
-        <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
-          <DropdownMenu>
+        <div
+          className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 has-[[data-state=open]]:opacity-100"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <DropdownMenu
+            open={menuOpen}
+            onOpenChange={(open) => {
+              setMenuOpen(open);
+              if (!open) {
+                setSub(null);
+                setPendingSub(null);
+              }
+            }}
+          >
             <DropdownMenuTrigger asChild>
               <Button variant="secondary" size="icon-sm" aria-label={`Edição rápida de ${card.name}`} onKeyDown={(e) => e.stopPropagation()}>
                 <Pencil aria-hidden="true" />
@@ -728,7 +784,7 @@ function SortableCard({
                 </DropdownMenuSubContent>
               </DropdownMenuSub>
               {view.labels.length > 0 && (
-                <DropdownMenuSub>
+                <DropdownMenuSub {...subProps("labels")}>
                   <DropdownMenuSubTrigger>
                     <Tag aria-hidden="true" />
                     Etiquetas
@@ -750,7 +806,7 @@ function SortableCard({
                 </DropdownMenuSub>
               )}
               {view.members.length > 0 && (
-                <DropdownMenuSub>
+                <DropdownMenuSub {...subProps("members")}>
                   <DropdownMenuSubTrigger>
                     <Users aria-hidden="true" />
                     Membros
@@ -769,7 +825,7 @@ function SortableCard({
                   </DropdownMenuSubContent>
                 </DropdownMenuSub>
               )}
-              <DropdownMenuSub>
+              <DropdownMenuSub {...subProps("due")}>
                 <DropdownMenuSubTrigger>
                   <CalendarClock aria-hidden="true" />
                   Prazo
