@@ -2,6 +2,8 @@
 // marcar o prazo como concluído"). Usadas no diretório (S14) e na prévia do
 // construtor (S15).
 
+import { displayFieldValue, type FieldType, type FieldValue } from "@/lib/custom-fields";
+
 import type { AutomationAction, AutomationType, CardFilter } from "./schema";
 
 export type Names = {
@@ -11,6 +13,8 @@ export type Names = {
   dashboards: Record<string, string>;
   /** Moeda de cada dashboard (os valores das regras por métrica ficam nela). */
   currencies: Record<string, string>;
+  /** Campos personalizados do quadro (nome, tipo e opções, para escrever o valor). */
+  fields?: Record<string, { name: string; type: FieldType; options: { id: string; label: string; color: string | null }[] }>;
 };
 
 /** Nome, aba do diretório, explicação, botão de criar e título do vazio de cada tipo. */
@@ -33,6 +37,13 @@ const q = (s: string | undefined) => (s ? `“${s}”` : "(item excluído)");
 const list = (n: Names, id: string | null | undefined) => (id ? q(n.lists[id]) : "qualquer lista");
 const label = (n: Names, id: string) => q(n.labels[id]);
 const person = (n: Names, id: string) => n.people[id] ?? "(pessoa removida)";
+const field = (n: Names, id: string) => q(n.fields?.[id]?.name);
+/** Valor de campo como a pessoa lê (texto entre aspas; o resto no formato do campo). */
+const fieldValue = (n: Names, id: string, value: FieldValue) => {
+  const f = n.fields?.[id];
+  if (!f || f.type === "text") return q(String(value));
+  return q(displayFieldValue(f, value));
+};
 
 export const METRIC_LABEL = { roas: "ROAS", cpa: "CPA", spend: "gasto", revenue: "faturamento", sales: "vendas" } as const;
 export const WINDOW_LABEL = { today: "hoje", yesterday: "ontem", "3d": "últimos 3 dias", "7d": "últimos 7 dias", "14d": "últimos 14 dias", "30d": "últimos 30 dias" } as const;
@@ -67,6 +78,8 @@ export function describeTrigger(type: AutomationType, t: any, n: Names): string 
           return "Quando uma checklist ficar toda concluída";
         case "comment_added":
           return t.contains ? `Quando alguém comentar com ${q(t.contains)}` : "Quando alguém comentar num card";
+        case "field_changed":
+          return t.value == null ? `Quando o campo ${field(n, t.fieldId)} mudar num card` : `Quando o campo ${field(n, t.fieldId)} ficar ${fieldValue(n, t.fieldId, t.value)} num card`;
       }
       return "Quando…";
     case "metric": {
@@ -137,6 +150,8 @@ export function describeAction(a: AutomationAction, n: Names): string {
       return `comentar ${q(a.text.length > 60 ? `${a.text.slice(0, 60)}…` : a.text)}`;
     case "rename_card":
       return `renomear o card para ${q(a.name)}`;
+    case "set_field":
+      return a.value == null ? `limpar o campo ${field(n, a.fieldId)}` : `preencher ${field(n, a.fieldId)} com ${fieldValue(n, a.fieldId, a.value)}`;
     case "create_card":
       return `criar o card ${q(a.name)} em ${list(n, a.listId)}`;
     case "move_list_cards":

@@ -111,6 +111,27 @@ async function setDashboardAccountImpl(input: z.input<typeof accountInput>): Pro
   return { ok: true, data: undefined };
 }
 
+const storeInput = z.object({ dashboardId: z.uuid(), storeId: z.uuid(), enabled: z.boolean() });
+
+/** Liga ou tira uma loja do workspace deste dashboard (os pedidos dela passam a contar aqui). */
+async function setDashboardStoreImpl(input: z.input<typeof storeInput>): Promise<ActionResult> {
+  const user = await requireUser();
+  const parsed = storeInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Dados inválidos." };
+  const { dashboardId, storeId, enabled } = parsed.data;
+  const { dashboard } = requireDashboard({ user }, dashboardId, "admin");
+  const ok = mutate((store) => {
+    if (!store.stores.some((s) => s.id === storeId && s.workspaceId === dashboard.workspaceId)) return false;
+    const linked = store.dashboardStores.some((l) => l.dashboardId === dashboardId && l.storeId === storeId);
+    if (enabled && !linked) store.dashboardStores.push({ id: newId(), dashboardId, storeId });
+    if (!enabled) store.dashboardStores = store.dashboardStores.filter((l) => !(l.dashboardId === dashboardId && l.storeId === storeId));
+    return true;
+  });
+  if (!ok) return { ok: false, error: "Loja não encontrada." };
+  refresh(dashboardId);
+  return { ok: true, data: undefined };
+}
+
 /** Link de 24 h para outra pessoa conectar a conta dela (createConnectLink). */
 async function createConnectLinkImpl(input: z.input<typeof providerInput>): Promise<ActionResult<{ url: string; expiresAt: string }>> {
   const user = await requireUser();
@@ -180,6 +201,10 @@ export async function disconnectProvider(...args: Parameters<typeof disconnectPr
 
 export async function setDashboardAccount(...args: Parameters<typeof setDashboardAccountImpl>): ReturnType<typeof setDashboardAccountImpl> {
   return liveTrackingAction(() => setDashboardAccountImpl(...args));
+}
+
+export async function setDashboardStore(...args: Parameters<typeof setDashboardStoreImpl>): ReturnType<typeof setDashboardStoreImpl> {
+  return liveTrackingAction(() => setDashboardStoreImpl(...args));
 }
 
 export async function createConnectLink(...args: Parameters<typeof createConnectLinkImpl>): ReturnType<typeof createConnectLinkImpl> {

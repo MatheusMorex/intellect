@@ -16,6 +16,7 @@ import {
   MoreHorizontal,
   PaintBucket,
   Paperclip,
+  Settings2,
   Plus,
   Tag,
   Trash2,
@@ -42,6 +43,7 @@ import {
   type ListOption,
 } from "@/components/board/card-popovers";
 import { AttachPopover, AttachmentsSection } from "@/components/board/card-attachments";
+import { CardFields, FieldsDialog } from "@/components/board/custom-fields";
 import { RichEditor, type EditorValue } from "@/components/editor/rich-editor";
 import { RichTextView } from "@/components/editor/rich-text-view";
 import { DueBadge, MetricBadge } from "@/components/ds/badges";
@@ -235,6 +237,8 @@ export function CardDialog({
 
               <Description detail={detail} members={members} />
 
+              <CardFields cardId={card.id} fields={detail.fields} canEdit={edit} />
+
               <AttachmentsSection detail={detail} />
 
               {detail.checklists.map((c) => (
@@ -253,6 +257,7 @@ export function CardDialog({
                   <ChecklistPopover card={card} checklists={detail.checklists} trigger={side(CheckSquare, "Checklist")} />
                   <DatesPopover card={card} trigger={side(CalendarClock, "Datas")} />
                   <AttachPopover cardId={card.id} trigger={side(Paperclip, "Anexo")} />
+                  <FieldsDialog boardId={detail.board.id} fields={detail.fields} canEdit={edit} trigger={side(Settings2, "Campos")} />
                   <CoverPopover card={card} images={detail.attachments.filter((a) => a.isImage)} trigger={side(PaintBucket, "Capa")} />
                   <LinkPopover cardId={card.id} dashboards={dashboards} trigger={side(Link2, "Vincular métrica")} />
                 </div>

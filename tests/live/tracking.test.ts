@@ -173,7 +173,8 @@ describe("vendas e anúncios no Supabase (etapa 4)", { skip: !enabled || !isTest
   });
 
   test("custos: impostos, custo do produto, taxa e despesa vão para o banco e voltam", async () => {
-    const today = new Date().toISOString().slice(0, 10);
+    // "Hoje" no fuso do dashboard (perto da meia-noite, a data em UTC já é a de amanhã).
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: data.dashboards[0].timezone }).format(new Date());
     ok(await m.costs.saveCostSettings({ dashboardId, validFrom: today, salesTax: "6,5", metaAdsTax: "12,15", extraTaxes: [{ name: "ISS", bp: "2" }] }));
     const settings = await rows("cost_settings", (q) => q.eq("dashboard_id", dashboardId).eq("valid_from", today));
     assert.equal(settings.length, 1);
@@ -401,6 +402,21 @@ describe("vendas e anúncios no Supabase (etapa 4)", { skip: !enabled || !isTest
     // A venda aparece na tela de Vendas.
     const list = JSON.stringify(await m.orders.listOrders({ user: ana }, dashboardId, { period: "hoje" }));
     assert.ok(list.includes(`#T${run}`), "a venda nova não apareceu em Vendas");
+
+    // Chargeback: a disputa de um pedido pago muda a situação no banco; ganha, volta a pago.
+    const paid = data.orders.find((o) => o.status === "paid" && !o.isTest)!;
+    const dispute = (status: string) => ({ id: 555, order_id: Number(paid.externalId.split("/").pop()), type: "chargeback", status, initiated_at: at(-2), finalized_on: status === "won" ? at(0) : null });
+    const opened = await m.webhooks.recordDeliveryLive({ deliveryId: `teste-${run}-5`, topic: "disputes/create", shopDomain: shop.shopDomain, payload: dispute("needs_response") });
+    await m.webhooks.processDeliveryLive(opened.id);
+    assert.equal((await one("orders", paid.id)).status, "chargedback");
+    assert.equal((await one("webhook_deliveries", opened.id)).error, null);
+    const won = await m.webhooks.recordDeliveryLive({ deliveryId: `teste-${run}-6`, topic: "disputes/update", shopDomain: shop.shopDomain, payload: dispute("won") });
+    await m.webhooks.processDeliveryLive(won.id);
+    assert.equal((await one("orders", paid.id)).status, "paid");
+    assert.deepEqual(
+      (await rows("order_events", (q) => q.eq("order_id", paid.id).in("topic", ["disputes/create", "disputes/update"]))).map((e) => e.status).sort(),
+      ["chargedback", "paid"],
+    );
 
     // Loja que não é de ninguém: a entrega fica guardada com o erro, sem pedido.
     const stranger = await m.webhooks.recordDeliveryLive({ deliveryId: `teste-${run}-4`, topic: "orders/create", shopDomain: `outra-${run}.myshopify.com`, payload: payload(at(0), "paid") });

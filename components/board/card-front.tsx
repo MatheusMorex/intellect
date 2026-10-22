@@ -43,6 +43,7 @@ export function CardFrontView({
   const full = showCovers && !image && card.cover?.size === "full";
   const strip = showCovers && !image && card.cover?.size === "strip";
   const hasBadges = card.dueAt || card.hasDescription || card.comments > 0 || card.attachments > 0 || card.checklist || card.metric || members.length;
+  const fields = card.fields;
 
   return (
     <div
@@ -108,6 +109,18 @@ export function CardFrontView({
         )}
         <span className={cn("min-w-0 text-sm break-words", card.dueComplete && showComplete && "text-muted-foreground")}>{card.name}</span>
       </div>
+      {fields.length > 0 && (
+        <dl className="grid gap-0.5 text-xs">
+          {fields.map((f) => (
+            <div key={f.id} className="flex min-w-0 gap-1">
+              <dt className="shrink-0 text-muted-foreground">{f.name}:</dt>
+              <dd className="truncate font-medium" title={f.text}>
+                {f.text}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      )}
       {hasBadges ? (
         <div className="flex flex-wrap items-center gap-1">
           {card.dueAt && <DueBadge due={new Date(card.dueAt)} complete={card.dueComplete} now={new Date(now)} />}

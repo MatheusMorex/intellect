@@ -167,6 +167,8 @@ async function deleteBoardImpl(boardId: string): Promise<ActionResult> {
     store.cardMembers = store.cardMembers.filter((m) => !cardIds.has(m.cardId));
     store.cardLinks = store.cardLinks.filter((l) => !cardIds.has(l.cardId));
     dropAttachments(store, (a) => cardIds.has(a.cardId));
+    store.customFieldValues = store.customFieldValues.filter((v) => !cardIds.has(v.cardId));
+    store.customFields = store.customFields.filter((f) => f.boardId !== boardId);
     store.cards = store.cards.filter((c) => c.boardId !== boardId);
     store.lists = store.lists.filter((l) => l.boardId !== boardId);
     store.labels = store.labels.filter((l) => l.boardId !== boardId);
@@ -492,6 +494,7 @@ async function deleteCardImpl(cardId: string): Promise<ActionResult> {
     store.cardMembers = store.cardMembers.filter((m) => m.cardId !== cardId);
     store.cardLinks = store.cardLinks.filter((l) => l.cardId !== cardId);
     dropAttachments(store, (a) => a.cardId === cardId);
+    store.customFieldValues = store.customFieldValues.filter((v) => v.cardId !== cardId);
     store.notifications = store.notifications.filter((n) => n.cardId !== cardId);
     // A atividade fica, com o nome do card guardado (architecture.md).
     for (const a of store.activities) if (a.cardId === cardId) a.data = { ...a.data, name: ctx.card.name };
@@ -543,6 +546,12 @@ async function copyCardImpl(input: z.input<typeof copyInput>): Promise<ActionRes
         for (const item of store.checklistItems.filter((i) => i.checklistId === cl.id)) {
           store.checklistItems.push({ ...item, id: newId(), checklistId: newList.id, completedAt: null, createdAt: nowIso() });
         }
+      }
+    }
+    // Campos personalizados: no mesmo quadro os campos são os mesmos, então os valores vão junto.
+    if (target.boardId === source.boardId) {
+      for (const value of store.customFieldValues.filter((x) => x.cardId === source.id)) {
+        store.customFieldValues.push({ ...value, id: newId(), cardId: copy.id, createdAt: nowIso() });
       }
     }
     if (v.keep.links) {

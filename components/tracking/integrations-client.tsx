@@ -28,6 +28,7 @@ import {
   createIntegrationTest,
   disconnectProvider,
   setDashboardAccount,
+  setDashboardStore,
   simulateConnect,
 } from "@/server/actions/integrations";
 
@@ -156,6 +157,26 @@ export function AccountSwitch({
       onCheckedChange={(enabled) =>
         startTransition(async () => {
           const result = await setDashboardAccount({ dashboardId, accountId, enabled });
+          if (!result.ok) toast.error(result.error);
+          router.refresh();
+        })
+      }
+    />
+  );
+}
+
+export function StoreSwitch({ dashboardId, storeId, name, linked, canManage }: { dashboardId: string; storeId: string; name: string; linked: boolean; canManage: boolean }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  return (
+    <Switch
+      checked={linked}
+      disabled={!canManage || pending}
+      aria-busy={pending || undefined}
+      aria-label={`Usar a loja ${name} neste dashboard`}
+      onCheckedChange={(enabled) =>
+        startTransition(async () => {
+          const result = await setDashboardStore({ dashboardId, storeId, enabled });
           if (!result.ok) toast.error(result.error);
           router.refresh();
         })

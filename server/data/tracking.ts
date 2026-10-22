@@ -170,7 +170,8 @@ export function earliestDay(store: Store, dashboard: DashboardRow): string | nul
   return earliest;
 }
 
-function resolve(store: Store, dashboard: DashboardRow, sp: SearchParams) {
+/** O período pedido na página, no fuso do dashboard (o "Máximo" começa no primeiro dado). */
+export function resolveDashboardPeriod(store: Store, dashboard: DashboardRow, sp: SearchParams) {
   const p = periodParams(sp);
   return resolvePeriod(p.periodo, dashboard.timezone, earliestDay(store, dashboard), new Date(), { de: p.de, ate: p.ate });
 }
@@ -341,7 +342,7 @@ async function getDashboardSummaryImpl(ctx: Ctx, dashboardId: string, sp: Search
   const fx = await prepareDashboardFx(dashboard);
   const store = fx.store;
   const filters = parseFilters(sp);
-  const period = resolve(store, dashboard, sp);
+  const period = resolveDashboardPeriod(store, dashboard, sp);
   const scope = buildScope(store, dashboard, filters, fx.converter);
   const filtered = hasFilters(filters);
   const current = totalsFor(store, dashboard, scope, period.range, filtered);
@@ -574,7 +575,7 @@ async function getTrafficReportImpl(
   const fx = await prepareDashboardFx(dashboard);
   const store = fx.store;
   const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
-  const period = resolve(store, dashboard, sp);
+  const period = resolveDashboardPeriod(store, dashboard, sp);
   const scope = buildScope(store, dashboard, NO_FILTERS, fx.converter);
   const accounts = scope.accounts.filter((a) => a.provider === provider);
   const accountCurrency = new Map(accounts.map((a) => [a.id, a.currency]));

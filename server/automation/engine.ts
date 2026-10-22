@@ -15,6 +15,7 @@ import { addDays, endOfMonth, format } from "date-fns";
 
 import type { AutomationAction, BoardAction, CardAction, CardFilter, DueTrigger, MetricTrigger, RuleTrigger, ScheduleTrigger } from "@/lib/automation/schema";
 import { fillVariables, isCardAction } from "@/lib/automation/schema";
+import { displayFieldValue, parseFieldValue, type FieldValue } from "@/lib/custom-fields";
 import { orderBase } from "@/server/data/tracking";
 import { appUrl, cardsOfList, insertCard, logActivity, notify, rankBetween, sendEmail, touchBoard, type AutomationActor } from "@/server/kanban/core";
 import { makeConverter } from "@/server/fx/convert";
@@ -316,6 +317,19 @@ function applyCardAction(store: Store, automation: AutomationRow, card: CardRow,
       }
       return;
     }
+    case "set_field": {
+      const field = store.customFields.find((f) => f.id === a.fieldId && f.boardId === card.boardId);
+      if (!field) throw new AutomationError("O campo escolhido na automação não existe mais.");
+      const parsed = parseFieldValue(field, typeof a.value === "string" ? fill(a.value) : a.value);
+      if (!parsed.ok) throw new AutomationError(parsed.error);
+      const row = store.customFieldValues.find((v) => v.cardId === card.id && v.fieldId === field.id);
+      if ((row?.value ?? null) === parsed.value) return;
+      if (parsed.value === null) store.customFieldValues = store.customFieldValues.filter((v) => v !== row);
+      else if (row) row.value = parsed.value;
+      else store.customFieldValues.push({ id: newId(), cardId: card.id, fieldId: field.id, value: parsed.value, createdAt: nowIso() });
+      log("card.field", { fieldId: field.id, name: field.name, value: parsed.value === null ? null : displayFieldValue(field, parsed.value), raw: parsed.value });
+      return;
+    }
     case "rename_card": {
       const value = fill(a.name).replace(/\s+/g, " ").trim().slice(0, 500);
       if (value && value !== card.name) {
@@ -378,7 +392,8 @@ type CardEvent =
   | { kind: "member_added"; userId: string | null }
   | { kind: "due_completed" }
   | { kind: "checklist_completed" }
-  | { kind: "comment_added"; text: string };
+  | { kind: "comment_added"; text: string }
+  | { kind: "field_changed"; fieldId: string; value: FieldValue | null };
 
 function eventOf(store: Store, type: string, data: Record<string, unknown>, card: CardRow): CardEvent | null {
   const str = (v: unknown) => (typeof v === "string" ? v : null);
@@ -402,6 +417,8 @@ function eventOf(store: Store, type: string, data: Record<string, unknown>, card
     }
     case "card.comment":
       return { kind: "comment_added", text: String(data.excerpt ?? "") };
+    case "card.field":
+      return { kind: "field_changed", fieldId: str(data.fieldId) ?? "", value: (data.raw ?? null) as FieldValue | null };
   }
   return null;
 }
@@ -421,6 +438,13 @@ function triggerMatches(t: RuleTrigger, e: CardEvent) {
       return !t.userId || t.userId === (e as { userId: string | null }).userId;
     case "comment_added":
       return !t.contains || fold((e as { text: string }).text).includes(fold(t.contains));
+    case "field_changed": {
+      const f = e as { fieldId: string; value: FieldValue | null };
+      if (t.fieldId !== f.fieldId) return false;
+      if (t.value == null) return true;
+      // Texto sem diferenciar maiúscula e acento; número, data, caixa e opção pelo valor.
+      return typeof t.value === "string" && typeof f.value === "string" ? fold(t.value) === fold(f.value) : t.value === f.value;
+    }
     default:
       return true;
   }

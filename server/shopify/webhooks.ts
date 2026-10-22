@@ -119,10 +119,77 @@ function adIndex(store: Store, workspaceId: string): AdIndex {
 }
 
 const ORDER_TOPICS = new Set(["orders/create", "orders/updated", "orders/paid", "orders/cancelled"]);
+/** Disputa no cartão: a Shopify avisa à parte, sem mudar a situação do pedido. */
+const DISPUTE_TOPICS = new Set(["disputes/create", "disputes/update"]);
+/** O reembolso também chega como orders/updated, com a lista de reembolsos: é por ele que o valor muda. */
+const REFUND_TOPICS = new Set(["refunds/create"]);
+
+type ShopifyDispute = {
+  id: number | string;
+  order_id: number | string | null;
+  /** chargeback tira o dinheiro; inquiry é só uma consulta do banco. */
+  type: "chargeback" | "inquiry";
+  status: string;
+  initiated_at?: string | null;
+  finalized_on?: string | null;
+};
+
+/** A situação que a disputa dá ao pedido pago: chargeback enquanto não for ganha; ganha, volta a pago. */
+export function disputeStatus(dispute: Pick<ShopifyDispute, "type" | "status">): "chargedback" | "paid" | null {
+  if (dispute.type !== "chargeback") return null;
+  return dispute.status === "won" ? "paid" : "chargedback";
+}
+
+function processDispute(deliveryId: string, storeId: string, topic: string, payload: ShopifyDispute) {
+  mutate((store) => {
+    const d = store.webhookDeliveries.find((x) => x.id === deliveryId)!;
+    d.attempts += 1;
+    d.processedAt = nowIso();
+    d.payload = null; // LGPD: o corpo do webhook não fica guardado depois de processado
+    const orderGid = payload.order_id != null ? `gid://shopify/Order/${payload.order_id}` : null;
+    const order = orderGid ? store.orders.find((o) => o.storeId === storeId && o.externalId === orderGid) : undefined;
+    if (!order) {
+      d.error = "O pedido desta disputa ainda não chegou ao INtellect.";
+      return;
+    }
+    d.error = null;
+    const next = disputeStatus(payload);
+    // Só pedido pago vira chargeback, e só chargeback volta a pago (reembolsado ou cancelado fica como está).
+    if (!next || next === order.status) return;
+    if (next === "chargedback" && order.status !== "paid") return;
+    if (next === "paid" && order.status !== "chargedback") return;
+    const when = Date.parse(payload.finalized_on ?? payload.initiated_at ?? "");
+    order.status = next;
+    store.orderEvents.push({
+      id: newId(),
+      orderId: order.id,
+      status: next,
+      occurredAt: Number.isNaN(when) ? nowIso() : new Date(when).toISOString(),
+      topic,
+      webhookDeliveryId: d.id,
+    });
+  });
+}
 
 export async function processDelivery(deliveryId: string) {
   const delivery = readStore().webhookDeliveries.find((d) => d.id === deliveryId);
   if (!delivery || delivery.processedAt || !delivery.storeId) return;
+
+  if (DISPUTE_TOPICS.has(delivery.topic)) {
+    processDispute(deliveryId, delivery.storeId, delivery.topic, delivery.payload as ShopifyDispute);
+    return;
+  }
+
+  if (REFUND_TOPICS.has(delivery.topic)) {
+    mutate((store) => {
+      const d = store.webhookDeliveries.find((x) => x.id === deliveryId)!;
+      d.attempts += 1;
+      d.processedAt = nowIso();
+      d.payload = null;
+      d.error = null;
+    });
+    return;
+  }
 
   if (!ORDER_TOPICS.has(delivery.topic)) {
     mutate((store) => {
@@ -159,7 +226,9 @@ export async function processDelivery(deliveryId: string) {
       return;
     }
 
-    const status = statusFrom(payload);
+    // Chargeback vem do webhook de disputa e a Shopify continua dizendo "paid": só a disputa ganha desfaz.
+    const fromShopify = statusFrom(payload);
+    const status = existing?.status === "chargedback" && fromShopify === "paid" ? "chargedback" : fromShopify;
     const refunded = (payload.refunds ?? [])
       .flatMap((r) => r.transactions ?? [])
       .filter((t) => (t.kind ?? "refund") === "refund" && (t.status ?? "success") === "success")

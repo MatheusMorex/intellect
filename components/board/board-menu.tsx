@@ -1,10 +1,11 @@
 "use client";
 
-import { Archive, ArrowLeft, Check, Info, Lock, Palette, Settings, Tag, Activity, Trash2, RotateCcw } from "lucide-react";
+import { Archive, ArrowLeft, Check, Info, Lock, Palette, Settings, Settings2, Tag, Activity, Trash2, RotateCcw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
+import { FieldsManager } from "@/components/board/custom-fields";
 import { HelpTip } from "@/components/ds/help-tip";
 import { ImageUploadButton } from "@/components/ds/image-upload";
 import { LABEL_HUES, LABEL_HUE_NAME, LabelChip } from "@/components/ds/label-chip";
@@ -37,12 +38,13 @@ export type BoardArchive = {
   activity: { id: string; actor: Person; text: string; cardName: string | null; cardId: string | null; isComment: boolean; createdAt: string }[];
 };
 
-type Page = "inicio" | "sobre" | "fundo" | "etiquetas" | "configuracoes" | "atividade" | "arquivados";
+type Page = "inicio" | "sobre" | "fundo" | "etiquetas" | "campos" | "configuracoes" | "atividade" | "arquivados";
 
 const PAGES: { id: Exclude<Page, "inicio">; label: string; icon: typeof Info }[] = [
   { id: "sobre", label: "Sobre este quadro", icon: Info },
   { id: "fundo", label: "Mudar o fundo (papel de parede)", icon: Palette },
   { id: "etiquetas", label: "Etiquetas", icon: Tag },
+  { id: "campos", label: "Campos personalizados", icon: Settings2 },
   { id: "configuracoes", label: "Configurações", icon: Settings },
   { id: "atividade", label: "Atividade", icon: Activity },
   { id: "arquivados", label: "Itens arquivados", icon: Archive },
@@ -86,6 +88,7 @@ export function BoardMenu({ view, archive, open, onOpenChange }: { view: BoardVi
           {page === "sobre" && <About view={view} />}
           {page === "fundo" && <Background view={view} />}
           {page === "etiquetas" && <Labels view={view} />}
+          {page === "campos" && <FieldsManager boardId={view.board.id} fields={view.customFields} canEdit={view.canEdit} />}
           {page === "configuracoes" && <SettingsPage view={view} />}
           {page === "atividade" && <ActivityPage archive={archive} />}
           {page === "arquivados" && <Archived view={view} archive={archive} />}

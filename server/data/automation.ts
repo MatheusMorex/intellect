@@ -10,13 +10,15 @@ import { listDashboardsFor } from "@/server/data/tracking";
 import { listsOfBoard } from "@/server/kanban/core";
 import { withLiveRead } from "@/server/live/scope";
 import { readStore } from "@/server/store/db";
-import type { AutomationRow, Store } from "@/server/store/types";
+import type { AutomationRow, CustomFieldRow, Store } from "@/server/store/types";
 
 export type AutomationOptions = {
   lists: { id: string; name: string }[];
   labels: { id: string; name: string; color: string | null }[];
   people: { id: string; name: string }[];
   dashboards: DashboardOption[];
+  /** Campos personalizados do quadro (gatilho "um campo mudar" e ação "preencher um campo"). */
+  fields: { id: string; name: string; type: CustomFieldRow["type"]; options: CustomFieldRow["options"] }[];
 };
 
 /** Dashboard que uma regra por métrica pode olhar; os valores dela ficam na moeda dele. */
@@ -33,6 +35,7 @@ function boardNames(store: Store, boardId: string, dashboards: DashboardOption[]
     people: Object.fromEntries(store.users.filter((u) => people.has(u.id)).map((u) => [u.id, u.name])),
     dashboards: Object.fromEntries(dashboards.map((d) => [d.id, d.name])),
     currencies: Object.fromEntries(dashboards.map((d) => [d.id, d.currency])),
+    fields: Object.fromEntries(store.customFields.filter((f) => f.boardId === boardId).map((f) => [f.id, { name: f.name, type: f.type, options: f.options }])),
   };
 }
 
@@ -45,6 +48,10 @@ function options(store: Store, boardId: string, dashboards: DashboardOption[]): 
     labels: store.labels.filter((l) => l.boardId === boardId).map((l) => ({ id: l.id, name: l.name, color: l.color })),
     people: store.users.filter((u) => people.has(u.id)).map((u) => ({ id: u.id, name: u.name })),
     dashboards,
+    fields: store.customFields
+      .filter((f) => f.boardId === boardId)
+      .sort((a, b) => (a.rank < b.rank ? -1 : a.rank > b.rank ? 1 : 0))
+      .map((f) => ({ id: f.id, name: f.name, type: f.type, options: f.options })),
   };
 }
 

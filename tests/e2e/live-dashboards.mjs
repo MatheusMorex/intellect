@@ -151,6 +151,13 @@ try {
     await page.getByText("Visitou produto 30d").first().waitFor();
   });
 
+  await step("UTMs: vendas por utm_source, com a linha das que vieram sem ele", async () => {
+    await page.goto(`${BASE}/d/${dashboardId}/utms?periodo=30d&por=source`);
+    const table = page.getByRole("table");
+    await table.getByRole("cell", { name: "(sem utm_source)" }).waitFor();
+    await table.getByRole("cell", { name: "meta", exact: true }).waitFor();
+  });
+
   await step("Google: campanhas e palavras-chave", async () => {
     await page.goto(`${BASE}/d/${dashboardId}/google?periodo=30d`);
     await page.getByText("Pesquisa · Genérica").first().waitFor();

@@ -189,6 +189,14 @@ export const HELP = {
       "“Não rastreada” quer dizer que o pedido chegou sem os parâmetros de rastreio no link. Clique num pedido para ver os itens e a jornada até a compra.",
     ],
   },
+  utms: {
+    title: "UTMs",
+    body: [
+      "As vendas do período agrupadas por um parâmetro do link que trouxe o cliente: utm_source (de onde veio), utm_medium (o tipo de tráfego), utm_campaign, utm_content, utm_term, src ou sck. Escolha o parâmetro nas abas.",
+      "“(sem …)” junta as vendas que chegaram sem aquele parâmetro: tráfego orgânico, acesso direto ou link sem UTM. Serve para ver quanto vende o Instagram da loja, um e-mail ou um influenciador, que não aparecem no Meta nem no Google.",
+      "O lucro aqui é antes dos anúncios: o gasto é contado por campanha, não por parâmetro do link. Para ROAS e lucro depois dos anúncios, use as telas do Meta e do Google.",
+    ],
+  },
   pedido: {
     title: "Detalhe do pedido",
     body: [
@@ -290,6 +298,20 @@ export const HELP = {
     body: [
       "Tudo o que dá para ajustar no INtellect, separado em abas.",
       "Aparência: tema, plano de fundo, menu lateral, frase em destaque no Início e tela inicial. Perfil e preferências: foto, nome, fuso, atalhos e e-mails. Vendas e moeda: como o dashboard calcula e em que moeda mostra os valores. Workspace: nome e regras de convite.",
+    ],
+  },
+  setup: {
+    title: "Configuração inicial",
+    body: [
+      "O passo a passo para o dashboard mostrar os números da sua operação: as plataformas de anúncio, as contas do Meta e do Google, a loja Shopify, os parâmetros nos anúncios e um teste de ponta a ponta.",
+      "Cada passo fica marcado sozinho quando é feito. O de parâmetros fica pronto quando chega a primeira venda com a campanha identificada.",
+    ],
+  },
+  dashboards: {
+    title: "Dashboards",
+    body: [
+      "Cada dashboard é uma operação separada: uma loja, um produto ou um país. Ele tem a sua moeda, o seu fuso, as suas contas de anúncio, a sua loja, os seus impostos e despesas e os seus painéis.",
+      "Depois de criar um dashboard, a configuração inicial guia a ligação das contas e da loja. Excluir um dashboard apaga o que é só dele (impostos, despesas, painéis); os pedidos e os gastos continuam, porque são da loja e das contas de anúncio.",
     ],
   },
   "config-tema": {

@@ -187,6 +187,29 @@ await step("card: anexos — imagem vira capa, arquivo de 12 MB, link, renomear 
   );
 });
 
+await step("card: campo personalizado criado pelo verso e preenchido (número em pt-BR)", async () => {
+  const dialog = page.getByRole("dialog", { name: /Testar frete grátis/ });
+  await dialog.getByRole("button", { name: "Campos", exact: true }).click();
+  const manager = page.getByRole("dialog", { name: "Campos personalizados" });
+  await manager.getByRole("button", { name: "Novo campo" }).click();
+  await manager.getByRole("textbox", { name: "Nome do campo" }).fill("Verba");
+  await manager.getByRole("combobox", { name: "Tipo" }).click();
+  await page.getByRole("option", { name: "Número" }).click();
+  await manager.getByRole("checkbox", { name: "Mostrar na frente do card" }).click();
+  await manager.getByRole("button", { name: "Criar campo" }).click();
+  await page.getByText("Campo criado").waitFor();
+  const field = store().customFields.find((f) => f.name === "Verba");
+  assert.ok(field && field.type === "number" && field.showOnFront, "o campo não foi gravado como pedido");
+  await page.keyboard.press("Escape");
+  await manager.waitFor({ state: "detached" });
+  const input = dialog.getByRole("textbox", { name: "Verba" });
+  await input.fill("1.500,00");
+  await input.press("Enter");
+  const c = cardByName(FRETE);
+  for (let i = 0; i < 30 && !store().customFieldValues.some((v) => v.cardId === c.id && v.fieldId === field.id); i++) await page.waitForTimeout(500);
+  assert.equal(store().customFieldValues.find((v) => v.cardId === c.id && v.fieldId === field.id)?.value, 1500);
+});
+
 await step("card: comentário com @menção avisa o Bruno", async () => {
   const s0 = store();
   const bruno = s0.users.find((u) => u.email.startsWith("bruno"));
@@ -474,6 +497,64 @@ await step("Vendas: abrir o detalhe de um pedido", async () => {
   await (await hydrated(page.locator("table a").first())).click();
   await page.getByRole("heading", { name: /Pedido #/ }).waitFor();
   await page.getByText("Jornada até a compra").waitFor();
+});
+
+await step("UTMs: vendas por utm_source, com a linha das que vieram sem ele, busca e CSV", async () => {
+  await page.goto(`${BASE}/d/${dashboardId}/utms?periodo=30d`);
+  await (await hydrated(page.getByRole("navigation", { name: "Agrupar por" }).getByRole("link", { name: "utm_source" }))).click();
+  await page.waitForURL(/por=source/);
+  const table = page.getByRole("table");
+  await table.getByRole("cell", { name: "(sem utm_source)" }).waitFor();
+  await table.getByRole("cell", { name: "meta", exact: true }).waitFor();
+  // A linha de total bate com o faturamento do Resumo no mesmo período.
+  const total = (await table.locator("tfoot td").nth(3).innerText()).trim();
+  await page.goto(`${BASE}/d/${dashboardId}?periodo=30d`);
+  const resumo = page.getByRole("group", { name: /^Faturamento líquido: / }).first();
+  assert.equal((await resumo.locator("p.font-bold").first().innerText()).trim(), total);
+  await page.goto(`${BASE}/d/${dashboardId}/utms?periodo=30d&por=source`);
+  const search = await hydrated(page.getByRole("searchbox", { name: "Buscar pelo valor de utm_source" }));
+  await search.fill("goo");
+  await search.press("Enter");
+  await page.waitForURL(/q=goo/);
+  await page.getByRole("table").getByRole("cell", { name: "google", exact: true }).waitFor();
+  assert.equal(await page.getByRole("table").getByRole("cell", { name: "meta", exact: true }).count(), 0);
+  const exportButton = await hydrated(page.getByRole("button", { name: "Exportar CSV" }));
+  const [download] = await Promise.all([page.waitForEvent("download"), exportButton.click()]);
+  assert.match(download.suggestedFilename(), /^utms-utm_source-\d{4}-\d{2}-\d{2}\.csv$/);
+});
+
+await step("Dashboards: criar um novo, o passo a passo marca a loja ligada, e excluir pede o nome", async () => {
+  const NAME = "Operação do teste automático";
+  await page.goto(`${BASE}/settings/dashboards`);
+  await (await hydrated(page.getByRole("button", { name: "Novo dashboard" }))).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("textbox", { name: "Nome do dashboard" }).fill(NAME);
+  await dialog.getByRole("button", { name: "Criar dashboard" }).click();
+  await page.waitForURL(/\/setup$/);
+  await page.getByText("1 de 6 passos feitos").waitFor();
+  const created = store().dashboards.find((d) => d.name === NAME);
+  assert.ok(created, "o dashboard não foi gravado");
+  assert.ok(store().panels.some((p) => p.dashboardId === created.id && p.isDefault), "o dashboard novo deveria ter o painel Visão geral");
+
+  await page.getByRole("link", { name: /Ligar a loja/ }).click();
+  await page.waitForURL(/aba=loja/);
+  await (await hydrated(page.getByRole("switch", { name: /^Usar a loja .+ neste dashboard$/ }))).click();
+  for (let i = 0; i < 30 && !store().dashboardStores.some((l) => l.dashboardId === created.id); i++) await page.waitForTimeout(500);
+  assert.ok(store().dashboardStores.some((l) => l.dashboardId === created.id), "a loja não foi ligada");
+  await page.goto(`${BASE}/d/${created.id}/setup`);
+  // Loja ligada; com ela vêm as vendas já rastreadas, então o passo dos parâmetros também fica pronto.
+  await page.getByText("3 de 6 passos feitos").waitFor();
+
+  await page.goto(`${BASE}/settings/dashboards`);
+  await (await hydrated(page.getByRole("button", { name: `Excluir o dashboard ${NAME}` }))).click();
+  const confirm = page.getByRole("alertdialog");
+  const remove = confirm.getByRole("button", { name: "Excluir dashboard" });
+  assert.equal(await remove.isDisabled(), true, "o botão só libera com o nome digitado");
+  await confirm.getByLabel("Para confirmar, digite o nome do dashboard").fill(NAME);
+  await remove.click();
+  await page.getByRole("heading", { name: NAME }).waitFor({ state: "detached" });
+  assert.ok(!store().dashboards.some((d) => d.id === created.id), "o dashboard não foi excluído");
+  assert.ok(!store().dashboardStores.some((l) => l.dashboardId === created.id));
 });
 
 // ---- Painéis (S28) ------------------------------------------------------------------------------

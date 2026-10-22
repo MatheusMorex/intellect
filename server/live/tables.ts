@@ -286,6 +286,8 @@ export const TABLES: readonly TableSpec[] = [
   { key: "boardMembers", table: "board_members", columns: ["id", "board_id", "user_id", "role"], updatedAt: true },
   { key: "lists", table: "lists", columns: ["id", "board_id", "name", "rank", "color", "archived_at"], updatedAt: true },
   { key: "labels", table: "labels", columns: ["id", "board_id", "name", "color", "created_at"], updatedAt: true },
+  // Campos personalizados do quadro; o valor de cada card fica em custom_field_values.
+  { key: "customFields", table: "custom_fields", columns: ["id", "board_id", "name", "type", "options", "show_on_front", "rank", "created_at"], updatedAt: true },
   {
     key: "automations",
     table: "automations",
@@ -357,6 +359,7 @@ export const TABLES: readonly TableSpec[] = [
   { key: "cardMembers", table: "card_members", columns: ["id", "card_id", "user_id", "created_at"] },
   { key: "cardLabels", table: "card_labels", columns: ["id", "card_id", "label_id"] },
   // Anexos (etapa 5): o arquivo fica no bucket "attachments"; aqui, o nome e o caminho.
+  { key: "customFieldValues", table: "custom_field_values", columns: ["id", "card_id", "field_id", "value", "created_at"], updatedAt: true },
   { key: "attachments", table: "attachments", columns: ["id", "card_id", "uploader_id", "kind", "name", "url", "storage_key", "bytes", "mime_type", "created_at"] },
   { key: "checklists", table: "checklists", columns: ["id", "card_id", "name", "rank", "hide_checked", "created_at"], updatedAt: true },
   {
@@ -407,6 +410,7 @@ export const LEAF_TABLES: ReadonlySet<string> = new Set([
   "board_visits",
   "card_members",
   "card_labels",
+  "custom_field_values",
   "attachments",
   "checklist_items",
   "comments",

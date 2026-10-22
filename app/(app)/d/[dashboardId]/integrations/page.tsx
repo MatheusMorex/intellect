@@ -12,6 +12,7 @@ import {
   ImportOrdersButton,
   IntegrationTestForm,
   ProviderActions,
+  StoreSwitch,
   UtmGenerator,
 } from "@/components/tracking/integrations-client";
 import { dateTimeIn, relative } from "@/lib/format";
@@ -162,61 +163,82 @@ export default async function IntegrationsPage({
         })}
 
       {tab === "loja" && (
-        <Section title="Shopify" help="integ-loja" description="Os pedidos chegam por webhook assim que são feitos; a origem vem da jornada do cliente na Shopify.">
-          {!data.shop ? (
-            <p className="text-muted-foreground">Nenhuma loja conectada a este dashboard.</p>
-          ) : (
-            <>
-              <div className="flex flex-wrap items-center gap-3">
-                <ShoppingBag aria-hidden="true" className="size-5 text-primary" />
-                <span className="font-medium">{data.shop.name}</span>
-                <span className="text-sm text-muted-foreground">{data.shop.domain}</span>
-                <StatusPill status={data.shop.status === "active" ? "connected" : "error"}>
-                  {data.shop.status === "active" ? "Instalada" : data.shop.status === "uninstalled" ? "Desinstalada" : "Erro"}
-                </StatusPill>
-              </div>
-              <dl className="grid gap-2 text-sm sm:grid-cols-2">
-                <div>
-                  <dt className="text-muted-foreground">Webhooks</dt>
-                  <dd className="flex items-center gap-1.5">
-                    {data.shop.webhooksOk ? (
-                      <>
-                        <CheckCircle2 aria-hidden="true" className="size-4 text-success" /> Registrados
-                      </>
-                    ) : (
-                      <>
-                        <AlertTriangle aria-hidden="true" className="size-4 text-warning" /> Faltando
-                      </>
-                    )}
-                  </dd>
+        <>
+          <Section title="Shopify" help="integ-loja" description="Os pedidos chegam por webhook assim que são feitos; a origem vem da jornada do cliente na Shopify.">
+            {!data.shop ? (
+              <p className="text-muted-foreground">
+                {data.stores.length > 0
+                  ? "Nenhuma loja ligada a este dashboard. Escolha abaixo de qual loja do workspace vêm os pedidos."
+                  : "Nenhuma loja instalada no workspace ainda. A instalação do app da Shopify chega com a integração real."}
+              </p>
+            ) : (
+              <>
+                <div className="flex flex-wrap items-center gap-3">
+                  <ShoppingBag aria-hidden="true" className="size-5 text-primary" />
+                  <span className="font-medium">{data.shop.name}</span>
+                  <span className="text-sm text-muted-foreground">{data.shop.domain}</span>
+                  <StatusPill status={data.shop.status === "active" ? "connected" : "error"}>
+                    {data.shop.status === "active" ? "Instalada" : data.shop.status === "uninstalled" ? "Desinstalada" : "Erro"}
+                  </StatusPill>
+                </div>
+                <dl className="grid gap-2 text-sm sm:grid-cols-2">
+                  <div>
+                    <dt className="text-muted-foreground">Webhooks</dt>
+                    <dd className="flex items-center gap-1.5">
+                      {data.shop.webhooksOk ? (
+                        <>
+                          <CheckCircle2 aria-hidden="true" className="size-4 text-success" /> Registrados
+                        </>
+                      ) : (
+                        <>
+                          <AlertTriangle aria-hidden="true" className="size-4 text-warning" /> Faltando
+                        </>
+                      )}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Último pedido</dt>
+                    <dd>
+                      {data.shop.lastOrder
+                        ? `${data.shop.lastOrder.name} · ${dateTimeIn(data.shop.lastOrder.placedAt, tz, "dd/MM HH:mm")}`
+                        : "Aguardando o primeiro pedido"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Pedidos recebidos</dt>
+                    <dd>{data.shop.ordersCount}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Entregas com problema</dt>
+                    <dd>{data.shop.failedDeliveries}</dd>
+                  </div>
+                </dl>
+                <div className="grid gap-2">
+                  <p className="text-sm font-medium">Endereço do webhook</p>
+                  <CodeBox label="Endereço do webhook da Shopify" value={webhookUrl} />
                 </div>
                 <div>
-                  <dt className="text-muted-foreground">Último pedido</dt>
-                  <dd>
-                    {data.shop.lastOrder
-                      ? `${data.shop.lastOrder.name} · ${dateTimeIn(data.shop.lastOrder.placedAt, tz, "dd/MM HH:mm")}`
-                      : "Aguardando o primeiro pedido"}
-                  </dd>
+                  <ImportOrdersButton mode={data.mode} />
                 </div>
-                <div>
-                  <dt className="text-muted-foreground">Pedidos recebidos</dt>
-                  <dd>{data.shop.ordersCount}</dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">Entregas com problema</dt>
-                  <dd>{data.shop.failedDeliveries}</dd>
-                </div>
-              </dl>
-              <div className="grid gap-2">
-                <p className="text-sm font-medium">Endereço do webhook</p>
-                <CodeBox label="Endereço do webhook da Shopify" value={webhookUrl} />
-              </div>
-              <div>
-                <ImportOrdersButton mode={data.mode} />
-              </div>
-            </>
+              </>
+            )}
+          </Section>
+          {data.stores.length > 0 && (
+            <Section title="Lojas do workspace" help="integ-loja" description="De qual loja vêm os pedidos deste dashboard. A mesma loja pode servir a mais de um dashboard.">
+              <ul className="divide-y rounded-md border">
+                {data.stores.map((s) => (
+                  <li key={s.id} className="flex flex-wrap items-center gap-3 p-3">
+                    <StoreSwitch dashboardId={dashboardId} storeId={s.id} name={s.name} linked={s.linked} canManage={data.canManage} />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-medium">{s.name}</p>
+                      <p className="text-xs text-muted-foreground">{s.domain}</p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </Section>
           )}
-        </Section>
+        </>
       )}
 
       {tab === "utms" && (

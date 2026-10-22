@@ -13,11 +13,12 @@ import { withLiveRead } from "@/server/live/scope";
 import { homeHrefLive, inviteByTokenLive, profileViewLive, shellDataLive, workspaceMembersLive } from "@/server/live/shell";
 import { isLive } from "@/server/mode";
 import { attachmentUrl, isImageAttachment } from "@/server/attachments";
+import { displayFieldValue } from "@/lib/custom-fields";
 import { fileUrl } from "@/server/files";
 import { cardsOfList, listsOfBoard } from "@/server/kanban/core";
 import { mutate, newId, nowIso, readStore } from "@/server/store/db";
 import { DEFAULT_APPEARANCE } from "@/server/store/seed";
-import type { BoardBackground, BoardPrefs, BoardRow, CardCover, CardRow, Store, UserAppearance, UserPreferences } from "@/server/store/types";
+import type { BoardBackground, BoardPrefs, BoardRow, CardCover, CardRow, CustomFieldRow, Store, UserAppearance, UserPreferences } from "@/server/store/types";
 import type { BoardBackgroundView } from "@/lib/board-backgrounds";
 
 /** Pessoa como as telas recebem. avatarUrl nulo: aparecem as iniciais na cor de avatarColor. */
@@ -170,6 +171,16 @@ function coverView(cover: CardCover | null): CoverView | null {
   return { size: cover.size, color: cover.color ?? null, attachmentId: null, imageUrl: null };
 }
 
+/** Campo personalizado como a tela usa (o gerenciador do quadro e o verso do card). */
+export type FieldView = { id: string; name: string; type: CustomFieldRow["type"]; options: CustomFieldRow["options"]; showOnFront: boolean };
+
+function boardFields(store: Store, boardId: string): FieldView[] {
+  return store.customFields
+    .filter((f) => f.boardId === boardId)
+    .sort((a, b) => (a.rank < b.rank ? -1 : a.rank > b.rank ? 1 : a.id.localeCompare(b.id)))
+    .map((f) => ({ id: f.id, name: f.name, type: f.type, options: f.options, showOnFront: f.showOnFront }));
+}
+
 export type CardFront = {
   id: string;
   number: number;
@@ -186,6 +197,8 @@ export type CardFront = {
   comments: number;
   /** Quantos anexos (arquivos e links). */
   attachments: number;
+  /** Campos marcados para aparecer na frente do card, com valor ("Verba: 1.500"). */
+  fields: { id: string; name: string; text: string }[];
   checklist: { done: number; total: number } | null;
   lastActivityAt: string;
   metric: CardMetric | null;
@@ -214,6 +227,8 @@ export type BoardView = {
   lists: { id: string; name: string; rank: string; color: string | null }[];
   cards: CardFront[];
   labels: LabelView[];
+  /** Campos personalizados do quadro, na ordem. */
+  customFields: FieldView[];
   members: (Person & { role: BoardRole; viaWorkspace?: boolean })[];
   workspaceMembers: Person[];
   /** Botões de automação ligados: do card (no verso) e do quadro (no cabeçalho). */
@@ -238,6 +253,14 @@ function cardFront(store: Store, c: CardRow, metrics: Map<string, CardMetric>): 
     hasDescription: c.descriptionText.trim().length > 0,
     comments: store.comments.filter((x) => x.cardId === c.id).length,
     attachments: store.attachments.filter((x) => x.cardId === c.id).length,
+    fields: store.customFieldValues
+      .filter((v) => v.cardId === c.id)
+      .flatMap((v) => {
+        const field = store.customFields.find((x) => x.id === v.fieldId && x.showOnFront);
+        return field ? [{ id: field.id, name: field.name, text: displayFieldValue(field, v.value), rank: field.rank }] : [];
+      })
+      .sort((a, b) => (a.rank < b.rank ? -1 : a.rank > b.rank ? 1 : 0))
+      .map(({ id, name, text }) => ({ id, name, text })),
     checklist: items.length ? { done: items.filter((i) => i.completedAt).length, total: items.length } : null,
     lastActivityAt: c.lastActivityAt,
     metric: metrics.get(c.id) ?? null,
@@ -287,6 +310,7 @@ async function getBoardViewImpl(ctx: Ctx, boardId: string): Promise<BoardView> {
     lists: lists.map((l) => ({ id: l.id, name: l.name, rank: l.rank, color: l.color })),
     cards: cards.map((c) => cardFront(store, c, metrics)),
     labels: store.labels.filter((l) => l.boardId === board.id).map((l) => ({ id: l.id, name: l.name, color: l.color })),
+    customFields: boardFields(store, board.id),
     members,
     workspaceMembers,
     buttons: {
@@ -336,6 +360,7 @@ const ACTIVITY_TEXT: Record<string, (d: Record<string, unknown>) => string> = {
   "card.unlinked": (d) => `desligou este card de ${d.name}`,
   "card.comment": () => "comentou",
   "card.attachment": (d) => (d.added ? `anexou ${d.name}` : `tirou o anexo ${d.name}`),
+  "card.field": (d) => (d.value == null ? `limpou o campo ${d.name}` : `mudou ${d.name} para ${d.value}`),
 };
 
 export function activityText(type: string, data: Record<string, unknown>) {
@@ -436,6 +461,11 @@ async function getCardDetailImpl(ctx: Ctx, cardId: string) {
     comments,
     activity,
     links,
+    // Todos os campos do quadro, com o valor deste card (ou null).
+    fields: boardFields(store, board.id).map((field) => ({
+      ...field,
+      value: store.customFieldValues.find((v) => v.cardId === card.id && v.fieldId === field.id)?.value ?? null,
+    })),
     // Mais novos primeiro. Arquivo abre pela rota com conferência de acesso; link, direto.
     attachments: store.attachments
       .filter((a) => a.cardId === card.id)

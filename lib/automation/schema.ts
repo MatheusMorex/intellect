@@ -11,6 +11,9 @@ export type AutomationType = (typeof AUTOMATION_TYPES)[number];
 
 // ---- gatilhos ------------------------------------------------------------------------------------
 
+/** Valor de campo personalizado numa regra: texto, número, data (AAAA-MM-DD), caixa ou id da opção. */
+const fieldValue = z.union([z.string().trim().max(1000), z.number().finite(), z.boolean()]);
+
 export const ruleTrigger = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("card_created"), listId: id.nullable() }),
   z.object({ kind: z.literal("card_moved"), toListId: id.nullable(), fromListId: id.nullable() }),
@@ -20,6 +23,8 @@ export const ruleTrigger = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("due_completed") }),
   z.object({ kind: z.literal("checklist_completed") }),
   z.object({ kind: z.literal("comment_added"), contains: z.string().trim().max(200) }),
+  // Campo personalizado mudou (com valor: só quando ficar com esse valor).
+  z.object({ kind: z.literal("field_changed"), fieldId: id, value: fieldValue.nullable() }),
 ]);
 export type RuleTrigger = z.infer<typeof ruleTrigger>;
 
@@ -100,6 +105,8 @@ export const cardAction = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("add_checklist"), name: text("o nome da checklist", 200), items: z.array(z.string().trim().min(1).max(500)).max(50) }),
   z.object({ kind: z.literal("add_comment"), text: text("o comentário") }),
   z.object({ kind: z.literal("rename_card"), name: text("o novo nome", 500) }),
+  // Preencher um campo personalizado (null limpa); texto aceita as variáveis.
+  z.object({ kind: z.literal("set_field"), fieldId: id, value: fieldValue.nullable() }),
 ]);
 
 // Ações de quadro: para agendadas e botões do quadro (não dependem de um card).

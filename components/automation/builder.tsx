@@ -17,6 +17,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { parseDecimal } from "@/lib/custom-fields";
 import { currencySymbol } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { createAutomation, previewMetric, updateAutomation } from "@/server/actions/automation";
@@ -35,6 +36,7 @@ const RULE_KINDS = [
   ["due_completed", "O prazo for concluído"],
   ["checklist_completed", "Uma checklist ficar completa"],
   ["comment_added", "Alguém comentar"],
+  ["field_changed", "Um campo mudar"],
 ] as const;
 
 const CARD_ACTIONS = [
@@ -51,6 +53,7 @@ const CARD_ACTIONS = [
   ["add_checklist", "Adicionar checklist"],
   ["add_comment", "Comentar"],
   ["rename_card", "Renomear o card"],
+  ["set_field", "Preencher um campo"],
 ] as const;
 
 const BOARD_ACTIONS = [
@@ -108,6 +111,8 @@ function ruleTrigger(kind: string, o: AutomationOptions): Obj {
       return { kind, userId: null };
     case "comment_added":
       return { kind, contains: "" };
+    case "field_changed":
+      return { kind, fieldId: o.fields[0]?.id ?? "", value: null };
     default:
       return { kind };
   }
@@ -136,6 +141,8 @@ function newAction(kind: string, o: AutomationOptions): Obj {
       return { kind, text: "" };
     case "rename_card":
       return { kind, name: "{cardname}" };
+    case "set_field":
+      return { kind, fieldId: o.fields[0]?.id ?? "", value: null };
     case "create_card":
       return { kind, listId: list, name: "" };
     case "move_list_cards":
@@ -374,6 +381,7 @@ export function AutomationBuilder({ type, editor }: { type: AutomationType; edit
               {trigger.kind === "label_added" && <Pick label="Etiqueta" value={trigger.labelId} none="Qualquer etiqueta" onChange={(v) => setT({ labelId: v })} options={labels} />}
               {trigger.kind === "member_added" && <Pick label="Pessoa" value={trigger.userId} none="Qualquer pessoa" onChange={(v) => setT({ userId: v })} options={people} />}
               {trigger.kind === "comment_added" && <TextField label="Com o texto (opcional)" value={trigger.contains ?? ""} onChange={(v) => setT({ contains: v })} placeholder="Ex.: aprovado" />}
+              {trigger.kind === "field_changed" && <FieldPick fieldId={trigger.fieldId} value={trigger.value} fields={o.fields} anyValue onChange={(patch) => setT(patch)} />}
             </>
           )}
 
@@ -517,7 +525,7 @@ export function AutomationBuilder({ type, editor }: { type: AutomationType; edit
         {actions.map((a, i) => (
           <div key={i} className="flex flex-wrap items-end gap-3 rounded-md bg-muted/60 p-3">
             <Pick label={`Ação ${i + 1}`} value={a.kind} onChange={(k) => setActions((all) => all.map((x, j) => (j === i ? newAction(k, o) : x)))} options={actionKinds} className="min-w-56" />
-            <ActionFields a={a} set={(patch) => setActions((all) => all.map((x, j) => (j === i ? { ...x, ...patch } : x)))} lists={lists} labels={labels} people={people} />
+            <ActionFields a={a} set={(patch) => setActions((all) => all.map((x, j) => (j === i ? { ...x, ...patch } : x)))} lists={lists} labels={labels} people={people} fields={o.fields} />
             <RowControls index={i} total={actions.length} label={`a ação ${i + 1}`} onMove={(to) => setActions((all) => move(all, i, to))} onRemove={() => setActions((all) => all.filter((_, j) => j !== i))} />
           </div>
         ))}
@@ -665,20 +673,84 @@ function ItemsField({ items, onChange }: { items: string[]; onChange: (items: st
   );
 }
 
+type FieldOption = AutomationOptions["fields"][number];
+
+/**
+ * O campo e o valor (gatilho "um campo mudar" e ação "preencher um campo"). O valor
+ * segue o tipo do campo: texto, número, data, caixa ou uma opção da lista.
+ */
+function FieldPick({ fieldId, value, fields, anyValue, onChange }: { fieldId: string; value: any; fields: FieldOption[]; anyValue?: boolean; onChange: (patch: Obj) => void }) {
+  const field = fields.find((f) => f.id === fieldId);
+  const id = useId();
+  if (fields.length === 0) {
+    return <p className="max-w-sm text-sm text-muted-foreground">Este quadro ainda não tem campos. Crie no menu do quadro → Campos personalizados.</p>;
+  }
+  const empty = anyValue ? "Qualquer valor" : "Limpar o campo";
+  return (
+    <>
+      <Pick label="Campo" value={fieldId} onChange={(v) => onChange({ fieldId: v, value: null })} options={fields.map((f) => [f.id, f.name] as const)} />
+      {field?.type === "list" && (
+        <Pick label={anyValue ? "Ficar com" : "Valor"} value={value} none={empty} onChange={(v) => onChange({ value: v })} options={field.options.map((op) => [op.id, op.label] as const)} />
+      )}
+      {field?.type === "checkbox" && (
+        <Pick
+          label={anyValue ? "Ficar" : "Valor"}
+          value={value === true ? "sim" : null}
+          none={anyValue ? "Marcada ou desmarcada" : "Desmarcar"}
+          onChange={(v) => onChange({ value: v === "sim" ? true : null })}
+          options={[["sim", anyValue ? "Marcada" : "Marcar"]]}
+        />
+      )}
+      {field?.type === "date" && (
+        <div className="grid w-44 gap-1">
+          <Label htmlFor={id} className="text-xs text-muted-foreground">
+            {anyValue ? "Ficar com a data (opcional)" : "Data (vazio limpa)"}
+          </Label>
+          <Input id={id} type="date" value={typeof value === "string" ? value : ""} onChange={(e) => onChange({ value: e.target.value || null })} />
+        </div>
+      )}
+      {field?.type === "number" && (
+        <div className="grid w-44 gap-1">
+          <Label htmlFor={id} className="text-xs text-muted-foreground">
+            {anyValue ? "Ficar com o valor (opcional)" : "Número (vazio limpa)"}
+          </Label>
+          <Input
+            id={id}
+            inputMode="decimal"
+            defaultValue={typeof value === "number" ? value.toLocaleString("pt-BR", { useGrouping: false, maximumFractionDigits: 6 }) : ""}
+            onChange={(e) => onChange({ value: e.target.value.trim() ? (parseDecimal(e.target.value) ?? e.target.value) : null })}
+            placeholder="Ex.: 1.500,00"
+          />
+        </div>
+      )}
+      {field?.type === "text" &&
+        (anyValue ? (
+          <TextField label="Ficar com o texto (opcional)" value={typeof value === "string" ? value : ""} onChange={(v) => onChange({ value: v.trim() ? v : null })} />
+        ) : (
+          <TextField label="Texto (vazio limpa)" value={typeof value === "string" ? value : ""} variables onChange={(v) => onChange({ value: v.trim() ? v : null })} />
+        ))}
+    </>
+  );
+}
+
 function ActionFields({
   a,
   set,
   lists,
   labels,
   people,
+  fields,
 }: {
   a: Obj;
   set: (patch: Obj) => void;
   lists: readonly (readonly [string, string])[];
   labels: readonly (readonly [string, string])[];
   people: readonly (readonly [string, string])[];
+  fields: FieldOption[];
 }) {
   switch (a.kind) {
+    case "set_field":
+      return <FieldPick fieldId={a.fieldId} value={a.value} fields={fields} onChange={set} />;
     case "move_card":
       return (
         <>

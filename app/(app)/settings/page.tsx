@@ -67,12 +67,22 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         </div>
       )}
 
-      {tab === "vendas" &&
-        (selected ? (
-          <DashboardTab dashboardId={selected.id} all={dashboards.map((d) => ({ id: d.id, name: d.name }))} user={user} />
-        ) : (
-          <p className="text-sm text-muted-foreground">Nenhum dashboard de vendas neste workspace ainda.</p>
-        ))}
+      {tab === "vendas" && (
+        <div className="grid gap-4">
+          <p className="text-sm text-muted-foreground">
+            Para criar ou excluir dashboards, vá em{" "}
+            <Link href="/settings/dashboards" className="font-medium text-foreground underline underline-offset-2 outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              Dashboards
+            </Link>
+            .
+          </p>
+          {selected ? (
+            <DashboardTab dashboardId={selected.id} all={dashboards.map((d) => ({ id: d.id, name: d.name }))} user={user} />
+          ) : (
+            <p className="text-sm text-muted-foreground">Nenhum dashboard de vendas neste workspace ainda.</p>
+          )}
+        </div>
+      )}
 
       {tab === "workspace" &&
         (shell.workspace ? (

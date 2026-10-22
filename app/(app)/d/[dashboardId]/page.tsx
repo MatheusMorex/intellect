@@ -98,7 +98,7 @@ export default async function SummaryPage({
           title="Configuração incompleta"
           action={
             <Button asChild size="sm" variant="outline">
-              <Link href={`/d/${data.dashboard.id}/integrations`}>Continuar a configuração</Link>
+              <Link href={`/d/${data.dashboard.id}/setup`}>Continuar a configuração</Link>
             </Button>
           }
         >

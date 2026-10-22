@@ -19,6 +19,8 @@ import { LEAF_TABLES, rowFromDb, rowToDb, TABLES, tableOf, type TableSpec } from
 
 type Row = Record<string, unknown>;
 
+/** Linhas por pedido de gravação: lote menor passa inteiro mesmo com a internet lenta (cada pedido tem tempo-limite). */
+const BATCH = 200;
 /** Quantos ids vão num filtro "in" (o endereço do pedido tem limite de tamanho). */
 const IN_CHUNK = 120;
 /** O Supabase devolve até 1.000 linhas por pedido: o resto vem em páginas. */
@@ -321,7 +323,7 @@ async function fillBoards(store: Store, boards: Row[], memberProfiles: Row[], us
   };
   const someBoards = boardIds.slice(0, IN_CHUNK);
   const since = new Date(Date.now() - RUNS_DAYS * 86_400_000).toISOString();
-  const [boardMembers, lists, cards, labels, activities, cardMembers, cardLabels, checklists, comments, checklistItems, automations, keyedRuns, recentRuns, attachments] =
+  const [boardMembers, lists, cards, labels, activities, cardMembers, cardLabels, checklists, comments, checklistItems, automations, keyedRuns, recentRuns, attachments, customFields, customFieldValues] =
     await Promise.all([
       selectIn("board_members", col("boardMembers"), "board_id", boardIds),
       selectIn("lists", col("lists"), "board_id", boardIds),
@@ -337,6 +339,8 @@ async function fillBoards(store: Store, boards: Row[], memberProfiles: Row[], us
       selectIn("automation_runs", viaAutomation, "automations.board_id", boardIds, (q) => q.not("dedupe_key", "is", null).gte("started_at", since)),
       latest("automation_runs", viaAutomation, (q) => q.in("automations.board_id", someBoards), "started_at", RECENT_RUNS),
       selectIn("attachments", viaCard("attachments"), "cards.board_id", boardIds),
+      selectIn("custom_fields", col("customFields"), "board_id", boardIds),
+      selectIn("custom_field_values", viaCard("customFieldValues"), "cards.board_id", boardIds),
     ]);
 
   // Quem aparece em comentários e atividades mas saiu do workspace (raro): mais uma consulta, só se precisar.
@@ -366,6 +370,8 @@ async function fillBoards(store: Store, boards: Row[], memberProfiles: Row[], us
   store.checklistItems = load("checklistItems", checklistItems);
   store.comments = load("comments", comments);
   store.attachments = load("attachments", attachments);
+  store.customFields = load("customFields", customFields);
+  store.customFieldValues = load("customFieldValues", customFieldValues);
   store.activities = load("activities", activities).reverse();
   store.automations = load("automations", automations);
   store.automationRuns = runs;
@@ -520,13 +526,13 @@ export async function flushChanges(changes: TableChanges[], now = new Date().toI
   for (const c of changes) if (LEAF_TABLES.has(c.spec.table)) await removeRows(c);
   // 3. Linhas novas, na ordem do mapa (quem é referenciado entra antes).
   for (const c of changes) {
-    for (let i = 0; i < c.inserts.length; i += 500) {
-      const rows = c.inserts.slice(i, i + 500);
+    for (let i = 0; i < c.inserts.length; i += BATCH) {
+      const rows = c.inserts.slice(i, i + BATCH);
       const { result, attempts } = await retryOnNetwork(() => adminClient().from(c.spec.table).insert(rows));
       if (result.error && !landedBefore(attempts, result.error)) throw new WriteFailed(c.spec.table, result.error.message);
     }
-    for (let i = 0; i < c.upserts.length; i += 500) {
-      const rows = c.upserts.slice(i, i + 500);
+    for (let i = 0; i < c.upserts.length; i += BATCH) {
+      const rows = c.upserts.slice(i, i + BATCH);
       const {
         result: { error },
       } = await retryOnNetwork(() => adminClient().from(c.spec.table).upsert(rows, { onConflict: c.spec.upsertOn }));

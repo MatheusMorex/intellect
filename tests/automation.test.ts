@@ -167,3 +167,74 @@ test("lembrete de prazo avisa os membros uma vez", () => {
   runDueWork(s, now);
   assert.equal(count(), first);
 });
+
+// ---- campos personalizados ------------------------------------------------------------------------
+
+function withFields(s: Store) {
+  const at = new Date().toISOString();
+  const situacao = { id: crypto.randomUUID(), boardId: board(s).id, name: "Situação", type: "list" as const, options: [{ id: "op-aprovado", label: "Aprovado", color: null }, { id: "op-rascunho", label: "Rascunho", color: null }], showOnFront: true, rank: "a0", createdAt: at };
+  const verba = { id: crypto.randomUUID(), boardId: board(s).id, name: "Verba", type: "number" as const, options: [], showOnFront: true, rank: "a1", createdAt: at };
+  const nota = { id: crypto.randomUUID(), boardId: board(s).id, name: "Nota", type: "text" as const, options: [], showOnFront: false, rank: "a2", createdAt: at };
+  s.customFields.push(situacao, verba, nota);
+  return { situacao, verba, nota };
+}
+
+function setField(s: Store, cardName: string, fieldId: string, raw: string | number | boolean | null) {
+  const c = card(s, cardName);
+  const row = s.customFieldValues.find((v) => v.cardId === c.id && v.fieldId === fieldId);
+  if (raw === null) s.customFieldValues = s.customFieldValues.filter((v) => v !== row);
+  else if (row) row.value = raw;
+  else s.customFieldValues.push({ id: crypto.randomUUID(), cardId: c.id, fieldId, value: raw, createdAt: new Date().toISOString() });
+  logActivity(s, { workspaceId: board(s).workspaceId, boardId: board(s).id, cardId: c.id, actorId: ana(s).id, type: "card.field", data: { fieldId, name: "x", value: String(raw), raw } });
+}
+
+test("campo: regra dispara quando o campo fica com o valor escolhido e preenche outro campo com variável", () => {
+  const s = fresh();
+  const f = withFields(s);
+  rule(s, "Aprovado vira nota", { kind: "field_changed", fieldId: f.situacao.id, value: "op-aprovado" }, [{ kind: "set_field", fieldId: f.nota.id, value: "Aprovado por {username}" }]);
+  setField(s, "Testar frete grátis acima de R$ 200", f.situacao.id, "op-rascunho");
+  evaluatePending(s);
+  const c = card(s, "Testar frete grátis acima de R$ 200");
+  assert.equal(s.customFieldValues.find((v) => v.cardId === c.id && v.fieldId === f.nota.id), undefined, "Rascunho não deveria disparar");
+  setField(s, "Testar frete grátis acima de R$ 200", f.situacao.id, "op-aprovado");
+  evaluatePending(s);
+  assert.equal(s.customFieldValues.find((v) => v.cardId === c.id && v.fieldId === f.nota.id)?.value, "Aprovado por Ana Lima");
+  assert.equal(s.automationRuns.at(-1)!.status, "success");
+});
+
+test("campo: regra sem valor dispara em qualquer mudança; número no texto é conferido", () => {
+  const s = fresh();
+  const f = withFields(s);
+  const urgente = s.labels.find((l) => l.name === "Urgente")!;
+  rule(s, "Verba mudou", { kind: "field_changed", fieldId: f.verba.id, value: null }, [{ kind: "add_label", labelId: urgente.id }]);
+  setField(s, "Testar frete grátis acima de R$ 200", f.verba.id, 1500);
+  evaluatePending(s);
+  const c = card(s, "Testar frete grátis acima de R$ 200");
+  assert.ok(s.cardLabels.some((l) => l.cardId === c.id && l.labelId === urgente.id));
+
+  // Ação com número inválido: a execução fica com erro e nada muda.
+  const r = rule(s, "Verba quebrada", { kind: "card_moved", toListId: list(s, "Feito").id, fromListId: null }, [{ kind: "set_field", fieldId: f.verba.id, value: "mil reais" }]);
+  move(s, "Testar frete grátis acima de R$ 200", "Feito");
+  evaluatePending(s);
+  assert.equal(s.automationRuns.filter((x) => x.automationId === r.id).at(-1)!.status, "error");
+  assert.equal(s.customFieldValues.find((v) => v.cardId === c.id && v.fieldId === f.verba.id)?.value, 1500);
+});
+
+test("campo: ação com campo apagado vira erro; limpar tira o valor", () => {
+  const s = fresh();
+  const f = withFields(s);
+  const c = card(s, "Testar frete grátis acima de R$ 200");
+  setField(s, c.name, f.verba.id, 900);
+  evaluatePending(s);
+  const clear = rule(s, "Limpa a verba", { kind: "card_moved", toListId: list(s, "Feito").id, fromListId: null }, [{ kind: "set_field", fieldId: f.verba.id, value: null }]);
+  move(s, c.name, "Feito");
+  evaluatePending(s);
+  assert.equal(s.automationRuns.filter((x) => x.automationId === clear.id).at(-1)!.status, "success");
+  assert.equal(s.customFieldValues.find((v) => v.cardId === c.id && v.fieldId === f.verba.id), undefined);
+  const gone = rule(s, "Campo sumiu", { kind: "card_moved", toListId: list(s, "Em andamento").id, fromListId: null }, [{ kind: "set_field", fieldId: crypto.randomUUID(), value: "x" }]);
+  move(s, c.name, "Em andamento");
+  evaluatePending(s);
+  const run = s.automationRuns.filter((x) => x.automationId === gone.id).at(-1)!;
+  assert.equal(run.status, "error");
+  assert.match(run.message ?? "", /campo/);
+});

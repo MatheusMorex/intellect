@@ -559,6 +559,23 @@ export type AutomationRunRow = {
   finishedAt: IsoDateTime | null;
 };
 
+/** Campo personalizado do quadro (texto, número, data, caixa de seleção ou lista de opções). */
+export type CustomFieldRow = {
+  id: Id;
+  boardId: Id;
+  name: string;
+  type: "text" | "number" | "date" | "checkbox" | "list";
+  /** Só na lista: as opções, na ordem em que aparecem. */
+  options: { id: string; label: string; color: string | null }[];
+  /** O valor aparece na frente do card. */
+  showOnFront: boolean;
+  rank: string;
+  createdAt: IsoDateTime;
+};
+
+/** O valor de um campo num card: texto, número, data (AAAA-MM-DD), true (caixa marcada) ou o id da opção. */
+export type CustomFieldValueRow = { id: Id; cardId: Id; fieldId: Id; value: string | number | boolean; createdAt: IsoDateTime };
+
 /**
  * Anexo de um card: arquivo do computador (até 25 MB) ou link. O arquivo fica em
  * .data/attachments/<storageKey> (no Supabase, no bucket "attachments"); a chave é
@@ -649,6 +666,8 @@ export type Store = {
   cardLinks: CardLinkRow[];
   activities: ActivityRow[];
   attachments: AttachmentRow[];
+  customFields: CustomFieldRow[];
+  customFieldValues: CustomFieldValueRow[];
   files: FileRow[];
   fxRates: FxRateRow[];
   fxCoverage: Record<string, FxCoverage>;

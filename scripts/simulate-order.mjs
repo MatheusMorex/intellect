@@ -8,6 +8,8 @@
 //   --pagamento pix|cartao|boleto
 //   --sem-utm                  venda sem rastreio ("não trackeada")
 //   --teste CODIGO             pedido de um link de teste de integração (itl_test)
+//   --chargeback "#1234"       abre uma disputa (chargeback) num pedido que já existe
+//   --ganhou "#1234"           a disputa do pedido foi ganha (volta a pago)
 //   --url http://localhost:3000
 //
 // Precisa do app rodando (npm run dev) e do .env.local com SHOPIFY_WEBHOOK_SECRET.
@@ -62,6 +64,47 @@ if (!fs.existsSync(storePath)) {
 const store = JSON.parse(fs.readFileSync(storePath, "utf8"));
 const shop = store.stores[0];
 const accounts = new Map(store.adAccounts.map((a) => [a.id, a]));
+const appUrl = (typeof opts.url === "string" ? opts.url : env.APP_URL || "http://localhost:3000") + "/api/webhooks/shopify";
+
+// Disputa (chargeback) num pedido que já existe: --chargeback "#1234" abre, --ganhou "#1234" fecha a favor da loja.
+const disputeOf = typeof opts.chargeback === "string" ? opts.chargeback : typeof opts.ganhou === "string" ? opts.ganhou : null;
+if (disputeOf) {
+  const target = store.orders.find((o) => o.name === disputeOf || o.name === `#${disputeOf.replace(/^#/, "")}`);
+  if (!target) {
+    console.error(`Nenhum pedido ${disputeOf}. Veja os números na tela de Vendas.`);
+    process.exit(1);
+  }
+  const won = typeof opts.ganhou === "string";
+  const now = new Date().toISOString();
+  const body = JSON.stringify({
+    id: Date.now(),
+    order_id: Number(target.externalId.split("/").pop()),
+    type: "chargeback",
+    status: won ? "won" : "needs_response",
+    amount: (target.totalCents / 100).toFixed(2),
+    currency: target.currency,
+    reason: "fraudulent",
+    initiated_at: now,
+    finalized_on: won ? now : null,
+  });
+  const response = await fetch(appUrl, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-shopify-topic": won ? "disputes/update" : "disputes/create",
+      "x-shopify-hmac-sha256": crypto.createHmac("sha256", secret).update(body, "utf8").digest("base64"),
+      "x-shopify-shop-domain": shop.shopDomain,
+      "x-shopify-webhook-id": crypto.randomUUID(),
+      "x-shopify-triggered-at": now,
+    },
+    body,
+  }).catch((error) => {
+    console.error(`Não consegui falar com o app em ${appUrl}. Ele está rodando (npm run dev)?\n${error.message}`);
+    process.exit(1);
+  });
+  console.log(`${won ? "Disputa ganha" : "Chargeback aberto"} no pedido ${target.name}. Resposta do app: ${response.status}${response.status === 200 ? " (recebido)" : ""}.`);
+  process.exit(0);
+}
 
 const search = typeof opts.campanha === "string" ? opts.campanha.toLowerCase() : null;
 const activeCampaigns = store.campaigns.filter((c) => (search ? c.name.toLowerCase().includes(search) : c.status === "active"));
@@ -164,9 +207,7 @@ const order = {
 
 const body = JSON.stringify(order);
 const hmac = crypto.createHmac("sha256", secret).update(body, "utf8").digest("base64");
-const url = (typeof opts.url === "string" ? opts.url : env.APP_URL || "http://localhost:3000") + "/api/webhooks/shopify";
-
-const response = await fetch(url, {
+const response = await fetch(appUrl, {
   method: "POST",
   headers: {
     "content-type": "application/json",
@@ -178,7 +219,7 @@ const response = await fetch(url, {
   },
   body,
 }).catch((error) => {
-  console.error(`Não consegui falar com o app em ${url}. Ele está rodando (npm run dev)?\n${error.message}`);
+  console.error(`Não consegui falar com o app em ${appUrl}. Ele está rodando (npm run dev)?\n${error.message}`);
   process.exit(1);
 });
 

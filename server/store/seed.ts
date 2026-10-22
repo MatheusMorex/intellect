@@ -31,7 +31,7 @@ import type {
   Visit,
 } from "./types";
 
-export const STORE_VERSION = 9;
+export const STORE_VERSION = 10;
 
 /** Aparência padrão de quem entra pela primeira vez. */
 export const DEFAULT_APPEARANCE: UserAppearance = { wallpaper: null, showTaglines: true, homePage: "inicio" };
@@ -67,7 +67,7 @@ export function emptyStore(now = new Date()): Store {
     additionalFees: [], expenses: [], integrationTests: [], invites: [], boards: [], boardMembers: [], boardStars: [], boardVisits: [],
     lists: [], cards: [], cardMembers: [], labels: [], cardLabels: [], checklists: [], checklistItems: [], comments: [],
     notifications: [], outbox: [], automations: [], automationRuns: [], boardStamps: {}, cardLinks: [], activities: [],
-    attachments: [], files: [], fxRates: [], fxCoverage: {},
+    attachments: [], customFields: [], customFieldValues: [], files: [], fxRates: [], fxCoverage: {},
   };
 }
 
@@ -1024,6 +1024,8 @@ export function createSeed(now: Date): Store {
     cardLinks,
     activities: [],
     attachments: [],
+    customFields: [],
+    customFieldValues: [],
     files: [],
     fxRates: [],
     fxCoverage: {},
@@ -1061,7 +1063,7 @@ export function defaultPanel(dashboardId: string, createdBy: string | null, at: 
 
 export function upgradeStore(store: Store): Store | null {
   const from = store.version as number;
-  if (from !== 4 && from !== 5 && from !== 6 && from !== 7 && from !== 8) return null;
+  if (from !== 4 && from !== 5 && from !== 6 && from !== 7 && from !== 8 && from !== 9) return null;
   if (from === 4) {
     const dashboardCurrency = new Map(store.dashboards.map((d) => [d.id, d.currency]));
     for (const u of store.users) {
@@ -1091,6 +1093,9 @@ export function upgradeStore(store: Store): Store | null {
   }
   // Versão 9: anexos dos cards.
   store.attachments ??= [];
+  // Versão 10: campos personalizados dos quadros.
+  store.customFields ??= [];
+  store.customFieldValues ??= [];
   store.version = STORE_VERSION;
   return store;
 }

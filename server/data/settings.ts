@@ -56,6 +56,11 @@ async function getIntegrationsImpl(ctx: Ctx, dashboardId: string) {
 
   const storeIds = new Set(store.dashboardStores.filter((l) => l.dashboardId === dashboard.id).map((l) => l.storeId));
   const shop = store.stores.find((s) => storeIds.has(s.id)) ?? null;
+  // Lojas do workspace: a ligada a este dashboard e as que dá para ligar.
+  const stores = store.stores
+    .filter((s) => s.workspaceId === dashboard.workspaceId)
+    .sort((a, b) => a.name.localeCompare(b.name, "pt-BR") || a.id.localeCompare(b.id))
+    .map((s) => ({ id: s.id, name: s.name, domain: s.shopDomain, linked: storeIds.has(s.id) }));
   const shopOrders = shop ? store.orders.filter((o) => o.storeId === shop.id) : [];
   const lastOrder = shopOrders.reduce<(typeof shopOrders)[number] | null>((last, o) => (!last || o.placedAt > last.placedAt ? o : last), null);
   const failedDeliveries = shop ? store.webhookDeliveries.filter((d) => d.storeId === shop.id && d.error).length : 0;
@@ -91,6 +96,7 @@ async function getIntegrationsImpl(ctx: Ctx, dashboardId: string) {
           failedDeliveries,
         }
       : null,
+    stores,
     tests,
     templates: { meta: META_URL_PARAMS, google: GOOGLE_URL_SUFFIX },
   };
@@ -227,4 +233,108 @@ export async function getOrderDetail(...args: Parameters<typeof getOrderDetailIm
 /** Configurações > Vendas e moeda: o dashboard e o papel de quem olha (esperando o retrato no modo real). */
 export async function getDashboardSettings(ctx: Ctx, dashboardId: string) {
   return withLiveRead(ctx.user.id, () => requireDashboard(ctx, dashboardId));
+}
+
+// ---- S20 Dashboards: a lista, com o que cada um tem ligado -------------------------------------
+
+function listDashboardsForSettingsImpl(ctx: Ctx) {
+  const store = readStore();
+  const memberships = store.workspaceMembers.filter((m) => m.userId === ctx.user.id);
+  const workspaces = memberships
+    .map((m) => ({ id: m.workspaceId, name: store.workspaces.find((w) => w.id === m.workspaceId)?.name ?? "Workspace", role: m.role }))
+    .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+  const role = new Map(workspaces.map((w) => [w.id, w.role]));
+  const count = <T extends { dashboardId: string | null }>(rows: T[], id: string) => rows.filter((r) => r.dashboardId === id).length;
+  const dashboards = store.dashboards
+    .filter((d) => role.has(d.workspaceId))
+    .sort((a, b) => a.name.localeCompare(b.name, "pt-BR") || a.id.localeCompare(b.id))
+    .map((d) => {
+      const accountIds = new Set(store.dashboardAdAccounts.filter((l) => l.dashboardId === d.id).map((l) => l.adAccountId));
+      const accounts = store.adAccounts.filter((a) => accountIds.has(a.id));
+      return {
+        id: d.id,
+        name: d.name,
+        workspaceId: d.workspaceId,
+        workspaceName: workspaces.find((w) => w.id === d.workspaceId)!.name,
+        currency: d.currency,
+        timezone: d.timezone,
+        adPlatforms: d.adPlatforms,
+        metaAccounts: accounts.filter((a) => a.provider === "meta").length,
+        googleAccounts: accounts.filter((a) => a.provider === "google").length,
+        stores: count(store.dashboardStores, d.id),
+        // O que a exclusão leva junto (a confirmação mostra).
+        panels: count(store.panels, d.id),
+        expenses: count(store.expenses, d.id),
+        cardLinks: count(store.cardLinks, d.id),
+        automations: count(store.automations, d.id),
+        canManage: role.get(d.workspaceId) === "admin",
+      };
+    });
+  return { workspaces, dashboards };
+}
+
+export async function listDashboardsForSettings(ctx: Ctx) {
+  return withLiveRead(ctx.user.id, () => listDashboardsForSettingsImpl(ctx), { tracking: true });
+}
+
+// ---- S29 Configuração inicial: o que falta para o dashboard ficar pronto ----------------------
+
+export type SetupStep = {
+  id: "plataformas" | "meta" | "google" | "loja" | "parametros" | "teste";
+  done: boolean;
+  /** O que já está feito ou o que falta, numa frase. */
+  detail: string;
+};
+
+async function getSetupImpl(ctx: Ctx, dashboardId: string) {
+  const data = await getIntegrationsImpl(ctx, dashboardId);
+  const store = readStore();
+  const platforms = data.dashboard.adPlatforms;
+  const steps: SetupStep[] = [
+    {
+      id: "plataformas",
+      done: true,
+      detail: platforms.length
+        ? `Anúncios no ${platforms.map((p) => (p === "meta" ? "Meta" : "Google")).join(" e no ")}.`
+        : "Sem anúncios: só vendas orgânicas e de outras fontes.",
+    },
+  ];
+  for (const p of data.providers.filter((x) => x.enabled)) {
+    const linked = p.accounts.filter((a) => a.linked).length;
+    const connected = p.connection?.status === "active";
+    steps.push({
+      id: p.provider,
+      done: connected && linked > 0,
+      detail: !connected
+        ? "A conta ainda não está conectada."
+        : linked === 0
+          ? "Conectada. Falta escolher as contas de anúncio deste dashboard."
+          : `Conectada, com ${linked} ${linked === 1 ? "conta de anúncio" : "contas de anúncio"}.`,
+    });
+  }
+  const linkedStores = new Set(data.stores.filter((s) => s.linked).map((s) => s.id));
+  steps.push({
+    id: "loja",
+    done: linkedStores.size > 0,
+    detail: data.shop ? `${data.shop.name} (${data.shop.domain}).` : "Nenhuma loja ligada a este dashboard.",
+  });
+  if (platforms.length) {
+    const tracked = store.orders.some((o) => linkedStores.has(o.storeId) && !o.isTest && o.attributionStatus === "tracked");
+    steps.push({
+      id: "parametros",
+      done: tracked,
+      detail: tracked ? "Já chegaram vendas com a campanha identificada." : "Ainda não chegou nenhuma venda com a campanha identificada.",
+    });
+  }
+  const passed = store.integrationTests.some((t) => t.dashboardId === dashboardId && t.status === "attributed");
+  steps.push({
+    id: "teste",
+    done: passed,
+    detail: passed ? "O pedido de teste chegou com a origem certa." : "Nenhum teste concluído ainda.",
+  });
+  return { dashboard: data.dashboard, canManage: data.canManage, steps, done: steps.filter((s) => s.done).length };
+}
+
+export async function getSetup(...args: Parameters<typeof getSetupImpl>): ReturnType<typeof getSetupImpl> {
+  return withLiveRead(args[0].user.id, () => getSetupImpl(...args), { tracking: true });
 }
