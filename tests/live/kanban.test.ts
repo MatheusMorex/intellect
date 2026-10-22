@@ -296,6 +296,21 @@ describe("kanban no Supabase (etapa 2)", { skip: !enabled || !isTestProject ? "s
     assert.equal((await rows("card_labels", (q) => q.eq("label_id", id))).length, 0);
   });
 
+  test("ordenar a lista por nome grava a nova ordem e a atividade", async () => {
+    as("ana");
+    for (const name of ["zebra", "Ábaco", "card 10", "card 9"]) ok(await m.cards.createCard({ boardId: board, listId: todo, name }));
+    ok(await m.kanban.sortList(todo, "nome"));
+    const names = (await rows("cards", (q) => q.eq("list_id", todo).is("archived_at", null).order("rank"))).map((c) => c.name as string);
+    const byName = new Intl.Collator("pt-BR", { sensitivity: "base", numeric: true });
+    assert.deepEqual(names, [...names].sort(byName.compare));
+    assert.ok(names.indexOf("card 9") < names.indexOf("card 10"), "número em ordem de número");
+    assert.equal(names.at(-1), "zebra");
+    assert.equal((await rows("activities", (q) => q.eq("board_id", board).eq("type", "list.sorted"))).length, 1);
+    ok(await m.kanban.sortList(todo, "novos"));
+    const newest = (await rows("cards", (q) => q.eq("list_id", todo).is("archived_at", null).order("rank")))[0];
+    assert.equal(newest.name, "card 9");
+  });
+
   test("fechar e excluir o quadro apaga tudo dele", async () => {
     as("ana");
     assert.equal((await m.kanban.deleteBoard(board)).ok, false, "precisa fechar antes");

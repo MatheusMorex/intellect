@@ -4,6 +4,7 @@
 
 import { generateKeyBetween } from "fractional-indexing";
 
+import { compareCards, type ListSort } from "@/lib/list-sort";
 import { newId, nowIso } from "@/server/store/db";
 import type { ActivityRow, CardRow, NotificationRow, Store } from "@/server/store/types";
 
@@ -32,6 +33,15 @@ const byRank = <T extends { rank: string; id: string }>(a: T, b: T) => (a.rank <
 
 export function cardsOfList(store: Store, listId: string) {
   return store.cards.filter((c) => c.listId === listId && !c.archivedAt).sort(byRank);
+}
+
+/** Reordena os cards abertos da lista (os ranks são regravados do zero, na nova ordem). */
+export function sortListCards(store: Store, listId: string, by: ListSort) {
+  let last: string | null = null;
+  for (const card of cardsOfList(store, listId).sort(compareCards(by))) {
+    card.rank = rankBetween(last, null);
+    last = card.rank;
+  }
 }
 
 export function listsOfBoard(store: Store, boardId: string) {

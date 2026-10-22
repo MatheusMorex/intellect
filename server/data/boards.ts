@@ -361,10 +361,21 @@ const ACTIVITY_TEXT: Record<string, (d: Record<string, unknown>) => string> = {
   "card.comment": () => "comentou",
   "card.attachment": (d) => (d.added ? `anexou ${d.name}` : `tirou o anexo ${d.name}`),
   "card.field": (d) => (d.value == null ? `limpou o campo ${d.name}` : `mudou ${d.name} para ${d.value}`),
+  // Eventos do quadro e das listas (aparecem na Atividade do quadro).
+  "board.created": () => "criou este quadro",
+  "board.updated": () => "atualizou o quadro",
+  "board.closed": () => "fechou o quadro",
+  "board.reopened": () => "reabriu o quadro",
+  "board.member_added": (d) => `colocou ${d.name ?? "alguém"} no quadro`,
+  "list.created": (d) => `criou a lista ${d.name}`,
+  "list.archived": (d) => `arquivou a lista ${d.name}`,
+  "list.restored": (d) => `restaurou a lista ${d.name}`,
+  "list.sorted": (d) => `ordenou os cards da lista ${d.name}`,
 };
 
 export function activityText(type: string, data: Record<string, unknown>) {
-  return ACTIVITY_TEXT[type]?.(data) ?? type;
+  // Evento sem frase (não devia acontecer: tests/activity-text.test.ts confere) não mostra o código cru.
+  return ACTIVITY_TEXT[type]?.(data) ?? "fez uma mudança";
 }
 
 async function getCardDetailImpl(ctx: Ctx, cardId: string) {

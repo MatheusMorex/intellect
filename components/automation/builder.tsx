@@ -19,6 +19,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { parseDecimal } from "@/lib/custom-fields";
 import { currencySymbol } from "@/lib/format";
+import { LIST_SORT_LABEL, LIST_SORTS } from "@/lib/list-sort";
 import { cn } from "@/lib/utils";
 import { createAutomation, previewMetric, updateAutomation } from "@/server/actions/automation";
 import type { AutomationEditor, AutomationOptions } from "@/server/data/automation";
@@ -60,7 +61,10 @@ const BOARD_ACTIONS = [
   ["create_card", "Criar um card"],
   ["move_list_cards", "Mover todos os cards de uma lista"],
   ["archive_list_cards", "Arquivar todos os cards de uma lista"],
+  ["sort_list", "Ordenar os cards de uma lista"],
 ] as const;
+
+const SORT_OPTIONS = LIST_SORTS.map((by) => [by, LIST_SORT_LABEL[by]] as const);
 
 const FILTERS = [
   ["in_list", "O card está na lista"],
@@ -149,6 +153,8 @@ function newAction(kind: string, o: AutomationOptions): Obj {
       return { kind, fromListId: list, toListId: o.lists.at(-1)?.id ?? list };
     case "archive_list_cards":
       return { kind, listId: o.lists.at(-1)?.id ?? list };
+    case "sort_list":
+      return { kind, listId: list, by: "prazo" };
     default:
       return { kind };
   }
@@ -769,6 +775,13 @@ function ActionFields({
     case "copy_card":
     case "archive_list_cards":
       return <Pick label="Lista" value={a.listId} onChange={(v) => set({ listId: v })} options={lists} />;
+    case "sort_list":
+      return (
+        <>
+          <Pick label="Lista" value={a.listId} onChange={(v) => set({ listId: v })} options={lists} />
+          <Pick label="Ordem" value={a.by} onChange={(v) => set({ by: v })} options={SORT_OPTIONS} />
+        </>
+      );
     case "add_label":
     case "remove_label":
       return <Pick label="Etiqueta" value={a.labelId} onChange={(v) => set({ labelId: v })} options={labels} />;

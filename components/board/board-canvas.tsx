@@ -18,7 +18,7 @@ import {
 import { horizontalListSortingStrategy, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { generateKeyBetween } from "fractional-indexing";
-import { Archive, ArrowRightLeft, GripVertical, MoreHorizontal, Palette, Pencil, Plus, X } from "lucide-react";
+import { Archive, ArrowDownUp, ArrowRightLeft, CalendarClock, Copy, GripVertical, MoreHorizontal, Palette, Pencil, Plus, Tag, Users, X } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useId, useMemo, useOptimistic, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -41,6 +41,7 @@ import {
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
@@ -50,9 +51,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { LIST_SORT_LABEL, LIST_SORTS } from "@/lib/list-sort";
 import { cn } from "@/lib/utils";
 import {
   archiveAllCards,
+  copyCard,
   createList,
   moveAllCards,
   moveCard,
@@ -61,13 +64,29 @@ import {
   setCardArchived,
   setListArchived,
   setListColor,
+  sortList,
+  toggleCardLabel,
+  toggleCardMember,
   updateBoard,
   updateCard,
 } from "@/server/actions/kanban";
 import type { BoardView, CardFront, Person } from "@/server/data/boards";
 
 type ListView = BoardView["lists"][number];
-type Drag = { type: "card"; id: string; overListId: string; overIndex: number } | { type: "list"; id: string; overIndex: number };
+
+/** Prazos prontos da edição rápida: daqui a N dias, às 18h (a mesma hora padrão do verso do card). */
+const QUICK_DUES = [
+  [0, "Hoje"],
+  [1, "Amanhã"],
+  [7, "Daqui a uma semana"],
+] as const;
+
+function dueInDays(days: number) {
+  const d = new Date();
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + days, 18, 0).toISOString();
+}
+
+type Drag ={ type: "card"; id: string; overListId: string; overIndex: number } | { type: "list"; id: string; overIndex: number };
 type Patch =
   | { kind: "card"; id: string; listId: string; rank: string }
   | { kind: "list"; id: string; rank: string }
@@ -471,6 +490,28 @@ function SortableList({
                 </DropdownMenuSubContent>
               </DropdownMenuSub>
               <DropdownMenuSub>
+                <DropdownMenuSubTrigger disabled={count < 2}>
+                  <ArrowDownUp aria-hidden="true" />
+                  Ordenar cards por…
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  {LIST_SORTS.map((by) => (
+                    <DropdownMenuItem
+                      key={by}
+                      onSelect={() =>
+                        startTransition(async () => {
+                          const result = await sortList(list.id, by);
+                          if (!result.ok) toast.error(result.error);
+                          else toast(`Lista ${list.name} ordenada`);
+                        })
+                      }
+                    >
+                      {LIST_SORT_LABEL[by]}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+              <DropdownMenuSub>
                 <DropdownMenuSubTrigger>
                   <Palette aria-hidden="true" />
                   Cor da lista
@@ -615,6 +656,15 @@ function SortableCard({
   onArchive: () => void;
   onMove: (listId: string) => void;
 }) {
+  const router = useRouter();
+  const [, startQuick] = useTransition();
+  /** Etiqueta e membro pelo menu de edição rápida: grava e atualiza o quadro. */
+  const quick = (fn: () => Promise<{ ok: boolean; error?: string }>) =>
+    startQuick(async () => {
+      const result = await fn();
+      if (!result.ok) toast.error(result.error ?? "Não deu certo.");
+      router.refresh();
+    });
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
     id: `card:${card.id}`,
     disabled,
@@ -677,6 +727,106 @@ function SortableCard({
                     ))}
                 </DropdownMenuSubContent>
               </DropdownMenuSub>
+              {view.labels.length > 0 && (
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>
+                    <Tag aria-hidden="true" />
+                    Etiquetas
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent className="max-h-72 overflow-y-auto">
+                    {view.labels.map((l) => (
+                      <DropdownMenuCheckboxItem
+                        key={l.id}
+                        checked={card.labelIds.includes(l.id)}
+                        // Fica aberto para marcar várias de uma vez.
+                        onSelect={(e) => e.preventDefault()}
+                        onCheckedChange={(on) => quick(() => toggleCardLabel(card.id, l.id, on === true))}
+                      >
+                        {l.color && <span aria-hidden="true" className="h-3 w-6 shrink-0 rounded-sm" style={{ background: `var(--ds-label-${l.color})` }} />}
+                        {l.name || "Sem nome"}
+                      </DropdownMenuCheckboxItem>
+                    ))}
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+              )}
+              {view.members.length > 0 && (
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>
+                    <Users aria-hidden="true" />
+                    Membros
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent className="max-h-72 overflow-y-auto">
+                    {view.members.map((m) => (
+                      <DropdownMenuCheckboxItem
+                        key={m.id}
+                        checked={card.memberIds.includes(m.id)}
+                        onSelect={(e) => e.preventDefault()}
+                        onCheckedChange={(on) => quick(() => toggleCardMember(card.id, m.id, on === true))}
+                      >
+                        {m.name}
+                      </DropdownMenuCheckboxItem>
+                    ))}
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+              )}
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>
+                  <CalendarClock aria-hidden="true" />
+                  Prazo
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  {QUICK_DUES.map(([days, label]) => (
+                    <DropdownMenuItem key={days} onSelect={() => quick(() => updateCard({ cardId: card.id, dueAt: dueInDays(days) }))}>
+                      {label}, 18h
+                    </DropdownMenuItem>
+                  ))}
+                  <DropdownMenuItem onSelect={onOpen}>Outra data…</DropdownMenuItem>
+                  {card.dueAt && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onSelect={() => quick(() => updateCard({ cardId: card.id, dueAt: null, startAt: null, dueReminderMinutes: null, dueRecurrence: null }))}>
+                        Tirar o prazo
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>
+                  <Palette aria-hidden="true" />
+                  Capa
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent className="max-h-72 overflow-y-auto">
+                  {LABEL_HUES.map((hue) => (
+                    <DropdownMenuCheckboxItem
+                      key={hue}
+                      checked={card.cover?.color === hue}
+                      onCheckedChange={() => quick(() => updateCard({ cardId: card.id, cover: { color: hue, size: card.cover?.size ?? "strip" } }))}
+                    >
+                      <span aria-hidden="true" className="h-3 w-6 shrink-0 rounded-sm" style={{ background: `var(--ds-label-${hue})` }} />
+                      {LABEL_HUE_NAME[hue].charAt(0).toUpperCase() + LABEL_HUE_NAME[hue].slice(1)}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                  {card.cover && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onSelect={() => quick(() => updateCard({ cardId: card.id, cover: null }))}>Tirar a capa</DropdownMenuItem>
+                    </>
+                  )}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+              <DropdownMenuItem
+                onSelect={() =>
+                  quick(async () => {
+                    const result = await copyCard({ cardId: card.id, toListId: card.listId, name: card.name, keep: { labels: true, members: true, checklists: true, links: true, attachments: true } });
+                    if (result.ok) toast.success("Card copiado");
+                    return result;
+                  })
+                }
+              >
+                <Copy aria-hidden="true" />
+                Copiar
+              </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem variant="destructive" onSelect={onArchive}>
                 <Archive aria-hidden="true" />

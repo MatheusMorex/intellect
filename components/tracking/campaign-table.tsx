@@ -8,6 +8,7 @@ import {
   ChevronUp,
   Columns3,
   Download,
+  FileSpreadsheet,
   MoreHorizontal,
   Pencil,
   RotateCcw,
@@ -51,6 +52,7 @@ import { currencySymbol, decimalOrZero, EMPTY, integer, money, moneyOrZero, perc
 import { centsToInput } from "@/lib/parse";
 import { useStoredList } from "@/lib/use-stored-list";
 import { cn } from "@/lib/utils";
+import { downloadXlsx, xMoney, type XlsxCell, type XlsxNumberFormat } from "@/lib/xlsx";
 import { setAdObjectBudget, setAdObjectStatus } from "@/server/actions/ads";
 import { createCardFromRow } from "@/server/actions/cards";
 import type { Provider, ReportLevel, ReportRow } from "@/server/data/tracking";
@@ -135,7 +137,36 @@ function columns(currency: string): Column[] {
   ];
 }
 
-const DEFAULT_COLUMNS: ColumnKey[] = ["channel", "budget", "targetCpa", "spend", "sales", "revenue", "profit", "roas", "cpa", "ctr", "cpc", "cpm", "impressions", "frequency", "hook", "hold"];
+/** Formato de cada coluna na planilha do Excel (null: texto). */
+const XLSX_FORMAT: Record<ColumnKey, XlsxNumberFormat | null> = {
+  budget: "money",
+  channel: null,
+  targetCpa: "money",
+  spend: "money",
+  sales: "int",
+  revenue: "money",
+  profit: "money",
+  roas: "mult",
+  margin: "pct",
+  roi: "pct",
+  cpa: "money",
+  ctr: "pct",
+  cpc: "money",
+  cpm: "money",
+  impressions: "int",
+  clicks: "int",
+  atc: "int",
+  costPerAtc: "money",
+  reach: "int",
+  frequency: "dec",
+  videoViews: "int",
+  hook: "pct",
+  hold: "pct",
+};
+/** Sem número, estas ficam vazias na planilha (na tela, o travessão); as outras saem zeradas, como na tela. */
+const BLANK_WHEN_NULL = new Set<ColumnKey>(["budget", "targetCpa", "hook", "hold"]);
+
+const DEFAULT_COLUMNS: ColumnKey[] =["channel", "budget", "targetCpa", "spend", "sales", "revenue", "profit", "roas", "cpa", "ctr", "cpc", "cpm", "impressions", "frequency", "hook", "hold"];
 
 type ReportProps = {
   dashboardId: string;
@@ -203,17 +234,45 @@ export function CampaignTable({ report, lists }: { report: ReportProps; lists: L
     URL.revokeObjectURL(url);
   }
 
+  /** Célula da planilha: número de verdade com o formato da coluna; sem número, zerado como na tela (ou vazio onde a tela mostra o travessão). */
+  function xlsxCell(c: Column, r: ReportRow, total: boolean): XlsxCell {
+    if (total && (c.key === "budget" || c.key === "targetCpa" || c.key === "channel")) return null;
+    const fmt = XLSX_FORMAT[c.key];
+    if (fmt == null) {
+      const text = c.show(r, currency);
+      return text === EMPTY ? null : text;
+    }
+    const raw = c.value(r);
+    const n = raw == null ? (BLANK_WHEN_NULL.has(c.key) ? null : 0) : raw;
+    if (fmt === "money") return xMoney(n, c.key === "budget" || c.key === "targetCpa" ? r.budgetCurrency : currency);
+    return { n, fmt };
+  }
+
+  function exportXlsx() {
+    const withParent = level === "anuncios" || level === "palavras";
+    const lines: XlsxCell[][] = [
+      ["Status", "Nome", ...(withParent ? ["Origem"] : []), ...visible.map((c) => c.label)],
+      ...rows.map((r) => [STATUS[r.status]?.label ?? r.status, r.name, ...(withParent ? [r.parent ?? ""] : []), ...visible.map((c) => xlsxCell(c, r, false))]),
+      ["", "Total", ...(withParent ? [""] : []), ...visible.map((c) => xlsxCell(c, report.totals, true))],
+    ];
+    downloadXlsx(`${provider}-${level}-${new Date().toISOString().slice(0, 10)}.xlsx`, lines, { sheet: `${provider === "meta" ? "Meta" : "Google"} ${level}`, total: true });
+  }
+
   return (
     <div className="grid gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">
           {integer(rows.length)} {rows.length === 1 ? "item" : "itens"}
         </p>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <ColumnPicker available={available} visible={visible.map((c) => c.key)} onChange={setStored} />
           <Button variant="outline" onClick={exportCsv} disabled={rows.length === 0}>
             <Download aria-hidden="true" />
             Exportar CSV
+          </Button>
+          <Button variant="outline" onClick={exportXlsx} disabled={rows.length === 0}>
+            <FileSpreadsheet aria-hidden="true" />
+            Exportar Excel
           </Button>
         </div>
       </div>

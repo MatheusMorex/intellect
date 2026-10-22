@@ -3,8 +3,16 @@
 // construtor (S15).
 
 import { displayFieldValue, type FieldType, type FieldValue } from "@/lib/custom-fields";
+import type { ListSort } from "@/lib/list-sort";
 
 import type { AutomationAction, AutomationType, CardFilter } from "./schema";
+
+const SORT_TEXT: Record<ListSort, string> = {
+  prazo: "pelo prazo",
+  nome: "pelo nome",
+  novos: "dos mais novos para os mais antigos",
+  antigos: "dos mais antigos para os mais novos",
+};
 
 export type Names = {
   lists: Record<string, string>;
@@ -158,6 +166,8 @@ export function describeAction(a: AutomationAction, n: Names): string {
       return `mover todos os cards de ${list(n, a.fromListId)} para ${list(n, a.toListId)}`;
     case "archive_list_cards":
       return `arquivar todos os cards de ${list(n, a.listId)}`;
+    case "sort_list":
+      return `ordenar os cards de ${list(n, a.listId)} ${SORT_TEXT[a.by]}`;
   }
 }
 

@@ -17,7 +17,7 @@ import type { AutomationAction, BoardAction, CardAction, CardFilter, DueTrigger,
 import { fillVariables, isCardAction } from "@/lib/automation/schema";
 import { displayFieldValue, parseFieldValue, type FieldValue } from "@/lib/custom-fields";
 import { orderBase } from "@/server/data/tracking";
-import { appUrl, cardsOfList, insertCard, logActivity, notify, rankBetween, sendEmail, touchBoard, type AutomationActor } from "@/server/kanban/core";
+import { appUrl, cardsOfList, insertCard, logActivity, notify, rankBetween, sendEmail, sortListCards, touchBoard, type AutomationActor } from "@/server/kanban/core";
 import { makeConverter } from "@/server/fx/convert";
 import { dayKeyIn, inRange, todayIn, type DateRange } from "@/server/period";
 import { afterMutate, newId, nowIso } from "@/server/store/db";
@@ -377,6 +377,12 @@ function applyBoardAction(store: Store, automation: AutomationRow, a: BoardActio
         card.archivedAt = nowIso();
         log(card, "card.archived", {});
       }
+      return null;
+    }
+    case "sort_list": {
+      const list = listOk(a.listId);
+      sortListCards(store, list.id, a.by);
+      logActivity(store, { workspaceId: board.workspaceId, boardId: board.id, cardId: null, actorId, actorKind: "automation", automationRunId: via.automationRunId, type: "list.sorted", data: { name: list.name, by: a.by, automationName: via.automationName } });
       return null;
     }
   }

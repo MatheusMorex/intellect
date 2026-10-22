@@ -242,6 +242,60 @@ await step("quadro: Esc fecha o card e o teclado move o card de lista", async ()
   assert.equal(listOf(cardByName(FRETE)), "A fazer");
 });
 
+await step("lista: ordenar os cards por nome; edição rápida põe etiqueta sem abrir o card", async () => {
+  const LIST = "A fazer";
+  const ordered = () => {
+    const s = store();
+    const list = s.lists.find((l) => l.boardId === boardId && l.name === LIST);
+    return s.cards
+      .filter((c) => c.listId === list.id && !c.archivedAt)
+      .sort((a, b) => (a.rank < b.rank ? -1 : 1))
+      .map((c) => c.name);
+  };
+  await (await hydrated(page.getByRole("button", { name: `Ações da lista ${LIST}` }))).click();
+  await page.getByRole("menuitem", { name: "Ordenar cards por…" }).click();
+  await page.getByRole("menuitem", { name: "Nome (A a Z)" }).click();
+  await page.getByText(`Lista ${LIST} ordenada`).waitFor();
+  const names = ordered();
+  assert.ok(names.length >= 2);
+  assert.deepEqual(names, [...names].sort((a, b) => a.localeCompare(b, "pt-BR", { sensitivity: "base", numeric: true })));
+
+  const first = names[0];
+  const urgente = store().labels.find((l) => l.boardId === boardId && l.name === "Urgente");
+  const hadBefore = store().cardLabels.some((l) => l.cardId === cardByName(first).id && l.labelId === urgente.id);
+  await page.getByRole("button", { name: first, exact: true }).hover();
+  await page.getByRole("button", { name: `Edição rápida de ${first}` }).click();
+  await page.getByRole("menuitem", { name: "Etiquetas" }).click();
+  await page.getByRole("menuitemcheckbox", { name: "Urgente" }).click();
+  const target = cardByName(first);
+  const has = () => store().cardLabels.some((l) => l.cardId === target.id && l.labelId === urgente.id);
+  for (let i = 0; i < 30 && has() === hadBefore; i++) await page.waitForTimeout(500);
+  assert.equal(has(), !hadBefore, "a etiqueta não mudou");
+  await page.keyboard.press("Escape");
+
+  // Prazo e capa pela edição rápida também, sem abrir o card.
+  const quickMenu = async (item) => {
+    await page.getByRole("button", { name: first, exact: true }).hover();
+    await page.getByRole("button", { name: `Edição rápida de ${first}` }).click();
+    await page.getByRole("menuitem", { name: item, exact: true }).click();
+  };
+  const until = async (check, message) => {
+    for (let i = 0; i < 30 && !check(); i++) await page.waitForTimeout(500);
+    assert.ok(check(), message);
+  };
+  const now = new Date();
+  const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 18, 0).toISOString();
+  await quickMenu("Prazo");
+  await page.getByRole("menuitem", { name: "Amanhã, 18h" }).click();
+  await until(() => cardByName(first).dueAt === tomorrow, "o prazo não ficou para amanhã às 18h");
+  await quickMenu("Capa");
+  await page.getByRole("menuitemcheckbox", { name: "Verde" }).click();
+  await until(() => cardByName(first).cover?.color === "green", "a capa verde não foi gravada");
+  await quickMenu("Capa");
+  await page.getByRole("menuitem", { name: "Tirar a capa" }).click();
+  await until(() => cardByName(first).cover == null, "a capa não saiu");
+});
+
 await step("compartilhar: e-mail de fora recebe convite", async () => {
   await page.getByRole("button", { name: "Compartilhar" }).click();
   await page.getByLabel("E-mail ou nome").fill("convidada.teste@intellect.test");
@@ -521,6 +575,12 @@ await step("UTMs: vendas por utm_source, com a linha das que vieram sem ele, bus
   const exportButton = await hydrated(page.getByRole("button", { name: "Exportar CSV" }));
   const [download] = await Promise.all([page.waitForEvent("download"), exportButton.click()]);
   assert.match(download.suggestedFilename(), /^utms-utm_source-\d{4}-\d{2}-\d{2}\.csv$/);
+  // A mesma tabela em planilha do Excel: um zip com a linha do google dentro.
+  const [sheet] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Exportar Excel" }).click()]);
+  assert.match(sheet.suggestedFilename(), /^utms-utm_source-\d{4}-\d{2}-\d{2}\.xlsx$/);
+  const bytes = fs.readFileSync(await sheet.path());
+  assert.equal(bytes.readUInt32LE(0), 0x04034b50, "a planilha deveria ser um zip");
+  assert.ok(bytes.includes(Buffer.from(">google<")), "a planilha deveria ter a linha do google");
 });
 
 await step("Dashboards: criar um novo, o passo a passo marca a loja ligada, e excluir pede o nome", async () => {

@@ -1,14 +1,15 @@
 "use client";
 
-// Tabela do relatório por UTM (S27): ordenar pela coluna, linha de total e exportar CSV.
+// Tabela do relatório por UTM (S27): ordenar pela coluna, linha de total e exportar CSV ou Excel.
 
-import { ArrowDown, ArrowUp, Download } from "lucide-react";
+import { ArrowDown, ArrowUp, Download, FileSpreadsheet } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCaption, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { integer, moneyOrZero, percentOrZero } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { downloadXlsx, xInt, xMoney, xPct, type XlsxCell } from "@/lib/xlsx";
 import type { UtmRow } from "@/server/data/utms";
 
 type Key = "orders" | "sales" | "revenueCents" | "share" | "ticketCents" | "approval" | "pendingCents" | "refundedCents" | "costsCents" | "profitCents";
@@ -71,16 +72,33 @@ export function UtmTable({ rows, totals, currency, paramName, periodLabel }: { r
     URL.revokeObjectURL(url);
   }
 
+  function exportXlsx() {
+    // Sem número de verdade, zerado, como na tela.
+    const cell = (row: UtmRow, key: Key, kind: "count" | "money" | "percent"): XlsxCell => (kind === "money" ? xMoney(row[key] ?? 0, currency) : kind === "count" ? xInt(row[key] ?? 0) : xPct(row[key] ?? 0));
+    const lines: XlsxCell[][] = [
+      [paramName, ...COLUMNS.map((c) => c.label)],
+      ...sorted.map((r) => [r.value ?? none, ...COLUMNS.map((c) => cell(r, c.key, c.kind))]),
+      ["Total", ...COLUMNS.map((c) => cell(totals, c.key, c.kind))],
+    ];
+    downloadXlsx(`utms-${paramName}-${new Date().toISOString().slice(0, 10)}.xlsx`, lines, { sheet: `Vendas por ${paramName}`, total: true });
+  }
+
   return (
     <div className="grid gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">
           {integer(rows.length)} {rows.length === 1 ? "valor" : "valores"} de {paramName}
         </p>
-        <Button variant="outline" onClick={exportCsv} disabled={rows.length === 0}>
-          <Download aria-hidden="true" />
-          Exportar CSV
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={exportCsv} disabled={rows.length === 0}>
+            <Download aria-hidden="true" />
+            Exportar CSV
+          </Button>
+          <Button variant="outline" onClick={exportXlsx} disabled={rows.length === 0}>
+            <FileSpreadsheet aria-hidden="true" />
+            Exportar Excel
+          </Button>
+        </div>
       </div>
       <div className="overflow-x-auto rounded-lg border bg-card">
         <Table className="tabular">

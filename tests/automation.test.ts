@@ -238,3 +238,29 @@ test("campo: ação com campo apagado vira erro; limpar tira o valor", () => {
   assert.equal(run.status, "error");
   assert.match(run.message ?? "", /campo/);
 });
+
+test("botão do quadro: ordenar a lista por prazo (sem prazo no fim) e por nome", async () => {
+  const { cardsOfList } = await import("../server/kanban/core.ts");
+  const { describeAction } = await import("../lib/automation/describe.ts");
+  const s = fresh();
+  const todo = list(s, "A fazer");
+  const press = (by: string) => {
+    const row = rule(s, `Ordenar por ${by}`, { kind: "button", label: "Ordenar" }, [{ kind: "sort_list", listId: todo.id, by }]);
+    row.type = "board_button";
+    return runButton(s, row, null, "Ana Lima");
+  };
+  assert.ok(cardsOfList(s, todo.id).length >= 2, "a lista do exemplo precisa de cards");
+  assert.equal(press("prazo").status, "success");
+  const dues = cardsOfList(s, todo.id).map((c) => c.dueAt);
+  const firstEmpty = dues.indexOf(null);
+  assert.ok(firstEmpty === -1 || dues.slice(firstEmpty).every((d) => d === null), "sem prazo fica no fim");
+  const dated = dues.filter((d) => d !== null);
+  assert.deepEqual(dated, [...dated].sort());
+  assert.equal(press("nome").status, "success");
+  const names = cardsOfList(s, todo.id).map((c) => c.name);
+  assert.deepEqual(names, [...names].sort(new Intl.Collator("pt-BR", { sensitivity: "base", numeric: true }).compare));
+  const logged = s.activities.filter((a) => a.type === "list.sorted");
+  assert.equal(logged.length, 2);
+  assert.equal(logged[1].actorKind, "automation");
+  assert.equal(describeAction({ kind: "sort_list", listId: todo.id, by: "nome" }, { lists: { [todo.id]: "A fazer" }, labels: {}, people: {}, dashboards: {}, currencies: {} }), "ordenar os cards de “A fazer” pelo nome");
+});

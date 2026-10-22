@@ -4,6 +4,8 @@
 
 import { z } from "zod";
 
+import { LIST_SORTS } from "@/lib/list-sort";
+
 const id = z.uuid();
 
 export const AUTOMATION_TYPES = ["rule", "metric", "scheduled", "due_date", "card_button", "board_button"] as const;
@@ -114,6 +116,7 @@ export const boardAction = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("create_card"), listId: id, name: text("o nome do card", 500) }),
   z.object({ kind: z.literal("move_list_cards"), fromListId: id, toListId: id }),
   z.object({ kind: z.literal("archive_list_cards"), listId: id }),
+  z.object({ kind: z.literal("sort_list"), listId: id, by: z.enum(LIST_SORTS) }),
 ]);
 
 export const anyAction = z.union([cardAction, boardAction]);
@@ -139,7 +142,7 @@ export type AutomationInput = z.infer<typeof automationInput>;
 
 /** Ações que trabalham num card (as outras são de quadro). */
 export function isCardAction(a: AutomationAction): a is CardAction {
-  return !["create_card", "move_list_cards", "archive_list_cards"].includes(a.kind);
+  return !["create_card", "move_list_cards", "archive_list_cards", "sort_list"].includes(a.kind);
 }
 
 // ---- variáveis -------------------------------------------------------------------------------------------

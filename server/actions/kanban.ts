@@ -13,7 +13,8 @@ import { liveAction, liveTrackingAction } from "@/server/live/action";
 import { copyStoredFiles, dropAttachments, isImageAttachment } from "@/server/attachments";
 import { dropFile } from "@/server/files";
 import { BOARD_COLOR_KEYS } from "@/lib/board-backgrounds";
-import { bumpCard, cardsOfList, insertCard, listsOfBoard, logActivity, notify, plainJson, rankBetween, touchBoard } from "@/server/kanban/core";
+import { LIST_SORTS, type ListSort } from "@/lib/list-sort";
+import { bumpCard, cardsOfList, insertCard, listsOfBoard, logActivity, notify, plainJson, rankBetween, sortListCards, touchBoard } from "@/server/kanban/core";
 import { mutate, newId, nowIso, readStore } from "@/server/store/db";
 import type { BoardRow, CardRow, Store } from "@/server/store/types";
 
@@ -323,6 +324,21 @@ async function moveAllCardsImpl(listId: string, toListId: string): Promise<Actio
   if (count < 0) return fail("Escolha uma lista deste quadro.");
   refresh(ctx.board.id);
   return ok({ count });
+}
+
+/** Ordena os cards abertos da lista: prazo mais perto primeiro (sem prazo no fim), nome, mais novos ou mais antigos. */
+async function sortListImpl(listId: string, by: ListSort): Promise<ActionResult> {
+  if (!LIST_SORTS.includes(by)) return fail("Escolha como ordenar.");
+  const ctx = await onList(listId);
+  if (!ctx) return fail("Esta lista não existe mais.");
+  const blocked = closed(ctx.board);
+  if (blocked) return blocked;
+  mutate((store) => {
+    sortListCards(store, listId, by);
+    logActivity(store, { workspaceId: ctx.board.workspaceId, boardId: ctx.board.id, cardId: null, actorId: ctx.user.id, type: "list.sorted", data: { name: ctx.list.name, by } });
+  });
+  refresh(ctx.board.id);
+  return ok(undefined);
 }
 
 // ---- cards: mover, editar, arquivar, copiar (F03, F04) ---------------------------------------------
@@ -1064,6 +1080,10 @@ export async function archiveAllCards(...args: Parameters<typeof archiveAllCards
 
 export async function moveAllCards(...args: Parameters<typeof moveAllCardsImpl>): ReturnType<typeof moveAllCardsImpl> {
   return liveAction(() => moveAllCardsImpl(...args));
+}
+
+export async function sortList(...args: Parameters<typeof sortListImpl>): ReturnType<typeof sortListImpl> {
+  return liveAction(() => sortListImpl(...args));
 }
 
 export async function moveCard(...args: Parameters<typeof moveCardImpl>): ReturnType<typeof moveCardImpl> {
