@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { initials } from "@/lib/initials";
 import { LOGIN_QUESTION, LOGIN_TAGLINE } from "@/lib/taglines";
 import { loginAsTestUser } from "@/server/actions/auth";
-import { fakeAuthAllowed, getCurrentUser, safeNext } from "@/server/auth/session";
+import { fakeAuthAllowed, getCurrentUser, safeNext, secondFactorPending } from "@/server/auth/session";
 import { readStore } from "@/server/store/db";
 
 import { LoginForm } from "./login-form";
@@ -20,6 +20,8 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   const { next } = await searchParams;
   const target = safeNext(next);
   if (await getCurrentUser()) redirect(target);
+  // Já passou da senha e falta o código da verificação em duas etapas.
+  if (await secondFactorPending()) redirect(target === "/" ? "/login/codigo" : `/login/codigo?next=${encodeURIComponent(target)}`);
   const testUsers = fakeAuthAllowed()
     ? readStore().users.map((u) => ({ id: u.id, name: u.name, email: u.email, avatarColor: u.avatarColor }))
     : [];

@@ -1,13 +1,15 @@
-import { KeyRound } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 
 import { ProfileForm } from "@/components/me/profile-form";
+import { TwoFactorSection } from "@/components/me/two-factor";
 import { AvatarSettings } from "@/components/settings/avatar-settings";
 import { PageBody, PageHeader } from "@/components/shell/page-header";
 import { dateTime, relative } from "@/lib/format";
+import { hasVerifiedFactor } from "@/server/auth/mfa";
 import { requireUser } from "@/server/auth/session";
 import { getProfile } from "@/server/data/boards";
+import { isLive } from "@/server/mode";
 
 export const metadata: Metadata = { title: "Perfil e preferências" };
 
@@ -34,13 +36,7 @@ export default async function ProfilePage() {
           />
         </div>
         <div className="grid content-start gap-6">
-          <section aria-labelledby="seguranca" className="grid gap-2 rounded-lg border bg-card p-4">
-            <h2 id="seguranca" className="flex items-center gap-2 text-base font-semibold">
-              <KeyRound aria-hidden="true" className="size-4 text-muted-foreground" />
-              Senha e verificação em duas etapas
-            </h2>
-            <p className="text-sm text-muted-foreground">Trocar a senha e ligar a verificação em duas etapas chegam com o login de verdade. Hoje o app roda com usuários de teste.</p>
-          </section>
+          <TwoFactorSection enabled={isLive() ? await hasVerifiedFactor(user.id) : null} />
           <section aria-labelledby="atividade" className="grid gap-2 rounded-lg border bg-card p-4">
             <h2 id="atividade" className="text-base font-semibold">
               Sua atividade

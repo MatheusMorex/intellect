@@ -3,7 +3,8 @@
 import { redirect } from "next/navigation";
 import { z } from "zod";
 
-import { endSession, fakeAuthAllowed, safeNext, signInLive, startSession, verifyPassword } from "@/server/auth/session";
+import { hasVerifiedFactor } from "@/server/auth/mfa";
+import { endSession, fakeAuthAllowed, safeNext, signInLive, startSession, verifyPassword, verifySecondFactorLive } from "@/server/auth/session";
 import { homeHref } from "@/server/data/boards";
 import { isLive } from "@/server/mode";
 import { readStore } from "@/server/store/db";
@@ -29,6 +30,8 @@ export async function login(_prev: LoginState, formData: FormData): Promise<Logi
     // A mesma mensagem para e-mail desconhecido e senha errada: não revela quem tem conta.
     const userId = await signInLive(parsed.data.email, parsed.data.password);
     if (!userId) return { error: "E-mail ou senha não conferem.", email };
+    // Verificação em duas etapas ligada: a senha só abre a tela do código.
+    if (await hasVerifiedFactor(userId)) redirect(codeHref(parsed.data.next));
     redirect(await afterLogin(userId, parsed.data.next));
   }
 
@@ -45,6 +48,23 @@ export async function login(_prev: LoginState, formData: FormData): Promise<Logi
 async function afterLogin(userId: string, next: string | undefined) {
   const target = safeNext(next);
   return target === "/" ? await homeHref(userId) : target;
+}
+
+function codeHref(next: string | undefined) {
+  const target = safeNext(next);
+  return target === "/" ? "/login/codigo" : `/login/codigo?next=${encodeURIComponent(target)}`;
+}
+
+export type CodeState = { error?: string };
+
+/** Modo real: o código de 6 dígitos do aplicativo autenticador, depois da senha. */
+export async function verifySecondFactor(_prev: CodeState, formData: FormData): Promise<CodeState> {
+  if (!isLive()) redirect("/login");
+  const code = String(formData.get("code") ?? "").replace(/\s/g, "");
+  if (!/^\d{6}$/.test(code)) return { error: "Digite os 6 números que aparecem no aplicativo." };
+  const userId = await verifySecondFactorLive(code);
+  if (!userId) return { error: "Código errado ou vencido. Espere o próximo código do aplicativo e tente de novo." };
+  redirect(await afterLogin(userId, String(formData.get("next") ?? "")));
 }
 
 /** Só no modo simulado: entra com um usuário de exemplo, sem senha. */

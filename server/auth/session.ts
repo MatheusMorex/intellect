@@ -1,6 +1,7 @@
 // Sessão do modo simulado (AUTH_MODE=fake): cookie assinado com HMAC com o id
-// do usuário e a validade. No /replica-backend isto vira o Better Auth, com a
-// mesma interface: getCurrentUser() e requireUser().
+// do usuário e a validade. No modo real (AUTH_MODE=live) a sessão é a do
+// Supabase, com a mesma interface: getCurrentUser() e requireUser(); com a
+// verificação em duas etapas ligada, só vale depois do código (server/auth/mfa.ts).
 
 import crypto from "node:crypto";
 
@@ -8,6 +9,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { cache } from "react";
 
+import { hasVerifiedFactor } from "@/server/auth/mfa";
 import { getLiveProfile, touchLastActive } from "@/server/live/identity";
 import { isLive } from "@/server/mode";
 import { readStore } from "@/server/store/db";
@@ -81,11 +83,25 @@ export async function endSession() {
   (await cookies()).delete(COOKIE);
 }
 
-/** Modo real: quem está logado vem do token do Supabase (conferido pela assinatura) e do perfil no banco. */
-const getLiveUser = cache(async (): Promise<SessionUser | null> => {
+/** Modo real: os dados do token do Supabase, conferidos pela assinatura (quem é e em que nível entrou). */
+const getLiveClaims = cache(async () => {
   const { data } = await (await createClient()).auth.getClaims();
-  const userId = data?.claims?.sub;
+  return data?.claims ?? null;
+});
+
+/** Modo real: entrou com a senha, mas a verificação em duas etapas está ligada e o código ainda não foi digitado. */
+export const secondFactorPending = cache(async (): Promise<boolean> => {
+  if (!isLive()) return false;
+  const claims = await getLiveClaims();
+  if (!claims?.sub || claims.aal === "aal2") return false;
+  return hasVerifiedFactor(claims.sub);
+});
+
+/** Modo real: quem está logado vem do token do Supabase e do perfil no banco. Com o 2FA ligado, só depois do código. */
+const getLiveUser = cache(async (): Promise<SessionUser | null> => {
+  const userId = (await getLiveClaims())?.sub;
   if (!userId) return null;
+  if (await secondFactorPending()) return null;
   const profile = await getLiveProfile(userId);
   if (!profile) return null;
   return {
@@ -116,8 +132,20 @@ export const getCurrentUser = cache(async (): Promise<SessionUser | null> => {
 
 export async function requireUser(): Promise<SessionUser> {
   const user = await getCurrentUser();
-  if (!user) redirect("/login");
+  if (!user) redirect((await secondFactorPending()) ? "/login/codigo" : "/login");
   return user;
+}
+
+/** Modo real: confere o código do aplicativo autenticador e sobe a sessão para aal2. Devolve o id da pessoa, ou null se o código não vale. */
+export async function verifySecondFactorLive(code: string): Promise<string | null> {
+  const supabase = await createClient();
+  const { data: factors, error } = await supabase.auth.mfa.listFactors();
+  if (error) return null;
+  const factor = factors.totp.find((f) => f.status === "verified");
+  if (!factor) return null;
+  const verified = await supabase.auth.mfa.challengeAndVerify({ factorId: factor.id, code });
+  if (verified.error) return null;
+  return verified.data.user.id;
 }
 
 export function verifyPassword(password: string, stored: string) {
