@@ -1,0 +1,164 @@
+Tema claro
+  AAA   18.52:1  text                     on bg                   
+  AAA   19.80:1  text                     on surface              
+  AAA   17.18:1  text                     on surface-sunken       
+  AAA   15.90:1  text                     on surface-hover        
+  AA     6.81:1  text-muted               on bg                   
+  AAA    7.28:1  text-muted               on surface              
+  AA     6.31:1  text-muted               on surface-sunken       
+  AA     5.84:1  text-muted               on surface-hover        
+  AAA   19.80:1  surface                  on text                 
+  AAA   12.40:1  on-accent                on accent               
+  AAA    9.26:1  on-accent                on accent-hover         
+  AAA   11.59:1  accent                   on bg                   
+  AAA   12.40:1  accent                   on surface              
+  AAA   10.43:1  accent                   on accent-subtle        
+  AAA   16.65:1  text                     on accent-subtle        
+  AA     6.12:1  text-muted               on accent-subtle        
+  AA     6.37:1  text-muted               on danger-subtle        
+  AA     6.41:1  text-muted               on success-subtle       
+  AA     6.62:1  text-muted               on warning-subtle       
+  PASS   6.93:1  ring                     on bg                   ui
+  PASS   7.41:1  ring                     on surface              ui
+  PASS   6.42:1  ring                     on surface-sunken       ui
+  PASS   3.93:1  border-input             on bg                   ui
+  PASS   4.20:1  border-input             on surface              ui
+  PASS   3.65:1  border-input             on surface-sunken       ui
+  AA     5.26:1  danger                   on bg                   
+  AA     5.63:1  danger                   on surface              
+  AA     4.92:1  danger                   on danger-subtle        
+  AAA   17.32:1  text                     on danger-subtle        
+  AA     5.63:1  on-danger                on danger               
+  AA     5.13:1  success                  on bg                   
+  AA     5.49:1  success                  on surface              
+  AA     4.83:1  success                  on success-subtle       
+  AAA   17.43:1  text                     on success-subtle       
+  AA     5.49:1  on-success               on success              
+  AA     5.80:1  warning                  on bg                   
+  AA     6.21:1  warning                  on surface              
+  AA     5.64:1  warning                  on warning-subtle       
+  AAA   18.00:1  text                     on warning-subtle       
+  AA     6.21:1  on-warning               on warning              
+  AAA   16.96:1  label-text-subtle        on label-green-subtle   
+  AAA    9.16:1  label-text               on label-green          
+  AA     5.33:1  label-text-bold          on label-green-bold     
+  AAA   17.31:1  label-text-subtle        on label-yellow-subtle  
+  AAA   11.79:1  label-text               on label-yellow         
+  AA     5.33:1  label-text-bold          on label-yellow-bold    
+  AAA   16.06:1  label-text-subtle        on label-orange-subtle  
+  AAA    9.02:1  label-text               on label-orange         
+  AA     5.25:1  label-text-bold          on label-orange-bold    
+  AAA   15.92:1  label-text-subtle        on label-red-subtle     
+  AAA    7.15:1  label-text               on label-red            
+  AA     5.47:1  label-text-bold          on label-red-bold       
+  AAA   16.65:1  label-text-subtle        on label-purple-subtle  
+  AAA    9.96:1  label-text               on label-purple         
+  AAA   12.40:1  label-text-bold          on label-purple-bold    
+  AAA   16.17:1  label-text-subtle        on label-blue-subtle    
+  AAA    7.64:1  label-text               on label-blue           
+  AA     5.58:1  label-text-bold          on label-blue-bold      
+  AAA   16.77:1  label-text-subtle        on label-sky-subtle     
+  AAA    9.97:1  label-text               on label-sky            
+  AA     5.37:1  label-text-bold          on label-sky-bold       
+  AAA   17.29:1  label-text-subtle        on label-lime-subtle    
+  AAA   10.92:1  label-text               on label-lime           
+  AA     5.45:1  label-text-bold          on label-lime-bold      
+  AAA   16.05:1  label-text-subtle        on label-pink-subtle    
+  AAA    8.69:1  label-text               on label-pink           
+  AA     5.38:1  label-text-bold          on label-pink-bold      
+  AAA   15.96:1  label-text-subtle        on label-black-subtle   
+  AAA    7.14:1  label-text               on label-black          
+  AAA   11.25:1  label-text-bold          on label-black-bold     
+  PASS   7.41:1  chart-1                  on surface              ui
+  PASS   4.41:1  chart-2                  on surface              ui
+  PASS   4.35:1  chart-3                  on surface              ui
+  PASS   5.37:1  chart-4                  on surface              ui
+  PASS   5.38:1  chart-5                  on surface              ui
+  PASS   5.33:1  chart-6                  on surface              ui
+  PASS   5.58:1  chart-7                  on surface              ui
+  PASS   5.15:1  chart-8                  on surface              ui
+
+  78 pairs, 0 failing AA
+
+Tema escuro
+  AAA   16.74:1  text                     on bg                   
+  AAA   15.33:1  text                     on surface              
+  AAA   16.25:1  text                     on surface-sunken       
+  AAA   13.12:1  text                     on surface-hover        
+  AAA    8.28:1  text-muted               on bg                   
+  AAA    7.58:1  text-muted               on surface              
+  AAA    8.04:1  text-muted               on surface-sunken       
+  AA     6.49:1  text-muted               on surface-hover        
+  AAA   15.33:1  surface                  on text                 
+  AAA    7.36:1  on-accent                on accent               
+  AAA    9.96:1  on-accent                on accent-hover         
+  AAA    7.36:1  accent                   on bg                   
+  AA     6.74:1  accent                   on surface              
+  AA     5.59:1  accent                   on accent-subtle        
+  AAA   12.72:1  text                     on accent-subtle        
+  AA     6.29:1  text-muted               on accent-subtle        
+  AA     6.32:1  text-muted               on danger-subtle        
+  AA     5.98:1  text-muted               on success-subtle       
+  AA     5.89:1  text-muted               on warning-subtle       
+  PASS   7.36:1  ring                     on bg                   ui
+  PASS   6.74:1  ring                     on surface              ui
+  PASS   7.14:1  ring                     on surface-sunken       ui
+  PASS   4.26:1  border-input             on bg                   ui
+  PASS   3.90:1  border-input             on surface              ui
+  PASS   4.13:1  border-input             on surface-sunken       ui
+  AAA    7.15:1  danger                   on bg                   
+  AA     6.54:1  danger                   on surface              
+  AA     5.45:1  danger                   on danger-subtle        
+  AAA   12.77:1  text                     on danger-subtle        
+  AAA    7.15:1  on-danger                on danger               
+  AAA    8.94:1  success                  on bg                   
+  AAA    8.18:1  success                  on surface              
+  AA     6.45:1  success                  on success-subtle       
+  AAA   12.08:1  text                     on success-subtle       
+  AAA    8.94:1  on-success               on success              
+  AAA   10.67:1  warning                  on bg                   
+  AAA    9.77:1  warning                  on surface              
+  AAA    7.60:1  warning                  on warning-subtle       
+  AAA   11.92:1  text                     on warning-subtle       
+  AAA   10.67:1  on-warning               on warning              
+  AAA   10.37:1  label-text-subtle        on label-green-subtle   
+  AAA    9.16:1  label-text               on label-green          
+  AA     5.33:1  label-text-bold          on label-green-bold     
+  AAA   10.45:1  label-text-subtle        on label-yellow-subtle  
+  AAA   11.79:1  label-text               on label-yellow         
+  AA     5.33:1  label-text-bold          on label-yellow-bold    
+  AAA   10.58:1  label-text-subtle        on label-orange-subtle  
+  AAA    9.02:1  label-text               on label-orange         
+  AA     5.25:1  label-text-bold          on label-orange-bold    
+  AAA   11.33:1  label-text-subtle        on label-red-subtle     
+  AAA    7.15:1  label-text               on label-red            
+  AA     5.47:1  label-text-bold          on label-red-bold       
+  AAA   11.81:1  label-text-subtle        on label-purple-subtle  
+  AAA    9.96:1  label-text               on label-purple         
+  AAA   12.40:1  label-text-bold          on label-purple-bold    
+  AAA   11.01:1  label-text-subtle        on label-blue-subtle    
+  AAA    7.64:1  label-text               on label-blue           
+  AA     5.58:1  label-text-bold          on label-blue-bold      
+  AAA   10.16:1  label-text-subtle        on label-sky-subtle     
+  AAA    9.97:1  label-text               on label-sky            
+  AA     5.37:1  label-text-bold          on label-sky-bold       
+  AAA   10.01:1  label-text-subtle        on label-lime-subtle    
+  AAA   10.92:1  label-text               on label-lime           
+  AA     5.45:1  label-text-bold          on label-lime-bold      
+  AAA   11.26:1  label-text-subtle        on label-pink-subtle    
+  AAA    8.69:1  label-text               on label-pink           
+  AA     5.38:1  label-text-bold          on label-pink-bold      
+  AAA   12.02:1  label-text-subtle        on label-black-subtle   
+  AAA    7.14:1  label-text               on label-black          
+  AAA   11.25:1  label-text-bold          on label-black-bold     
+  PASS   6.74:1  chart-1                  on surface              ui
+  PASS   8.26:1  chart-2                  on surface              ui
+  PASS   8.39:1  chart-3                  on surface              ui
+  PASS   9.13:1  chart-4                  on surface              ui
+  PASS   7.96:1  chart-5                  on surface              ui
+  PASS  10.80:1  chart-6                  on surface              ui
+  PASS   6.99:1  chart-7                  on surface              ui
+  PASS   6.54:1  chart-8                  on surface              ui
+
+  78 pairs, 0 failing AA
+
