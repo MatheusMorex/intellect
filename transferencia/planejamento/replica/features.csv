@@ -1,0 +1,173 @@
+﻿feature,area,priority,original,clone,notes,source
+Login com e-mail e senha,auth,must,yes,yes,"Sem cadastro público: entra só quem foi convidado (uso interno). Visto na UTMify: senha de 8 a 50 caracteres com maiúscula / número / caractere especial | Build: login com e-mail e senha no modo simulado (usuários de teste); Better Auth entra no /replica-backend | Build (2026-10-17): login real pelo Supabase Auth (etapa 1), só por convite",trello
+Login com Google,auth,should,yes,no,,trello
+Convite por e-mail para o workspace,workspace,must,yes,yes,Build: convite por e-mail com papel; o e-mail vai para a caixa de saída simulada (nada é enviado) e o link vale 7 dias,trello
+Link de convite com expiração,workspace,should,yes,yes,"Levantamento: criar / copiar / desativar o link e escolher o papel de quem entra por ele | Build: link de convite do workspace (30 dias) e do quadro, com desativar e gerar de novo",trello
+Papéis no workspace (admin / membro),workspace,must,yes,yes,"Build: admin e membro, com troca de papel e proteção do último admin",trello
+Perfil com nome / avatar / fuso horário,conta,must,yes,yes,"O fuso do usuário afeta datas de card e o período do dashboard | Build: nome, @, bio e fuso; foto de perfil ainda não (usa iniciais coloridas) | Build (2026-10-21): foto de perfil enviada do computador",ambos
+Criar quadro (título / fundo / visibilidade),quadros,must,yes,yes,"Build: nome, fundo (10 cores) e visibilidade, pela barra superior, pelo menu e pelo Início; fotos de fundo ficam de fora",trello
+Home com quadros do workspace / favoritos / recentes,quadros,must,yes,yes,"Build: Início lista quadros e dashboards; favoritos e recentes ainda não | Build: favoritos, vistos recentemente, quadros do workspace, prazos dos próximos 7 dias e quadros fechados",trello
+Favoritar quadro,quadros,should,yes,yes,Build: estrela no cabeçalho do quadro e nos blocos do Início,trello
+Visibilidade do quadro (privado / workspace),quadros,must,yes,yes,"Build: privado ou workspace, só admin muda",trello
+Membros do quadro com papéis (admin / membro / observador),quadros,must,yes,yes,"Build: admin, membro e observador; observador é só leitura; último admin protegido",trello
+Arquivar / restaurar / excluir quadro,quadros,should,yes,yes,"Levantamento: fechar quadro e depois reabrir ou excluir com confirmação | Build: fechar, reabrir e excluir (só fechado, confirmando o nome)",trello
+Copiar quadro,quadros,could,yes,no,,trello
+Templates de quadro próprios,quadros,could,yes,no,Templates criados pela INtellect; a galeria pública do Trello fica de fora. Levantamento: galeria por categoria com prévia e Usar modelo,trello
+Log de atividade do quadro,quadros,should,yes,yes,"Build: no menu do quadro, com filtro de só comentários",trello
+Convidado (guest) em um quadro só,quadros,could,yes,no,Útil para freelancer ou agência,trello
+Criar e renomear lista,listas,must,yes,yes,Build: criar e renomear no título,trello
+Reordenar listas arrastando,listas,must,yes,yes,"Build: arrastar pela alça, com mouse, toque ou teclado",trello
+Arquivar lista / mover todos os cards / arquivar todos os cards,listas,should,yes,yes,"Build: no menu da lista, com confirmação",trello
+Ordenar lista (data / nome / criação),listas,should,yes,yes,"Build: menu da lista > Ordenar cards por prazo, nome, mais novos ou mais antigos (fica na Atividade do quadro)",trello
+Cor de lista e lista recolhível,listas,could,yes,partial,Recurso pago no Trello | Build: cor da lista sim; recolher lista ainda não,trello
+Criar card rápido no fim da lista,cards,must,yes,yes,Build: compositor no rodapé da lista; Enter adiciona e mantém aberto,trello
+Arrastar card entre listas e reordenar,cards,must,yes,yes,Ordem por posição fracionária (pos float); precisa de rebalanceamento | Build: dnd-kit com prévia e atualização otimista; posições fracionárias,trello
+Mover card por teclado e pelo menu Mover,cards,must,yes,yes,"Acessibilidade: o fluxo inteiro sem mouse | Build: Espaço pega, setas movem, Espaço solta (com avisos para leitor de tela); menu Mover escolhe quadro, lista e posição",trello
+Atualização em tempo real para outros usuários,cards,must,yes,yes,Sem isso dois usuários sobrescrevem a mudança um do outro | Build: SSE: quem está no quadro vê as mudanças em cerca de 1 s; o arrastar em andamento não é interrompido,trello
+Verso do card com título e descrição em markdown,cards,must,yes,yes,"Descrição até 16384 caracteres (REST API) | Build: editor rico (negrito, listas, links, @menção) no lugar de markdown puro; aviso de conflito se duas pessoas editam",trello
+Membros no card,cards,must,yes,yes,Build: membros do quadro e do workspace,trello
+Etiquetas coloridas com nome,cards,must,yes,yes,"Levantamento: 10 cores x 3 tons; clicar alterna faixa fina e faixa com nome | Build: criar, editar e excluir no popover; 30 cores (10 tons x 3)",trello
+Datas de início / entrega / lembrete e marcar concluído,cards,must,yes,yes,"Levantamento: lembrete na hora / 5 / 10 / 15 min / 1 h / 2 h / 1 dia / 2 dias antes | Build: início, entrega com hora, lembrete e concluído; o aviso do lembrete sai quando houver os jobs do backend | Build (2026-10-21): lembrete e aviso de prazo saem pelo relógio da automação",trello
+Checklists com barra de progresso,cards,must,yes,yes,"Levantamento: vários por card / ocultar itens marcados / copiar itens de outro checklist / excluir com confirmação | Build: várias por card, copiar de outra, ocultar marcados, barra de progresso",trello
+Item de checklist com responsável e data,cards,could,yes,yes,Checklist avançado (pago no Trello). Levantamento: converter item em card | Build: responsável e prazo por item; converter item em card,trello
+Anexos (arquivo e link) com limite de tamanho,cards,should,yes,yes,"Levantamento: arrastar e soltar / link com texto de exibição / renomear / baixar / imagem vira capa | Build (2026-10-21): arquivo até 25 MB (escolher ou arrastar, com barra de progresso), link com texto, renomear, baixar, imagem vira capa, contador na frente do card; modo real no bucket privado do Storage",trello
+Capa do card (cor ou imagem),cards,could,yes,yes,"Levantamento: faixa no topo ou card inteiro | Build: capa por cor ou por imagem anexada, faixa ou card inteiro",trello
+Comentários com @menção,cards,must,yes,yes,Editar e excluir o próprio comentário | Build: editar e excluir o próprio; menção notifica no sino,trello
+Histórico de atividade do card,cards,should,yes,yes,"Build: mostrar ou ocultar detalhes, junto com os comentários",trello
+Campos personalizados (texto / número / data / caixa / lista),cards,should,yes,yes,"Recurso pago no Trello; útil para guardar ID de campanha e verba | Build (2026-10-22): campos do quadro (texto, número, data, caixa, lista) no menu do quadro e no verso do card; valor na frente do card quando marcado; copiar card leva os valores",trello
+Copiar card,cards,should,yes,yes,Levantamento: escolher o que manter: checklists / etiquetas / membros / anexos / comentários | Build: escolhendo o que manter (etiquetas, membros, checklists, vínculos e anexos) e a lista de destino,trello
+Espelhar card em outro quadro,cards,could,yes,no,,trello
+Arquivar / restaurar / excluir card,cards,must,yes,yes,Build: arquivar pelo card ou pela edição rápida; restaurar e excluir pelo verso ou pelo menu do quadro,trello
+Badges na frente do card (data / checklist / comentários / anexos / descrição),cards,must,yes,yes,"Levantamento: checklist destacado em 100% / cor do prazo por situação / círculo de concluído | Build: prazo colorido, checklist, comentários, descrição, métrica, membros e etiquetas",trello
+Link permanente do card,cards,should,yes,yes,Build: /c/<id> abre o quadro com o card por cima,trello
+Seguir card para receber notificações,cards,could,yes,no,,trello
+Filtro do quadro (palavra / membro / etiqueta / data),busca,must,yes,yes,"Levantamento: também status concluído / atividade recente / modo qualquer x todas / contador e limpar / atalho F | Build: palavra, membros, etiquetas, prazo, atividade e modo qualquer/todas, guardado na URL; atalho F",trello
+Busca global de cards e quadros,busca,should,yes,yes,"Levantamento: quadros / cards / membros / etiquetas; recentes ao clicar; atalho / | Build: barra superior e atalho /: quadros, cards (inclusive arquivados), pessoas e etiquetas, com buscas recentes",trello
+Notificações no app (menção / atribuição / prazo),notificações,should,yes,yes,"Levantamento: contador no sino / só não lidas / marcar todas como lidas | Build: menção, comentário em card seu e item atribuído; o aviso de prazo chegando sai com os jobs do backend | Build (2026-10-21): aviso de prazo chegando pelo relógio da automação",trello
+Notificações por e-mail,notificações,could,yes,no,Levantamento: frequência nunca / periódica / instantânea e tipos por evento,trello
+Regras de automação (gatilho + filtros + ações),automação,must,yes,yes,"Até 20 ações por execução (limite do Trello) | Build: construtor de regras com filtros (lista, etiqueta, membro, nome) e ações em sequência",trello
+Gatilhos: card criado / movido / arquivado,automação,must,yes,yes,,trello
+Gatilhos: etiqueta / membro / data / checklist / comentário / campo personalizado,automação,must,yes,yes,"Build: etiqueta, membro, prazo concluído, checklist concluída e comentário | Build (2026-10-22): gatilho quando um campo mudar (ou ficar com um valor)",trello
+Ações: mover / copiar / arquivar card,automação,must,yes,yes,,trello
+Ações: etiqueta / membro / data / checklist / comentário / campo,automação,must,yes,yes,"Build: etiqueta, membro, prazo, checklist, comentário, renomear e criar card | Build (2026-10-22): ação preencher ou limpar um campo, com variáveis no texto",trello
+Variáveis nas ações ({cardname} / {date} / {cardlink} etc.),automação,should,yes,yes,Catálogo público em support.atlassian.com/trello/docs/automation-variables | Build: {cardname} {cardlink} {listname} {boardname} {username} {date} e as de métrica ({campaign} {roas} {spend}),trello
+Botões de card,automação,should,yes,yes,Até 20 ativos por quadro,trello
+Botões de quadro,automação,should,yes,yes,Até 20 ativos por quadro,trello
+Automações agendadas (diária / semanal / mensal),automação,should,yes,yes,"Build: todo dia, dias úteis, semanal e mensal",trello
+Automações por data de entrega (X dias antes / depois),automação,should,yes,yes,Build: horas ou dias antes ou depois,trello
+Ligar e desligar automação,automação,must,yes,yes,,trello
+Log de execuções com erros,automação,must,yes,yes,"Equivalente ao command log do Trello | Build: histórico por automação e do quadro, com erro e o que cada execução fez",trello
+Ação: enviar e-mail,automação,could,yes,no,,trello
+Ação: requisição HTTP (GET / POST / PUT),automação,could,yes,no,,trello
+Ação: ordenar lista,automação,could,yes,yes,"Build: ação de quadro (agendadas e botões do quadro), com as mesmas 4 ordens do menu da lista",trello
+Sugestões de automação,automação,could,yes,no,,trello
+Relatórios por e-mail prontos,automação,could,yes,no,,trello
+Dashboard resumo: faturamento bruto e líquido,dashboard,must,yes,yes,"O Resumo mostra o líquido; o bruto existe na API (revenue.gross) | Build: bruto e líquido no Resumo, com comparação ao período anterior",utmify
+Dashboard resumo: gasto com anúncios total e por plataforma,dashboard,must,yes,yes,"ads.spend / ads.byPlatform | Build: gasto total, no Meta e no Google",utmify
+Dashboard resumo: ROAS / ROI / lucro / margem / CPA / ticket médio,dashboard,must,yes,yes,"Visto na UTMify: ROAS / ROI / lucro / margem no Resumo; CPA nas tabelas; ticket médio só na API. Fórmulas em recon.md | Build: ROAS, ROI, lucro, margem, CPA e ticket médio; lucro com impostos, custos, taxas e despesas",utmify
+Dashboard resumo: vendas aprovadas / pendentes / reembolsadas / chargeback,dashboard,must,yes,yes,"Visto na UTMify: vendas pendentes / reembolsadas / % reembolso / % chargeback | Build: pagas, pendentes (com valor), reembolsadas, % reembolso e % chargeback",utmify
+Dashboard resumo: funil (cliques / page views / ICs / leads),dashboard,should,yes,partial,"Build: funil de vendas nos Painéis (impressões, cliques, adições ao carrinho, pedidos, vendas); page views, ICs e leads precisam de pixel, fora do recorte",utmify
+Filtro de período com atalhos (máximo / hoje / ontem / 7 dias / este mês / mês passado / personalizado),dashboard,must,yes,yes,"Visto na UTMify: esses atalhos; Relatórios também tem esta semana e semana passada | Build: atalhos e período personalizado com calendário, no fuso do dashboard",utmify
+Filtros por produto / plataforma / conta de anúncio / fonte de tráfego,dashboard,must,yes,yes,"Visto na UTMify: no Resumo. Plataforma de venda aqui só tem a Shopify | Build: conta de anúncio, fonte de tráfego e produto; plataforma de venda é só a Shopify",utmify
+Múltiplos dashboards (por produto ou operação),dashboard,should,yes,yes,Visto na UTMify: troca pelo nome do dashboard no topo; criar / editar / excluir em Avançado | Build: troca de dashboard no menu; criar e editar dashboards (S20) ainda não | Build (2026-10-21): S20 cria e exclui dashboards; troca pelo menu,utmify
+Fuso horário e moeda por dashboard,dashboard,must,yes,yes,"Visto na UTMify: nome / tipo de faturamento / fuso / moeda / contabilizar juros | Build: fuso e moeda do dashboard usados nos cálculos; tela para editar no S20 | Build: nome, faturamento, fuso, moeda e juros editáveis em Configurações > Vendas e moeda",utmify
+Visão Total x Normal,dashboard,could,yes,no,Campo viewType na API; o significado exato não foi confirmado,utmify
+Relatório Meta por conta / campanha / conjunto / anúncio,relatório,must,yes,yes,"Visto na UTMify: abas por nível (não é árvore expansível) | Build: abas Contas, Campanhas, Conjuntos e Anúncios; clicar abre o nível seguinte filtrado",utmify
+Colunas de métricas configuráveis e ordenação,relatório,should,yes,yes,"Visto na UTMify: mostrar / ocultar / reordenar colunas e linha de totais | Build: mostrar, ocultar e reordenar colunas (guardado no navegador) e ordenar clicando no cabeçalho",utmify
+Ligar e desligar campanha / conjunto / anúncio pelo relatório,relatório,should,yes,yes,Visto na UTMify: toggle de status na tabela. Exige o escopo ads_management na Marketing API | Build: toggle com confirmação; no modo simulado muda só os dados de exemplo,utmify
+Editar orçamento pelo relatório,relatório,should,yes,yes,Visto na UTMify: orçamento editável na tabela | Build: orçamento diário de campanha e conjunto com confirmação (simulado),utmify
+Duplicar campanha em outra conta de anúncio,relatório,could,yes,no,Só na descrição da App Store; não aparece no levantamento de 2026-10-12,utmify
+Relatório Google Ads por campanha / grupo de anúncios / anúncio / palavra-chave,relatório,must,yes,yes,"Google é fonte confirmada da INtellect (2026-10-11). Visto na UTMify: colunas extras tipo de campanha e CPA desejado; palavra-chave não é aba e aparece no relatório por UTM | Build: campanhas (com tipo e CPA desejado), grupos, anúncios e palavras-chave fora dos totais",utmify
+Conectar Meta Ads por OAuth e escolher contas de anúncio,integrações,must,yes,partial,"App da própria INtellect no Meta for Developers. Visto na UTMify: conectar neste navegador ou gerar link para outro navegador ou colaborador | Build: tela de conexão, link para outra pessoa e desconectar; OAuth real espera o app do Meta e o sim do dono",utmify
+Sincronizar gasto e métricas do Meta por anúncio e por dia,integrações,must,yes,partial,Insights no fuso da conta de anúncio | Build: dados de exemplo por anúncio e por dia; o job de sync real entra no backend,utmify
+Conectar Google Ads por OAuth e escolher contas,integrações,must,yes,partial,Developer token com acesso Basic pelo projeto do Google Cloud + verificação de marca; sem MCC para uma conta só | Build: tela de conexão simulada; OAuth real espera o acesso à API do Google e o sim do dono,utmify
+Sincronizar gasto e métricas do Google Ads por anúncio e por dia,integrações,must,yes,partial,Build: dados de exemplo por anúncio e por dia; o job de sync real entra no backend,utmify
+Conectar TikTok Ads / Kwai Ads / Taboola,integrações,could,yes,skip,A INtellect não anuncia nessas redes (2026-10-11). Na UTMify cada uma tem página de tráfego própria,utmify
+Integração com a Shopify (app próprio + webhooks de pedido),integrações,must,yes,partial,"Checkout confirmado (2026-10-11). App no Dev Dashboard instalado por OAuth; orders/create / orders/paid / orders/updated / refunds/create; HMAC e deduplicação por X-Shopify-Webhook-Id | Build: rota de webhook com HMAC, entrega deduplicada e processamento depois do 200; app e OAuth reais só com o sim do dono",utmify
+Importar pedidos antigos da Shopify ao conectar,integrações,should,yes,partial,Pela GraphQL Admin API | Build: botão na aba Loja; no modo simulado os pedidos de exemplo já vêm importados,utmify
+Origem da venda pelos dados da Shopify (UTMs e página de entrada da primeira e da última visita),vendas,must,yes,partial,"Order.customerJourneySummary; dispensa o script quando o anúncio leva direto à loja | Build: atribuição pela jornada (última visita, senão a primeira) com cliente Shopify simulado",utmify
+Webhook genérico de venda por plataforma (URL + token),integrações,could,yes,no,Visto na UTMify: lista pesquisável de plataformas e URL única por webhook. Aqui a Shopify usa o app,utmify
+Adaptadores de outras plataformas de checkout,integrações,could,yes,no,"A UTMify integra Hotmart, Kiwify, Cartpanda, Kirvano, PerfectPay, Yampi, Stripe e outras",utmify
+Endpoint próprio para envio de pedidos por API com token,integrações,could,yes,no,A UTMify chama de Credenciais de API (Integrações > Webhooks),utmify
+Atualização de status do pedido (pendente / pago / recusado / reembolsado / chargeback),vendas,must,yes,yes,"Mesmo pedido chega várias vezes: idempotência por pedido + status | Build: orders/create, updated, paid e cancelled, com o evento mais novo vencendo | Build (2026-10-21): disputas (disputes/create e disputes/update) marcam chargeback e a disputa ganha volta a pago; o reembolso vem pelo orders/updated; npm run simulate:order -- --chargeback ""#1234"" para testar",utmify
+Atribuição da venda a campanha / conjunto / anúncio pela UTM,vendas,must,yes,yes,"Build: anúncio, conjunto e campanha por itl_*, com recuo para UTM e nome; Performance Max fica na campanha; testes automáticos",utmify
+Vendas não trackeadas e outras fontes (bio / WhatsApp / e-mail),vendas,should,yes,yes,Build: S19 mostra Não rastreada e Outras fontes com a utm_source,utmify
+Lista de vendas com filtros e detalhe do pedido,vendas,should,no,yes,"Não existe no menu da UTMify (levantamento de 2026-10-12). É nossa: serve para depurar a atribuição | Build: filtro de período e situação, busca pelo número e detalhe com itens, jornada e histórico",novo
+Pedidos de teste que não entram nas métricas,vendas,could,yes,yes,isTest na API pública | Build: pedido de link de teste (itl_test) fica marcado como teste e fora das métricas,utmify
+Multimoeda com conversão para a moeda do dashboard,vendas,should,yes,yes,Conta de anúncio em USD x venda em BRL | Build: cotação do dia (BCE) guardada no banco; números somem com aviso quando falta cotação,utmify
+Script de UTMs para a página de vendas,rastreamento,should,yes,no,Só é preciso se houver página fora da Shopify antes da loja. Visto na UTMify: em Integrações > UTMs,utmify
+Modelo de parâmetros de URL para colar no Meta Ads,rastreamento,must,yes,yes,"IDs dinâmicos {{campaign.id}} / {{adset.id}} / {{ad.id}}. Visto na UTMify: código pronto por plataforma em Integrações > UTMs; o texto exato não foi levantado | Build: aba UTMs das Integrações, com copiar",utmify
+Modelo de sufixo de URL final para o Google Ads,rastreamento,must,yes,yes,"ValueTrack {campaignid} / {adgroupid} / {creative} / {keyword} | Build: aba UTMs das Integrações, com copiar",utmify
+Teste de integração (gerar link de teste e ver os últimos testes),rastreamento,should,yes,yes,Visto na UTMify: Integrações > Testes: escolhe fonte de tráfego / plataforma de venda / pixel / link da campanha | Build: gera o link com itl_test; o pedido que chega fecha o teste como recebido ou atribuído,utmify
+Taxas de gateway / impostos / imposto sobre gasto do Meta,custos,must,yes,yes,"Visto na UTMify: página Taxas: imposto sobre vendas % / imposto sobre gasto do Meta % / impostos adicionais | Build: imposto sobre vendas, sobre o gasto do Meta e extras, com data de início",utmify
+Custo por produto,custos,should,yes,yes,Visto na UTMify: tabela produto > custo; o produto aparece depois da primeira venda | Build: custo por unidade com data de início; produto aparece depois da primeira venda,utmify
+Despesas lançadas à mão (únicas ou recorrentes / por categoria),custos,should,yes,yes,"Visto na UTMify: página Despesas: data / tipo / categoria (Tráfego / Ferramentas / Funcionários / Contabilidade / Outros) / descrição / valor | Build: únicas e mensais, por categoria, com busca e filtro",utmify
+Regras automatizadas de campanha (pausar / escalar por métrica),automação,could,yes,no,Visto na UTMify: abas Meta e Google; aplicar a campanhas / conjuntos / anúncios ativos ou pausados; filtro por nome; ações ativar / pausar / aumentar ou diminuir orçamento em % / definir orçamento; condições em E no nível do objeto ou do dashboard; período de cálculo; frequência a partir de 15 min; importar e exportar em JSON. No nosso app vira gatilho de métrica no motor de automação,utmify
+Vincular card a campanha / conjunto / anúncio / produto / dashboard,kanban + tracking,must,no,yes,Novo: a cola entre os dois apps | Build: pelo verso do card (Vincular métrica) e pela tabela de campanhas; desvincular no painel,novo
+Badge de ROAS / lucro na frente do card vinculado,kanban + tracking,must,no,yes,"Novo | Build: ROAS dos últimos 7 dias, verde a partir de 1 e vermelho abaixo",novo
+Painel de métricas no verso do card vinculado,kanban + tracking,must,no,yes,"Novo | Build: ROAS, gasto, faturamento e vendas dos últimos 7 dias e link para o relatório",novo
+Gatilho de automação por métrica (ROAS / CPA / gasto / lucro acima ou abaixo de X na janela),automação,must,no,yes,"Novo: checagem agendada; dispara uma vez por janela | Build: regra por métrica com janela, nível (campanha, conjunto, anúncio) e checagem agendada pelo relógio",novo
+Proteção contra loop entre automações,automação,must,no,yes,Regra A dispara B que dispara A | Build: cadeia de execuções com profundidade máxima de 5 e a mesma regra não roda duas vezes na cadeia,novo
+Criar card a partir de uma linha do relatório,relatório,should,no,yes,"Novo | Build: em campanhas, conjuntos e anúncios; o card nasce ligado ao item",novo
+Ações de automação na campanha: ativar / pausar / mudar orçamento (com confirmação),automação,could,no,no,Novo no motor do kanban; as ações espelham as regras da UTMify. Arriscado: começa desligado,novo
+Venda nova comenta no card vinculado,automação,could,no,no,Novo,novo
+Power-Ups de terceiros,integrações,could,yes,skip,Rede de parceiros da Atlassian: não é parte do produto. O levantamento sugere extensões internas: também ficam fora,trello
+Automações com Jira / Bitbucket / Slack,automação,could,yes,skip,Integrações de parceiros da Atlassian,trello
+Visões calendário / linha do tempo / tabela / painel / mapa,visões,could,yes,skip,Fora do recorte escolhido (2026-10-11),trello
+Inbox (capturar de e-mail / Slack) e Planner,produtividade,could,yes,skip,Fora do recorte escolhido,trello
+Recursos de IA do Trello,ia,could,yes,skip,Fora do recorte escolhido,trello
+Galeria pública de templates da comunidade,quadros,could,yes,skip,Conteúdo do Trello e da comunidade,trello
+Quadro público por link,quadros,could,yes,skip,Uso interno,trello
+SSO / Atlassian Guard / recursos Enterprise,admin,could,yes,skip,Uso interno; time pequeno,trello
+Cota mensal de execuções de automação,automação,could,yes,skip,Limite comercial do Trello; uso interno não precisa,trello
+Pixel server-side e envio por Conversions API,rastreamento,could,yes,skip,Fora do recorte escolhido. Visto na UTMify: páginas Pixel e Eventos (log de PageView / InitiateCheckout / Purchase),utmify
+Rastreamento de conversas no WhatsApp,rastreamento,could,yes,skip,Fora do recorte escolhido. Visto na UTMify: cadastro de números em Integrações > WhatsApp,utmify
+Afiliados (BuyGoods / Digistore / Clickbank / Maxweb),integrações,could,yes,skip,Fora do recorte escolhido,utmify
+API pública de leitura de métricas,integrações,could,yes,skip,"Uso interno: o banco é nosso. Visto na UTMify: API e MCP em Avançado, só no plano pago",utmify
+Planos e cobrança (Monster / Scale / Enterprise),conta,could,yes,skip,Uso interno. Visto na UTMify: página Assinatura com troca de plano e etapa de retenção no cancelamento,utmify
+Apps iOS e Android (os dois produtos),plataforma,could,yes,skip,Escopo é web; layout responsivo cobre o celular,ambos
+Notificação push de venda no celular,notificações,could,yes,skip,Depende de app móvel. A versão no navegador está em outra linha,utmify
+Atalhos de teclado (novo card / filtro / busca / trocar quadro / datas / etiquetas / membros / arquivar / ajuda),acessibilidade,should,yes,yes,"Levantamento: N F Q / B E D L M C Espaço Esc ? | Build: / busca, F filtro, Q Meus cards, ? ajuda, Enter abre, Espaço arrasta, Esc fecha; no card sob o mouse ou em foco: N novo card na lista, E edição rápida, L etiquetas, M membros, D prazo, C arquivar; dá para desligar no perfil. B (trocar de quadro) não: a busca / já leva a qualquer quadro",trello
+Edição rápida do card na lista (lápis ou clique direito),cards,should,yes,yes,"Levantamento: abrir / etiquetas / membros / capa / datas / mover / copiar / arquivar | Build: lápis no card: abrir, mover, etiquetas, membros, prazo (hoje, amanhã, daqui a uma semana ou tirar), capa (cor ou tirar), copiar e arquivar",trello
+Meus cards (atribuídos a mim por quadro ou por prazo),produtividade,should,yes,yes,"Build: por quadro ou por prazo, com atalho Q",trello
+Página Início com prazos próximos e atividade recente,produtividade,could,yes,partial,Build: prazos dos próximos 7 dias; atividade recente fica no perfil,trello
+Recorrência na data de entrega (diária / semanal / mensal),cards,could,yes,yes,"Build: diária, semanal ou mensal: concluir leva o prazo para a próxima vez",trello
+Permissões do quadro (quem comenta / quem adiciona membros / membros do workspace editam),quadros,should,yes,yes,"Build: quem comenta e se o workspace edita, no menu do quadro",trello
+Mostrar concluído na frente do card e ligar ou desligar capas por quadro,quadros,could,yes,yes,Build: no menu do quadro (Configurações),trello
+Solicitações para entrar no quadro ou no workspace (aprovar / recusar),quadros,could,yes,no,,trello
+Copiar lista e mover lista para outro quadro,listas,could,yes,no,,trello
+Atalhos de automação no menu da lista (quando um card entrar / ordenar todo dia),automação,could,yes,no,,trello
+Configurações do workspace (domínio permitido / quem cria e exclui quadros),workspace,could,yes,partial,"Build: nome, descrição e domínio permitido nos convites; quem cria e exclui quadros ainda não",trello
+Seguir quadro e lista,notificações,could,yes,no,,trello
+Modelos de card e criar card a partir de modelo,cards,could,yes,no,,trello
+Reações com emoji nos comentários,cards,could,yes,no,,trello
+Exportar quadro (JSON / CSV) e imprimir,quadros,could,yes,no,,trello
+Coleções de quadros,quadros,could,yes,no,Recurso pago no Trello,trello
+Modo para daltônicos (padrões em etiquetas e capas) e reduzir animações,acessibilidade,could,yes,yes,Build: no perfil; padrões nas etiquetas e animações desligadas em toda a interface,trello
+Tema claro / escuro / automático,plataforma,should,yes,yes,"Os dois produtos têm | Build: no menu do avatar e no perfil (claro, escuro, igual ao sistema)",ambos
+Link do card com QR code e código para incorporar,cards,could,yes,skip,Uso interno: o link basta,trello
+Adesivos decorativos nos cards,cards,could,yes,skip,Decorativo,trello
+E-mail para quadro (criar card por e-mail),integrações,could,yes,skip,Precisa de servidor de e-mail de entrada; fora do recorte,trello
+Denunciar quadro / formulário de feedback / recursos experimentais,admin,could,yes,skip,Uso interno,trello
+Gráficos do Resumo: vendas por produto / forma de pagamento / fonte de tráfego e aprovação por forma de pagamento,dashboard,should,yes,yes,"Visto na UTMify: Pix / Cartão / Boleto / Outros + total | Build: por produto, forma de pagamento, fonte de tráfego e aprovação, cada um com Ver como tabela",utmify
+Botão Atualizar e indicação de atualizado há X minutos,dashboard,should,yes,yes,Mostra se gasto e vendas estão em dia | Build: Atualizar com limite de 5 minutos e aviso de dados atrasados (simulado),utmify
+Assistente de configuração do dashboard com aviso de configuração incompleta,dashboard,should,yes,yes,Visto na UTMify: pergunta as plataformas de anúncio e guia a conexão; faixa de aviso até terminar | Build: faixa de configuração incompleta no Resumo; o assistente (S29) ainda não | Build (2026-10-21): S29 com os passos marcando sozinhos; a faixa do Resumo leva até ele,utmify
+Meta de faturamento no topo com selos ao bater metas,dashboard,could,yes,no,,utmify
+Filtro por tipo de venda (recorrência / venda única),dashboard,could,yes,no,Só faz sentido se a loja vender assinatura,utmify
+Filtros do relatório por nome e status (ativo / pausado / rejeitado),relatório,should,yes,yes,"Build: busca por nome e filtro ativos, pausados e com restrições",utmify
+Exportar tabelas (CSV / Excel),relatório,should,yes,yes,"Build: botões Exportar CSV e Exportar Excel (.xlsx com números de verdade, moeda, percentual e total em negrito) nos relatórios Meta, Google e UTMs",utmify
+Relatório por UTM (agrupar por utm_campaign / medium / content / source / term / src / keyword),relatório,should,yes,yes,"Também mostra vendas de tráfego orgânico | Build (2026-10-21): S27 agrupa por utm_source / medium / campaign / content / term / src / sck, com a linha das vendas sem o parâmetro, busca, filtros e CSV; keyword do Google fica no utm_term",utmify
+Relatório por dia ou por hora,relatório,should,yes,yes,"Visto na UTMify: com gasto / despesas / faturamento / lucro / ROAS / funil | Build: nos Painéis (agrupar por hora ou dia, ver como tabela, exportar)",utmify
+Indicador de identificando vendas e ajuda para campanha que não aparece,relatório,could,yes,no,,utmify
+Colunas de leilão (bid cap / gasto mínimo e máximo),relatório,could,yes,no,,utmify
+Gerador de UTMs para tráfego orgânico (bio / WhatsApp / e-mail),rastreamento,should,yes,yes,Visto na UTMify: URL + utm_source obrigatório + medium / campaign / content / term + parâmetros extras | Build: gerador na aba UTMs das Integrações,utmify
+Script de back redirect que mantém as UTMs,rastreamento,could,yes,skip,Redireciona o botão voltar do navegador; não se aplica à loja Shopify,utmify
+Taxas adicionais fixas ou percentuais por produto ou plataforma,custos,should,yes,yes,"Build: fixas ou percentuais, para todos, por produto ou por forma de pagamento",utmify
+Notificação de venda no navegador (pendente / aprovada / valor / produto / campanha),notificações,could,yes,no,Visto na UTMify: com prévia ao vivo,utmify
+Notificação de resumo em horários fixos (08h / 12h / 18h / 23h),notificações,could,yes,no,,utmify
+Autenticação em dois fatores (2FA),auth,should,yes,no,O app guarda os tokens das contas de anúncio e da loja,utmify
+Colaboradores com permissões por dashboard,workspace,could,yes,no,Visto na UTMify: convite por e-mail em Avançado,utmify
+Interface em inglês e espanhol,plataforma,could,yes,no,Uso interno: português primeiro,ambos
+Indique e ganhe (link de indicação / saldo / saque),conta,could,yes,skip,Uso interno,utmify
+Central de tutoriais em vídeo e botão de WhatsApp do suporte,ajuda,could,yes,skip,Uso interno,utmify
+Página de novidades do sistema,ajuda,could,yes,skip,Uso interno,utmify

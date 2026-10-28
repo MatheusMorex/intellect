@@ -1,0 +1,421 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>INtellect: sistema visual</title>
+<link rel="icon" href="marca/intellect-simbolo.svg">
+<!-- Prancha estática: usa só o tokens.css gerado. Os componentes de verdade nascem no build, numa rota /design. -->
+<link rel="stylesheet" href="tokens.css">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--ds-bg); color: var(--ds-text); font-family: var(--ds-font-sans);
+         font-size: var(--ds-fs-sm); line-height: var(--ds-lh-sm); }
+  :focus-visible { outline: 2px solid var(--ds-ring); outline-offset: 2px; }
+  .tabular { font-variant-numeric: tabular-nums; }
+  header.top { position: sticky; top: 0; z-index: var(--ds-z-header); height: var(--ds-header); display: flex;
+         align-items: center; gap: 16px; padding: 0 24px; background: var(--ds-surface); border-bottom: 1px solid var(--ds-border); }
+  header.top h1 { font-size: var(--ds-fs-lg); line-height: var(--ds-lh-lg); font-weight: 600; margin: 0; flex: 1; }
+  main { max-width: var(--ds-content-max); margin: 0 auto; padding: 24px; display: grid; gap: 24px; }
+  section { background: var(--ds-surface); border: 1px solid var(--ds-border); border-radius: var(--ds-radius-lg); padding: 24px; }
+  section > h2 { font-size: var(--ds-fs-lg); line-height: var(--ds-lh-lg); font-weight: 600; margin: 0 0 4px; }
+  section > p.lead { color: var(--ds-text-muted); margin: 0 0 16px; }
+  .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+  .grid { display: grid; gap: 12px; }
+  .muted { color: var(--ds-text-muted); }
+  h3 { font-size: var(--ds-fs-xs); line-height: var(--ds-lh-xs); font-weight: 600; color: var(--ds-text-muted); margin: 16px 0 8px; }
+
+  /* cores */
+  .swatches { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+  .sw { border: 1px solid var(--ds-border); border-radius: var(--ds-radius-md); overflow: hidden; background: var(--ds-surface); }
+  .sw i { display: block; height: 44px; }
+  .sw b, .sw code { display: block; padding: 0 8px; font-size: var(--ds-fs-xs); line-height: var(--ds-lh-xs); }
+  .sw b { padding-top: 6px; font-weight: 600; } .sw code { padding-bottom: 6px; color: var(--ds-text-muted); font-family: var(--ds-font-mono); }
+
+  /* tipo */
+  .type div { display: flex; gap: 16px; align-items: baseline; border-bottom: 1px solid var(--ds-border); padding: 8px 0; }
+  .type span.k { width: 160px; flex: none; color: var(--ds-text-muted); font-size: var(--ds-fs-xs); font-family: var(--ds-font-mono); }
+
+  /* botões */
+  .btn { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px; border-radius: var(--ds-radius-md);
+         border: 1px solid transparent; font: inherit; font-weight: 500; cursor: pointer;
+         transition: background var(--ds-motion-fast) var(--ds-ease); }
+  .btn.sm { height: 32px; padding: 0 10px; } .btn.lg { height: 40px; padding: 0 18px; }
+  .btn.primary { background: var(--ds-accent); color: var(--ds-on-accent); }
+  .btn.primary:hover { background: var(--ds-accent-hover); }
+  .btn.secondary { background: var(--ds-surface-hover); color: var(--ds-text); }
+  .btn.ghost { background: transparent; color: var(--ds-text); } .btn.ghost:hover { background: var(--ds-surface-hover); }
+  .btn.outline { background: var(--ds-surface); color: var(--ds-text); border-color: var(--ds-border-input); }
+  .btn.danger { background: var(--ds-danger); color: var(--ds-on-danger); }
+  .btn.link { background: none; color: var(--ds-accent); text-decoration: underline; padding: 0 4px; }
+  .btn[disabled] { opacity: .5; cursor: not-allowed; }
+  .btn.ring { outline: 2px solid var(--ds-ring); outline-offset: 2px; }
+  .spin { width: 14px; height: 14px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent;
+          animation: spin calc(var(--ds-motion-slow) * 3) linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* campos */
+  .field { display: grid; gap: 6px; width: 240px; }
+  .field label { font-weight: 500; }
+  .input { height: 36px; padding: 0 10px; border: 1px solid var(--ds-border-input); border-radius: var(--ds-radius-md);
+           background: var(--ds-surface); color: var(--ds-text); font: inherit; }
+  .input::placeholder { color: var(--ds-text-muted); }
+  .input.focus { outline: 2px solid var(--ds-ring); outline-offset: 2px; }
+  .input.err { border-color: var(--ds-danger); }
+  .input[disabled] { background: var(--ds-surface-sunken); opacity: .5; }
+  .help { font-size: var(--ds-fs-xs); line-height: var(--ds-lh-xs); color: var(--ds-text-muted); font-weight: 400; }
+  .help.err { color: var(--ds-danger); }
+
+  /* toggle e checkbox */
+  .switch { display: inline-block; vertical-align: middle; width: 36px; height: 20px; border-radius: 999px; background: var(--ds-surface-hover); border: 1px solid var(--ds-border-input);
+            position: relative; flex: none; }
+  .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%;
+                   background: var(--ds-text-muted); transition: left var(--ds-motion-fast) var(--ds-ease); }
+  .switch.on { background: var(--ds-accent); border-color: var(--ds-accent); } .switch.on::after { left: 18px; background: var(--ds-on-accent); }
+  .check { display: inline-grid; width: 16px; height: 16px; border: 1px solid var(--ds-border-input); border-radius: var(--ds-radius-sm); flex: none;
+           display: grid; place-items: center; font-size: 11px; color: var(--ds-on-accent); }
+  .check.on { background: var(--ds-accent); border-color: var(--ds-accent); }
+  .check.round { border-radius: 50%; }
+
+  /* etiquetas */
+  .labels { grid-template-columns: 130px repeat(3, minmax(120px, 1fr)); align-items: center; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; height: 20px; padding: 2px 8px; border-radius: var(--ds-radius-sm);
+          font-size: var(--ds-fs-xs); line-height: var(--ds-lh-xs); font-weight: 500; max-width: 100%; }
+  .chip .pat { display: none; width: 10px; height: 10px; border-radius: 2px; flex: none; color: var(--ds-pattern-ink); }
+  .chip.bold .pat { color: var(--ds-pattern-ink-on-bold); }
+  [data-colorblind="on"] .chip .pat { display: inline-block; }
+  .strip { display: inline-block; width: 40px; height: 8px; border-radius: 4px; }
+
+  /* badges e pills */
+  .badge { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 2px 6px; border-radius: var(--ds-radius-sm);
+           font-size: var(--ds-fs-xs); line-height: var(--ds-lh-xs); font-weight: 500; }
+  .b-normal { background: var(--ds-surface-sunken); color: var(--ds-text-muted); }
+  .b-near { background: var(--ds-warning-subtle); color: var(--ds-warning); }
+  .b-over { background: var(--ds-danger); color: var(--ds-on-danger); }
+  .b-done { background: var(--ds-success); color: var(--ds-on-success); }
+  .b-pos { background: var(--ds-success-subtle); color: var(--ds-success); }
+  .b-neg { background: var(--ds-danger-subtle); color: var(--ds-danger); }
+  .pill { display: inline-flex; align-items: center; gap: 6px; height: 20px; padding: 0 8px; border-radius: 999px;
+          font-size: var(--ds-fs-xs); font-weight: 500; }
+  .pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .p-ok { background: var(--ds-success-subtle); color: var(--ds-success); }
+  .p-warn { background: var(--ds-warning-subtle); color: var(--ds-warning); }
+  .p-err { background: var(--ds-danger-subtle); color: var(--ds-danger); }
+  .p-mut { background: var(--ds-surface-sunken); color: var(--ds-text-muted); }
+  .p-test { border: 1px dashed var(--ds-border-input); color: var(--ds-text-muted); }
+
+  /* kanban */
+  .board { background: var(--ds-label-purple-bold); border-radius: var(--ds-radius-lg); padding: 0 0 16px; overflow-x: auto; }
+  .board-head { background: var(--ds-board-header); color: var(--ds-label-text-bold); padding: 10px 16px; font-weight: 600;
+                border-radius: var(--ds-radius-lg) var(--ds-radius-lg) 0 0; display: flex; gap: 12px; align-items: center; }
+  .lists { display: flex; gap: var(--ds-list-gap); padding: 12px 16px 0; align-items: flex-start; }
+  .list { width: var(--ds-list-width); flex: none; background: var(--ds-surface-sunken); border-radius: var(--ds-radius-lg); padding: 8px;
+          display: grid; gap: 8px; }
+  .list-head { display: flex; justify-content: space-between; align-items: center; padding: 4px 4px 0; font-weight: 600; }
+  .card { background: var(--ds-surface); border-radius: var(--ds-radius-md); box-shadow: var(--ds-shadow-card); padding: 8px 12px;
+          display: grid; gap: 6px; }
+  .card.hover { box-shadow: var(--ds-shadow-card), 0 0 0 1px var(--ds-border-input); }
+  .card.focus { outline: 2px solid var(--ds-ring); outline-offset: 2px; }
+  .card.drag { box-shadow: var(--ds-shadow-pop); transform: rotate(2deg); }
+  [data-motion="reduced"] .card.drag { transform: none; }
+  .card .cover { height: 32px; margin: -8px -12px 0; border-radius: var(--ds-radius-md) var(--ds-radius-md) 0 0; }
+  .card .meta { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+  .avatar { width: 24px; height: 24px; border-radius: 50%; display: inline-grid; place-items: center; font-size: 10px; font-weight: 600;
+            color: var(--ds-label-text-bold); margin-left: auto; }
+  .placeholder { height: 56px; border: 1px dashed var(--ds-border-input); border-radius: var(--ds-radius-md); }
+  .add { color: var(--ds-text-muted); padding: 6px 8px; border-radius: var(--ds-radius-md); }
+
+  /* tracking */
+  .kpis { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+  .kpi { background: var(--ds-surface); border: 1px solid var(--ds-border); border-radius: var(--ds-radius-lg); padding: 16px; }
+  .kpi .l { font-size: var(--ds-fs-xs); line-height: var(--ds-lh-xs); font-weight: 500; color: var(--ds-text-muted); }
+  .kpi .v { font-size: var(--ds-fs-display); line-height: var(--ds-lh-display); font-weight: 700; margin: 4px 0; }
+  .kpi .c { font-size: var(--ds-fs-xs); line-height: var(--ds-lh-xs); }
+  .up { color: var(--ds-success); } .down { color: var(--ds-danger); }
+  .skel { background: var(--ds-surface-sunken); border-radius: var(--ds-radius-sm); animation: pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .5; } }
+  [data-motion="reduced"] .skel, [data-motion="reduced"] .spin { animation: none; }
+  table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+  th { background: var(--ds-surface-sunken); color: var(--ds-text-muted); font-weight: 600; text-align: left; height: 40px; padding: 0 12px; }
+  td { height: 40px; padding: 0 12px; border-top: 1px solid var(--ds-border); }
+  td.n, th.n { text-align: right; }
+  tbody tr:hover { background: var(--ds-surface-hover); }
+  tfoot td { font-weight: 600; border-top: 2px solid var(--ds-border-input); }
+  .neg { color: var(--ds-danger); }
+  .bars { display: grid; gap: 8px; }
+  .bar { display: grid; grid-template-columns: 80px 1fr 90px; gap: 12px; align-items: center; }
+  .bar i { display: block; height: 14px; border-radius: 3px; }
+
+  /* avisos */
+  .banner { display: flex; gap: 12px; align-items: flex-start; padding: 12px 16px; border-radius: var(--ds-radius-md); }
+  .banner b { display: block; }
+  .bn-warn { background: var(--ds-warning-subtle); } .bn-warn .ic { color: var(--ds-warning); }
+  .bn-err { background: var(--ds-danger-subtle); } .bn-err .ic { color: var(--ds-danger); }
+  .bn-ok { background: var(--ds-success-subtle); } .bn-ok .ic { color: var(--ds-success); }
+  .bn-info { background: var(--ds-surface-sunken); } .bn-info .ic { color: var(--ds-text-muted); }
+  .toast { display: flex; gap: 12px; align-items: center; background: var(--ds-surface); border: 1px solid var(--ds-border);
+           box-shadow: var(--ds-shadow-pop); border-radius: var(--ds-radius-md); padding: 12px 16px; width: 360px; }
+  .code { font-family: var(--ds-font-mono); font-size: var(--ds-fs-xs); background: var(--ds-surface-sunken); border: 1px solid var(--ds-border);
+          border-radius: var(--ds-radius-md); padding: 12px; overflow-x: auto; white-space: nowrap; flex: 1; min-width: 0; }
+  .tip { background: var(--ds-text); color: var(--ds-surface); font-size: var(--ds-fs-xs); padding: 4px 8px; border-radius: var(--ds-radius-sm); }
+  kbd { font-family: var(--ds-font-mono); font-size: var(--ds-fs-xs); background: var(--ds-surface-sunken); border: 1px solid var(--ds-border);
+        border-radius: var(--ds-radius-sm); padding: 1px 6px; }
+  .seg { display: inline-flex; background: var(--ds-surface-sunken); border-radius: var(--ds-radius-md); padding: 2px; }
+  .seg button { border: 0; background: none; color: var(--ds-text-muted); font: inherit; height: 28px; padding: 0 10px; border-radius: 6px; cursor: pointer; }
+  .seg button[aria-pressed="true"] { background: var(--ds-surface); color: var(--ds-text); font-weight: 600; box-shadow: var(--ds-shadow-card); }
+  /* logo: as duas versões ficam no HTML e o CSS mostra a do tema */
+  .logo { height: 24px; display: block; }
+  .logo-dark { display: none; }
+  :root[data-theme="dark"] .logo-light { display: none; } :root[data-theme="dark"] .logo-dark { display: block; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .logo-light { display: none; } :root:not([data-theme="light"]) .logo-dark { display: block; }
+  }
+  .brand-grid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+  .brand-tile { border: 1px solid var(--ds-border); border-radius: var(--ds-radius-lg); padding: 16px; display: grid; gap: 8px; }
+  .brand-tile .art { height: 96px; display: grid; place-items: center; border-radius: var(--ds-radius-md); }
+  .brand-tile img { max-height: 64px; max-width: 100%; }
+  .nav { width: 248px; display: grid; gap: 2px; padding: 8px; background: var(--ds-surface); border: 1px solid var(--ds-border); border-radius: var(--ds-radius-lg); }
+  .nav a { display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 10px; border-radius: var(--ds-radius-md); color: var(--ds-text); text-decoration: none; }
+  .nav a:hover { background: var(--ds-surface-hover); }
+  .nav a[aria-current="page"] { background: var(--ds-accent-subtle); color: var(--ds-accent); font-weight: 600; }
+  .nav .ico { width: 16px; height: 16px; border-radius: 4px; border: 2px solid currentColor; opacity: .8; }
+  @media (max-width: 640px) { main { padding: 16px; } section { padding: 16px; } header.top { padding: 0 16px; } .type span.k { width: 96px; } }
+</style>
+</head>
+<body>
+<header class="top">
+  <a href="#" aria-label="INtellect, início" style="flex:none"><img class="logo logo-light" src="marca/intellect-logo-para-fundo-claro.svg" alt="INtellect"><img class="logo logo-dark" src="marca/intellect-logo-para-fundo-escuro.svg" alt="INtellect"></a>
+  <h1><span class="muted" style="font-weight:400">· sistema visual</span></h1>
+  <div class="seg" role="group" aria-label="Tema">
+    <button data-set-theme="light">Claro</button><button data-set-theme="dark">Escuro</button><button data-set-theme="system">Automático</button>
+  </div>
+  <label class="row" style="gap:6px"><input type="checkbox" id="cb"> Daltônicos</label>
+  <label class="row" style="gap:6px"><input type="checkbox" id="rm"> Reduzir animações</label>
+</header>
+
+<main>
+  <section id="marca">
+    <h2>Marca</h2>
+    <p class="lead">Peças do pacote INtellect e onde cada uma entra no app.</p>
+    <div class="grid brand-grid">
+      <div class="brand-tile"><div class="art" style="background:#fff;border:1px solid var(--ds-border)"><img src="marca/intellect-logo-para-fundo-claro.svg" alt="Logo para fundo claro"></div><b>Logo, fundo claro</b><span class="muted">Barra superior e login no tema claro</span></div>
+      <div class="brand-tile"><div class="art" style="background:var(--ds-brand-ink)"><img src="marca/intellect-logo-para-fundo-escuro.svg" alt="Logo para fundo escuro"></div><b>Logo, fundo escuro</b><span class="muted">Barra superior e login no tema escuro</span></div>
+      <div class="brand-tile"><div class="art" style="background:var(--ds-surface-sunken)"><img src="marca/intellect-simbolo.svg" alt="Símbolo" style="height:56px"></div><b>Símbolo</b><span class="muted">Menu recolhido, aba do navegador, avatar das automações</span></div>
+      <div class="brand-tile"><div class="art" style="background:#f7f7fa"><img src="marca/intellect-simbolo-roxo.svg" alt="Símbolo roxo" style="height:56px"></div><b>Símbolo roxo</b><span class="muted">Estados vazios e carregamento (tema claro)</span></div>
+      <div class="brand-tile"><div class="art" style="background:var(--ds-brand-indigo)"><img src="marca/intellect-simbolo-branco.svg" alt="Símbolo branco" style="height:56px"></div><b>Símbolo branco</b><span class="muted">Sobre roxo, fotos e no tema escuro</span></div>
+      <div class="brand-tile"><div class="art" style="background:linear-gradient(90deg,var(--ds-brand-indigo) 0 25%,var(--ds-brand-lavender-strong) 25% 50%,var(--ds-brand-lavender) 50% 75%,var(--ds-brand-ink) 75%)"></div><b>Cores da marca</b><span class="muted" style="font-family:var(--ds-font-mono);font-size:var(--ds-fs-xs)">#2D1E8F · #9D8FFF · #B9AEFF · #0A0912</span></div>
+    </div>
+    <h3>Item selecionado no menu (accent-subtle)</h3>
+    <nav class="nav" aria-label="Exemplo de menu">
+      <a href="#"><span class="ico" aria-hidden="true"></span>Início</a>
+      <a href="#" aria-current="page"><span class="ico" aria-hidden="true"></span>Resumo</a>
+      <a href="#"><span class="ico" aria-hidden="true"></span>Meta</a>
+      <a href="#"><span class="ico" aria-hidden="true"></span>Vendas</a>
+    </nav>
+  </section>
+
+  <section>
+    <h2>Cores por papel</h2>
+    <p class="lead">Roxo da marca como cor principal no tema claro; lavanda no escuro. Os valores mudam com o tema.</p>
+    <div class="grid swatches" id="roles"></div>
+  </section>
+
+  <section class="type">
+    <h2>Tipografia</h2>
+    <p class="lead">Inter, com a fonte do sistema como reserva. Interface em 14 px; texto longo em 16 px.</p>
+    <div><span class="k">display 32/40 700</span><span style="font-size:var(--ds-fs-display);line-height:var(--ds-lh-display);font-weight:700" class="tabular">R$ 48.215,90</span></div>
+    <div><span class="k">xl 24/32 600</span><span style="font-size:var(--ds-fs-xl);line-height:var(--ds-lh-xl);font-weight:600">Resumo da operação</span></div>
+    <div><span class="k">lg 20/28 600</span><span style="font-size:var(--ds-fs-lg);line-height:var(--ds-lh-lg);font-weight:600">Revisar criativos da semana</span></div>
+    <div><span class="k">base 16/24 400</span><span style="font-size:var(--ds-fs-base);line-height:var(--ds-lh-base)">Descrição longa de um card, com o contexto da tarefa e os links que o time precisa.</span></div>
+    <div><span class="k">sm 14/20 400</span><span>Texto padrão da interface: menus, células de tabela, títulos de card.</span></div>
+    <div><span class="k">xs 12/16 500</span><span style="font-size:var(--ds-fs-xs);line-height:var(--ds-lh-xs);font-weight:500" class="muted">Ajuda, badges, etiquetas, cabeçalhos pequenos.</span></div>
+  </section>
+
+  <section>
+    <h2>Botões e campos</h2>
+    <h3>Variantes</h3>
+    <div class="row">
+      <button class="btn primary">Criar quadro</button>
+      <button class="btn secondary">Duplicar</button>
+      <button class="btn outline">Exportar</button>
+      <button class="btn ghost">Cancelar</button>
+      <button class="btn danger">Excluir quadro</button>
+      <button class="btn link">Ver detalhes</button>
+    </div>
+    <h3>Tamanhos e estados</h3>
+    <div class="row">
+      <button class="btn primary sm">Pequeno 32</button>
+      <button class="btn primary">Médio 36</button>
+      <button class="btn primary lg">Grande 40</button>
+      <button class="btn primary ring">Com foco</button>
+      <button class="btn primary" disabled>Desabilitado</button>
+      <button class="btn primary" aria-busy="true"><span class="spin" aria-hidden="true"></span>Salvando</button>
+    </div>
+    <h3>Campos</h3>
+    <div class="row" style="align-items:flex-start">
+      <div class="field"><label for="f1">Nome do quadro</label><input id="f1" class="input" placeholder="Ex.: Lançamento de novembro"><span class="help">Até 512 caracteres.</span></div>
+      <div class="field"><label for="f2">Com foco</label><input id="f2" class="input focus" value="Campanhas de Black Friday"></div>
+      <div class="field"><label for="f3">Orçamento diário (obrigatório)</label><input id="f3" class="input err" value="abc" aria-invalid="true" aria-describedby="e3"><span class="help err" id="e3">⚠ Use só números, como 80,00.</span></div>
+      <div class="field"><label for="f4">Desabilitado</label><input id="f4" class="input" value="America/Sao_Paulo" disabled></div>
+    </div>
+    <h3>Seleção</h3>
+    <div class="row">
+      <span class="row" style="gap:8px"><span class="switch on" role="switch" aria-checked="true" aria-label="Automação ligada"></span>Ligada</span>
+      <span class="row" style="gap:8px"><span class="switch" role="switch" aria-checked="false" aria-label="Automação desligada"></span>Desligada</span>
+      <span class="row" style="gap:8px"><span class="check on" aria-hidden="true">✓</span>Marcado</span>
+      <span class="row" style="gap:8px"><span class="check" aria-hidden="true"></span>Desmarcado</span>
+      <span class="row" style="gap:8px"><span class="check round on" aria-hidden="true">✓</span>Card concluído</span>
+      <span class="tip">Tooltip curto</span>
+      <span>Atalho <kbd>N</kbd> novo card</span>
+    </div>
+  </section>
+
+  <section id="etiquetas">
+    <h2>Etiquetas</h2>
+    <p class="lead">10 cores em 3 tons. Ligue "Daltônicos" no topo para ver os padrões ao lado do nome.</p>
+    <div class="grid labels" id="labels"><span class="muted">cor</span><span class="muted">sutil (_light)</span><span class="muted">normal</span><span class="muted">forte (_dark)</span></div>
+  </section>
+
+  <section>
+    <h2>Badges e status</h2>
+    <h3>Prazo, checklist e métrica (frente do card)</h3>
+    <div class="row">
+      <span class="badge b-normal" aria-label="Entrega 20 de out.">◷ 20 de out.</span>
+      <span class="badge b-near" aria-label="Entrega amanhã">◷ amanhã</span>
+      <span class="badge b-over" aria-label="Entrega 10 de out., vencida">⚠ 10 de out.</span>
+      <span class="badge b-done" aria-label="Entrega 8 de out., concluída">✓ 8 de out.</span>
+      <span class="badge b-normal">☑ 3/10</span>
+      <span class="badge b-pos">☑ 10/10</span>
+      <span class="badge b-pos" aria-label="ROAS 2,45 nos últimos 7 dias">▲ ROAS 2,45</span>
+      <span class="badge b-neg" aria-label="Lucro negativo, menos 320 reais">▼ −R$ 320</span>
+      <span class="badge b-normal" aria-label="sem dados">ROAS —</span>
+    </div>
+    <h3>Pedidos e integrações</h3>
+    <div class="row">
+      <span class="pill p-ok">Pago</span><span class="pill p-warn">Pendente</span><span class="pill p-mut">Recusado</span>
+      <span class="pill p-mut">Reembolsado</span><span class="pill p-err">Chargeback</span><span class="pill p-test">Teste</span>
+      <span class="pill p-ok">Conectada</span><span class="pill p-warn">Expira em 5 dias</span><span class="pill p-err">Token vencido</span>
+    </div>
+  </section>
+
+  <section>
+    <h2>Kanban</h2>
+    <p class="lead">Fundo do quadro num tom forte; listas em surface-sunken; cards em surface.</p>
+    <div class="board">
+      <div class="board-head">Marketing de outubro <span style="font-weight:400;opacity:.9">· 3 listas</span></div>
+      <div class="lists">
+        <div class="list">
+          <div class="list-head">A fazer <span class="muted" style="font-weight:400">3</span></div>
+          <div class="card">
+            <div class="cover" style="background:var(--ds-label-orange)"></div>
+            <div class="meta"><span class="strip" style="background:var(--ds-label-green)"></span><span class="strip" style="background:var(--ds-label-purple)"></span></div>
+            <div>Gravar 3 vídeos para o anúncio de Natal</div>
+            <div class="meta"><span class="badge b-near">◷ amanhã</span><span class="badge b-normal">☑ 1/4</span><span class="avatar" style="background:var(--ds-label-purple-bold)">AL</span></div>
+          </div>
+          <div class="card hover">
+            <div>Revisar textos da página do kit (hover)</div>
+            <div class="meta"><span class="badge b-over">⚠ 10 de out.</span></div>
+          </div>
+          <div class="placeholder" aria-hidden="true"></div>
+          <div class="add">+ Adicionar card</div>
+        </div>
+        <div class="list">
+          <div class="list-head">Em andamento <span class="muted" style="font-weight:400">2</span></div>
+          <div class="card drag">
+            <div class="meta"><span class="chip" style="background:var(--ds-label-blue-subtle);color:var(--ds-label-text-subtle)">Meta</span></div>
+            <div>Escalar campanha de remarketing (arrastando)</div>
+            <div class="meta"><span class="badge b-pos">▲ ROAS 3,10</span><span class="avatar" style="background:var(--ds-label-sky-bold)">BR</span></div>
+          </div>
+          <div class="card focus">
+            <div>Ajustar orçamento do Google (foco)</div>
+            <div class="meta"><span class="badge b-neg">▼ −R$ 320</span></div>
+          </div>
+        </div>
+        <div class="list">
+          <div class="list-head">Feito <span class="muted" style="font-weight:400">1</span></div>
+          <div class="card">
+            <div class="meta"><span class="check round on" aria-hidden="true">✓</span><span>Configurar parâmetros no Meta</span></div>
+            <div class="meta"><span class="badge b-done">✓ 8 de out.</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="tracking">
+    <h2>Tracking</h2>
+    <div class="grid kpis">
+      <div class="kpi"><div class="l">Faturamento líquido ⓘ</div><div class="v tabular">R$ 48.215,90</div><div class="c up">▲ 12,4% vs. período anterior</div></div>
+      <div class="kpi"><div class="l">Gasto com anúncios ⓘ</div><div class="v tabular">R$ 16.902,10</div><div class="c down">▲ 8,1% vs. período anterior</div></div>
+      <div class="kpi"><div class="l">Lucro ⓘ</div><div class="v tabular neg">−R$ 1.320,00</div><div class="c down">▼ 140% vs. período anterior</div></div>
+      <div class="kpi" aria-busy="true"><div class="l">ROAS ⓘ</div><div class="skel" style="height:40px;margin:4px 0;width:60%"></div><div class="skel" style="height:12px;width:80%"></div></div>
+    </div>
+    <h3>Tabela (linha de totais, negativos, hover)</h3>
+    <div style="overflow-x:auto;border:1px solid var(--ds-border);border-radius:var(--ds-radius-lg)">
+      <table>
+        <caption style="position:absolute;left:-9999px">Campanhas do Meta, últimos 7 dias</caption>
+        <thead><tr><th>Status</th><th>Campanha</th><th class="n">Gasto</th><th class="n">Faturamento</th><th class="n">ROAS</th><th class="n">Lucro</th></tr></thead>
+        <tbody>
+          <tr><td><span class="switch on" role="switch" aria-checked="true" aria-label="Campanha Remarketing ativa"></span></td><td>Remarketing 30d</td><td class="n">R$ 4.210,00</td><td class="n">R$ 13.051,00</td><td class="n">3,10</td><td class="n">R$ 5.920,40</td></tr>
+          <tr><td><span class="switch on" role="switch" aria-checked="true" aria-label="Campanha Público frio ativa"></span></td><td>Público frio, criativo B</td><td class="n">R$ 6.880,00</td><td class="n">R$ 7.912,00</td><td class="n">1,15</td><td class="n neg">−R$ 1.240,60</td></tr>
+          <tr><td><span class="switch" role="switch" aria-checked="false" aria-label="Campanha Teste pausada"></span></td><td>Teste de oferta</td><td class="n">R$ 0,00</td><td class="n">R$ 0,00</td><td class="n" aria-label="sem dados">—</td><td class="n">R$ 0,00</td></tr>
+        </tbody>
+        <tfoot><tr><td></td><td>Total</td><td class="n">R$ 11.090,00</td><td class="n">R$ 20.963,00</td><td class="n">1,89</td><td class="n">R$ 4.679,80</td></tr></tfoot>
+      </table>
+    </div>
+    <h3>Cores de gráfico (ordem fixa)</h3>
+    <div class="bars" id="bars"></div>
+  </section>
+
+  <section>
+    <h2>Avisos, toast e código</h2>
+    <div class="grid">
+      <div class="banner bn-warn"><span class="ic" aria-hidden="true">⚠</span><div><b>Configuração incompleta</b><span class="muted">Falta conectar o Google Ads. </span><a href="#" style="color:var(--ds-text)">Continuar configuração</a></div></div>
+      <div class="banner bn-err"><span class="ic" aria-hidden="true">⛔</span><div><b>A conexão com o Meta venceu</b><span class="muted">Os gastos pararam de atualizar às 14:10. </span><a href="#" style="color:var(--ds-text)">Conectar de novo</a></div></div>
+      <div class="banner bn-ok"><span class="ic" aria-hidden="true">✓</span><div><b>Loja conectada</b><span class="muted">O primeiro pedido chegou às 09:32.</span></div></div>
+      <div class="banner bn-info"><span class="ic" aria-hidden="true">ⓘ</span><div><b>Sem vendas no período</b><span class="muted">Escolha outro período ou confira a integração da loja.</span></div></div>
+      <div class="row"><div class="toast"><span class="up" aria-hidden="true">✓</span><span style="flex:1">Card movido para Feito</span><button class="btn ghost sm">Desfazer</button></div></div>
+      <div class="row"><div class="code">utm_source=meta&amp;utm_medium=paid&amp;utm_campaign={{campaign.name}}&amp;itl_c={{campaign.id}}&amp;itl_s={{adset.id}}&amp;itl_a={{ad.id}}</div><button class="btn outline sm">Copiar</button></div>
+    </div>
+  </section>
+</main>
+
+<script>
+  const root = document.documentElement;
+  const css = getComputedStyle(root);
+  const roles = ["bg","surface","surface-sunken","surface-hover","border","border-input","text","text-muted","accent","accent-hover","accent-subtle",
+    "on-accent","ring","danger","danger-subtle","success","success-subtle","warning","warning-subtle"];
+  const hues = ["green","yellow","orange","red","purple","blue","sky","lime","pink","black"];
+  const names = {green:"verde",yellow:"amarelo",orange:"laranja",red:"vermelho",purple:"roxo",blue:"azul",sky:"céu",lime:"lima",pink:"rosa",black:"cinza"};
+  function paintRoles() {
+    const s = getComputedStyle(root);
+    document.getElementById("roles").innerHTML = roles.map(r =>
+      `<div class="sw"><i style="background:var(--ds-${r})"></i><b>${r}</b><code>${s.getPropertyValue("--ds-" + r).trim()}</code></div>`).join("");
+  }
+  document.getElementById("labels").insertAdjacentHTML("beforeend", hues.map(h => {
+    const tone = (cls, bg, fg, txt) =>
+      `<span><span class="chip ${cls}" style="background:var(--ds-label-${bg});color:var(--ds-label-${fg})"><span class="pat" style="background:var(--ds-pattern-${h}), var(--ds-label-${bg})"></span>${txt}</span></span>`;
+    return `<span class="row" style="gap:8px"><span class="strip" style="background:var(--ds-pattern-${h}), var(--ds-label-${h});color:var(--ds-pattern-ink)"></span>${names[h]}</span>` +
+      tone("", h + "-subtle", "text-subtle", "Prioridade") + tone("", h, "text", "Criativo") + tone("bold", h + "-bold", "text-bold", "Urgente");
+  }).join(""));
+  const series = [["Pix","R$ 21.400"],["Cartão","R$ 18.950"],["Boleto","R$ 4.320"],["Produto D","R$ 2.110"],["Produto E","R$ 1.480"],["Produto F","R$ 960"],["Produto G","R$ 610"],["Outros","R$ 385"]];
+  document.getElementById("bars").innerHTML = series.map(([n, v], i) =>
+    `<div class="bar"><span>${n}</span><i style="background:var(--ds-chart-${i + 1});width:${100 - i * 11}%"></i><span class="tabular n" style="text-align:right">${v}</span></div>`).join("");
+  function setTheme(t) {
+    try { localStorage.setItem("prancha-tema", t); } catch (e) {}
+    if (t === "system") root.removeAttribute("data-theme"); else root.setAttribute("data-theme", t);
+    document.querySelectorAll("[data-set-theme]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.setTheme === t)));
+    paintRoles();
+  }
+  document.querySelectorAll("[data-set-theme]").forEach(b => b.addEventListener("click", () => setTheme(b.dataset.setTheme)));
+  document.getElementById("cb").addEventListener("change", e => root.setAttribute("data-colorblind", e.target.checked ? "on" : "off"));
+  document.getElementById("rm").addEventListener("change", e => e.target.checked ? root.setAttribute("data-motion", "reduced") : root.removeAttribute("data-motion"));
+  const q = new URLSearchParams(location.search);
+  let saved = q.get("tema"); if (!saved) { try { saved = localStorage.getItem("prancha-tema"); } catch (e) {} }
+  if (q.get("daltonicos") === "1") { document.getElementById("cb").checked = true; root.setAttribute("data-colorblind", "on"); }
+  setTheme(saved || "system");
+  const so = q.get("so");  // ?so=etiquetas mostra só uma seção
+  if (so) document.querySelectorAll("main > section").forEach(el => { if (el.id !== so) el.hidden = true; });
+</script>
+</body>
+</html>

@@ -1,0 +1,5 @@
+- [Estado do INtellect](replica-recon-status.md) — código em C:/Users/Soare/dev/intellect (ramo etapa5-anexos, sem remoto); Painéis prontos; Supabase: as 5 etapas feitas em 2026-10-21; faltam tarefas manuais do usuário
+- [Banco principal é do usuário](feedback-banco-principal.md) — db push no Supabase principal é bloqueado para o Claude; testar no projeto de teste e deixar `npm run db:push` para o usuário
+- [Continuar sem parar](feedback-continuar-sem-parar.md) — "pode continuar" = seguir trabalhando sem pedir sim a cada passo; testar tudo e mostrar evidência
+- [Perfil do usuário](user-perfil.md) — iniciante; quer passos numerados e "sim" antes de publicar ou gastar
+- [Python nesta máquina](windows-python-command.md) — Python sumiu em 2026-10-20 (pasta C:/Python314 apagada); usar node para scripts; OneDrive deixa o shell lento
